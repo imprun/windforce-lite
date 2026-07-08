@@ -1,0 +1,22 @@
+name: windforce-lite
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${WINDFORCE_POSTGRES_PORT:-5432}:5432"
+    environment:
+      POSTGRES_DB: ${WINDFORCE_POSTGRES_DB:-windforce_lite}
+      POSTGRES_USER: ${WINDFORCE_POSTGRES_USER:-postgres}
+      POSTGRES_HOST_AUTH_METHOD: trust
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+volumes:
+  postgres-data:

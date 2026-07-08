@@ -1,0 +1,10 @@
+{
+  "app": "echo",
+  "actions": {
+    "echo": {
+      "runtime": "go",
+      "command": ["go", "run", "./action.go"],
+      "timeoutMs": 30000
+    }
+  }
+}

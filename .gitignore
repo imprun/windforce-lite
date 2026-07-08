@@ -1,0 +1,7 @@
+/bin/
+/dist/
+/tmp/
+/.tmp/
+/.windforce-lite/
+/.serena/
+*.exe

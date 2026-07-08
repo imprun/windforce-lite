@@ -1,0 +1,116 @@
+package state
+
+import (
+	"context"
+	"encoding/json"
+	"os"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/imprun/windforce-lite/internal/contract"
+)
+
+func TestLocalStoreClaimCompleteAndResumeLifecycle(t *testing.T) {
+	store := NewLocalStore(t.TempDir() + "/state.json")
+	exerciseStoreLifecycle(t, store)
+}
+
+func TestPostgresStoreClaimCompleteAndResumeLifecycle(t *testing.T) {
+	dsn := os.Getenv("WINDFORCE_LITE_POSTGRES_TEST_DSN")
+	if dsn == "" {
+		t.Skip("WINDFORCE_LITE_POSTGRES_TEST_DSN is not set")
+	}
+	store, err := OpenPostgresStore(context.Background(), dsn)
+	if err != nil {
+		t.Fatalf("OpenPostgresStore returned error: %v", err)
+	}
+	defer store.Close()
+	if err := store.Migrate(context.Background()); err != nil {
+		t.Fatalf("Migrate returned error: %v", err)
+	}
+	if _, err := store.pool.Exec(context.Background(), `TRUNCATE run_events, human_tasks, jobs, runs RESTART IDENTITY CASCADE`); err != nil {
+		t.Fatalf("TRUNCATE returned error: %v", err)
+	}
+	exerciseStoreLifecycle(t, store)
+}
+
+func exerciseStoreLifecycle(t *testing.T, store Store) {
+	t.Helper()
+	deployment := contract.Deployment{
+		App:    "echo",
+		Commit: "commit-a",
+		Actions: map[string]contract.Action{
+			"echo": {Action: "echo", Command: []string{"helper"}},
+		},
+	}
+	run := NewRun("windforce", "run-a", "echo", "echo", deployment, json.RawMessage(`{"message":"hello"}`))
+	job := NewActionJob(run, nil)
+	if err := store.CreateRunAndEnqueue(context.Background(), run, job); err != nil {
+		t.Fatalf("CreateRunAndEnqueue returned error: %v", err)
+	}
+
+	claimed, lease, err := store.ClaimJob(context.Background(), "worker-a", time.Minute)
+	if err != nil {
+		t.Fatalf("ClaimJob returned error: %v", err)
+	}
+	if claimed.ID != job.ID {
+		t.Fatalf("claimed job = %q, want %q", claimed.ID, job.ID)
+	}
+	if err := store.CompleteJobWaitingHuman(context.Background(), lease, contract.JobResult{
+		JobID:    job.ID,
+		App:      "echo",
+		Action:   "echo",
+		ExitCode: 0,
+		Output:   json.RawMessage(`{"$windforce":{"type":"human_task"}}`),
+	}, HumanTask{
+		ID:    "human-a",
+		RunID: run.ID,
+		Title: "Approve",
+	}); err != nil {
+		t.Fatalf("CompleteJobWaitingHuman returned error: %v", err)
+	}
+	waiting, err := store.GetRun(context.Background(), run.ID)
+	if err != nil {
+		t.Fatalf("GetRun returned error: %v", err)
+	}
+	if waiting.State != RunWaitingHuman || waiting.TaskID != "human-a" {
+		t.Fatalf("waiting run = %#v", waiting)
+	}
+
+	resumed, resumeJob, err := store.ResumeHumanTask(context.Background(), "human-a", json.RawMessage(`{"approved":true}`))
+	if err != nil {
+		t.Fatalf("ResumeHumanTask returned error: %v", err)
+	}
+	if resumed.State != RunResuming {
+		t.Fatalf("resumed state = %s, want %s", resumed.State, RunResuming)
+	}
+	input := string(resumeJob.Payload.Input)
+	if !strings.Contains(input, `"$resume"`) || !strings.Contains(input, `"approved":true`) {
+		t.Fatalf("resume job input = %s", input)
+	}
+
+	canceled, err := store.CancelRun(context.Background(), run.ID, "operator canceled")
+	if err != nil {
+		t.Fatalf("CancelRun returned error: %v", err)
+	}
+	if canceled.State != RunCanceled {
+		t.Fatalf("canceled state = %s, want %s", canceled.State, RunCanceled)
+	}
+	retried, retryJob, err := store.RetryRun(context.Background(), run.ID)
+	if err != nil {
+		t.Fatalf("RetryRun returned error: %v", err)
+	}
+	if retried.State != RunQueued {
+		t.Fatalf("retried state = %s, want %s", retried.State, RunQueued)
+	}
+	var retryInput struct {
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(retryJob.Payload.Input, &retryInput); err != nil {
+		t.Fatalf("retry job input is not JSON: %v", err)
+	}
+	if retryInput.Message != "hello" {
+		t.Fatalf("retry job input = %s", retryJob.Payload.Input)
+	}
+}
