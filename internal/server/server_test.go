@@ -650,6 +650,32 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 		t.Fatalf("action body = %#v input=%s output=%s", actionBody, actionBody.InputSchema, actionBody.OutputSchema)
 	}
 
+	schemaResp, err := http.Get(server.URL + "/api/w/ws-a/apps/echo/actions/echo/schema")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer schemaResp.Body.Close()
+	if schemaResp.StatusCode != http.StatusOK {
+		t.Fatalf("schema status = %d, want %d", schemaResp.StatusCode, http.StatusOK)
+	}
+	var canonicalSchemaBody struct {
+		AppKey           string          `json:"app_key"`
+		ActionKey        string          `json:"action_key"`
+		InputSchema      json.RawMessage `json:"input_schema"`
+		OutputSchema     json.RawMessage `json:"output_schema"`
+		InputSchemaPath  string          `json:"input_schema_path"`
+		OutputSchemaPath string          `json:"output_schema_path"`
+	}
+	if err := json.NewDecoder(schemaResp.Body).Decode(&canonicalSchemaBody); err != nil {
+		t.Fatal(err)
+	}
+	if canonicalSchemaBody.AppKey != "echo" || canonicalSchemaBody.ActionKey != "echo" ||
+		canonicalSchemaBody.InputSchemaPath != "input.schema.json" || canonicalSchemaBody.OutputSchemaPath != "output.schema.json" ||
+		!bytes.Contains(canonicalSchemaBody.InputSchema, []byte(`"message"`)) ||
+		!bytes.Contains(canonicalSchemaBody.OutputSchema, []byte(`"ok"`)) {
+		t.Fatalf("canonical schema body = %#v input=%s output=%s", canonicalSchemaBody, canonicalSchemaBody.InputSchema, canonicalSchemaBody.OutputSchema)
+	}
+
 	appResp, err := http.Get(server.URL + "/api/w/ws-a/apps/echo")
 	if err != nil {
 		t.Fatal(err)

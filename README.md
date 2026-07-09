@@ -232,6 +232,7 @@ Implemented control-plane endpoints:
 - `GET /api/w/{workspace}/apps/{app}/history`
 - `GET /api/w/{workspace}/apps/{app}/openapi.json` (app invocation OpenAPI generated from action schemas)
 - `GET /api/w/{workspace}/apps/{app}/actions/{action}` (`input_schema` and `output_schema` expose materialized schema JSON when the bundle store is configured)
+- `GET /api/w/{workspace}/apps/{app}/actions/{action}/schema` (schema-only control-plane view with materialized `input_schema` and `output_schema`)
 - `PATCH /api/w/{workspace}/apps/{app}/actions/{action}`
 - `GET /api/w/{workspace}/deployments/{app}`
 - `GET /api/w/{workspace}/worker-tags`

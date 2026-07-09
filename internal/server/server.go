@@ -263,6 +263,10 @@ func (h *Handler) handleAPI(w http.ResponseWriter, r *http.Request) bool {
 		h.handleCanonicalAction(w, r, parts[2], parts[4], parts[6])
 		return true
 	}
+	if len(parts) == 8 && parts[0] == "api" && parts[1] == "w" && parts[3] == "apps" && parts[5] == "actions" && parts[7] == "schema" && r.Method == http.MethodGet {
+		h.handleCanonicalActionSchema(w, r, parts[2], parts[4], parts[6])
+		return true
+	}
 	if len(parts) == 7 && parts[0] == "api" && parts[1] == "w" && parts[3] == "apps" && parts[5] == "actions" && r.Method == http.MethodPatch {
 		h.handleCanonicalPatchAction(w, r, parts[2], parts[4], parts[6])
 		return true
@@ -914,6 +918,33 @@ func (h *Handler) handleCanonicalAction(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	writeJSON(w, http.StatusOK, view)
+}
+
+func (h *Handler) handleCanonicalActionSchema(w http.ResponseWriter, r *http.Request, workspaceID string, app string, actionKey string) {
+	deployment, ok := h.getCanonicalDeployment(w, r, workspaceID, app, "app not found: "+app)
+	if !ok {
+		return
+	}
+	action, exists := deployment.Actions[actionKey]
+	if !exists {
+		writeError(w, http.StatusNotFound, "action not found: "+app+"/"+actionKey)
+		return
+	}
+	schemaReader := h.newCanonicalSchemaReader(r.Context(), deployment)
+	defer schemaReader.Close()
+	view, err := h.newCanonicalActionView(schemaReader, deployment, actionKey, action)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"app_key":            view.AppKey,
+		"action_key":         view.ActionKey,
+		"input_schema":       view.InputSchema,
+		"output_schema":      view.OutputSchema,
+		"input_schema_path":  action.InputSchema,
+		"output_schema_path": action.OutputSchema,
+	})
 }
 
 func (h *Handler) handleCanonicalPatchApp(w http.ResponseWriter, r *http.Request, workspaceID string, app string) {
