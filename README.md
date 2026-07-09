@@ -232,7 +232,6 @@ Implemented control-plane endpoints:
 - `GET /api/w/{workspace}/apps/{app}/history`
 - `GET /api/w/{workspace}/apps/{app}/openapi.json` (app invocation OpenAPI generated from materialized action schemas)
 - `GET /api/w/{workspace}/apps/{app}/actions/{action}` (canonical action detail including materialized `input_schema` and `output_schema`)
-- `GET /api/w/{workspace}/apps/{app}/actions/{action}/schema` (materialized `input_schema` and `output_schema` only, for control-plane forms and adapters)
 - `PATCH /api/w/{workspace}/apps/{app}/actions/{action}`
 - `GET /api/w/{workspace}/worker-tags`
 - `POST /api/w/{workspace}/jobs/run/{app}/{action}`
@@ -257,31 +256,47 @@ human-readable source name. Control-plane integrations, including the lite CLI,
 must store and call the returned numeric `id`.
 
 `creds_ref` is a workspace-shared variable path for the git access token, not an
-environment variable name. Register the token through `POST
-/api/w/{workspace}/variables` with an empty `app_key`, then pass that path as
-`creds_ref`.
+environment variable name. Register the token through the control-plane
+variables API with an empty `app_key`, then pass that path as `creds_ref`. The
+lite CLI reads secret values from an environment variable so the token is not
+placed in shell history:
+
+```powershell
+$env:WINDFORCE_LITE_GIT_TOKEN = "<token>"
+python tools/windforce_control.py --api-url http://127.0.0.1:18090 --pretty variable-set `
+  --path secrets/git/token --value-env WINDFORCE_LITE_GIT_TOKEN --secret
+```
+
+The Makefile wrapper uses the same API:
+
+```powershell
+$env:WINDFORCE_LITE_GIT_TOKEN = "<token>"
+make windforce-git-token
+```
 
 The Makefile keeps the source name and route id separate for this reason:
 `WF_GIT_SOURCE_NAME` is the human-readable name used by `make
 windforce-register`; `WF_GIT_SOURCE_ID` is the numeric `id` returned by the
-control plane and used by `make windforce-sync`.
+control plane and used by `make windforce-sync`. `WF_GIT_CREDS_REF` defaults to
+`secrets/git/token`.
 
 For local development without the full UI, `tools/windforce_control.py` calls
 the same control-plane API:
 
 ```powershell
 python tools/windforce_control.py --api-url http://127.0.0.1:8080 register `
-  --name echo --repo-url . --subpath examples/echo
+  --name echo --repo-url . --subpath examples/echo --creds-ref secrets/git/token
 python tools/windforce_control.py --api-url http://127.0.0.1:8080 sync --git-source-id 1
 python tools/windforce_control.py --api-url http://127.0.0.1:8080 sample --app-key sample_hello
+python tools/windforce_control.py --api-url http://127.0.0.1:8080 variables
 python tools/windforce_control.py --api-url http://127.0.0.1:8080 --pretty schema `
   --app echo --action echo
 python tools/windforce_control.py --api-url http://127.0.0.1:8080 --pretty control-openapi
 ```
 
-The schema command reads the control-plane schema endpoint,
-`GET /api/w/{workspace}/apps/{app}/actions/{action}/schema`, then prints the
-materialized `input_schema` and `output_schema`.
+The schema command reads the canonical action detail endpoint,
+`GET /api/w/{workspace}/apps/{app}/actions/{action}`, then prints only the
+materialized `input_schema` and `output_schema` fields.
 
 Action schemas are exposed through the Windforce control-plane API. Protocol
 adapters may translate trigger ingress and response envelopes, but they do not

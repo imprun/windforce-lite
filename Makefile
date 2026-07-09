@@ -2,7 +2,8 @@
 	sync-example run-example smoke \
 	compose-up compose-db compose-build compose-down compose-reset compose-logs compose-ps postgres-dsn \
 	dev-standalone dev-standalone-postgres dev-api dev-worker worker-once \
-	windforce-register windforce-sync windforce-sample windforce-schema windforce-openapi windforce-control-openapi
+	windforce-variable-set windforce-git-token windforce-register windforce-sync windforce-sample \
+	windforce-schema windforce-openapi windforce-control-openapi
 
 APP := windforce-lite
 CMD := ./cmd/windforce-lite
@@ -43,7 +44,12 @@ WF_GIT_SOURCE_ID ?= 1
 WF_REPO_URL ?= https://github.com/imprun/windforce-lite.git
 WF_BRANCH ?= main
 WF_SUBPATH ?= examples/echo
-WF_GIT_CREDS_REF ?=
+WF_GIT_CREDS_REF ?= secrets/git/token
+WF_GIT_TOKEN_ENV ?= WINDFORCE_LITE_GIT_TOKEN
+WF_VARIABLE_PATH ?= $(WF_GIT_CREDS_REF)
+WF_VARIABLE_VALUE_ENV ?= $(WF_GIT_TOKEN_ENV)
+WF_VARIABLE_APP ?=
+WF_VARIABLE_DESCRIPTION ?=
 
 WINDFORCE_POSTGRES_DB ?= windforce_lite
 WINDFORCE_POSTGRES_USER ?= postgres
@@ -66,6 +72,8 @@ help:
 	@echo "  dev-api                run API process with PostgreSQL state"
 	@echo "  dev-worker             run worker process with PostgreSQL state"
 	@echo "  worker-once            claim at most one PostgreSQL-backed queued job"
+	@echo "  windforce-variable-set set secret WF_VARIABLE_PATH from WF_VARIABLE_VALUE_ENV through the control API"
+	@echo "  windforce-git-token    set WF_GIT_CREDS_REF from WF_GIT_TOKEN_ENV as a secret variable"
 	@echo "  windforce-register     register WF_REPO_URL as WF_GIT_SOURCE_NAME through the control API"
 	@echo "  windforce-sync         sync numeric WF_GIT_SOURCE_ID through the control API"
 	@echo "  windforce-sample       create and sync WF_APP as a managed sample source"
@@ -139,6 +147,12 @@ dev-worker: compose-up
 
 worker-once: compose-up
 	$(GO) run $(CMD) worker --store "$(STORE)" --cache "$(CACHE)" --state-backend postgres --database-url "$(POSTGRES_DSN)" --migrate --once
+
+windforce-variable-set:
+	python tools/windforce_control.py --api-url "$(WF_API_URL)" --workspace "$(WF_WORKSPACE)" --pretty variable-set --path "$(WF_VARIABLE_PATH)" --value-env "$(WF_VARIABLE_VALUE_ENV)" --app "$(WF_VARIABLE_APP)" --secret --description "$(WF_VARIABLE_DESCRIPTION)"
+
+windforce-git-token:
+	python tools/windforce_control.py --api-url "$(WF_API_URL)" --workspace "$(WF_WORKSPACE)" --pretty variable-set --path "$(WF_GIT_CREDS_REF)" --value-env "$(WF_GIT_TOKEN_ENV)" --secret --description "git access token"
 
 windforce-register:
 	python tools/windforce_control.py --api-url "$(WF_API_URL)" --workspace "$(WF_WORKSPACE)" --pretty register --name "$(WF_GIT_SOURCE_NAME)" --repo-url "$(WF_REPO_URL)" --branch "$(WF_BRANCH)" --subpath "$(WF_SUBPATH)" --creds-ref "$(WF_GIT_CREDS_REF)"

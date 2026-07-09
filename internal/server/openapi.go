@@ -238,17 +238,6 @@ func buildControlPlaneOpenAPI(baseURL string, workspaceID string) map[string]any
 				}, "400", "401", "403", "404"),
 			},
 		},
-		"/api/w/{workspace}/apps/{app}/actions/{action}/schema": map[string]any{
-			"get": map[string]any{
-				"operationId": "getActionSchema",
-				"summary":     "Get action schemas",
-				"description": "Returns only the materialized input_schema and output_schema JSON Schema documents for a deployed action. Use this from control-plane forms or protocol adapters that do not need routing metadata.",
-				"parameters":  []any{oapiWorkspaceParam(workspaceID), oapiPathParam("app", "App key."), oapiPathParam("action", "Action key.")},
-				"responses": withErrors(map[string]any{
-					"200": oapiResponse("Action schemas.", oapiSchemaRef("ActionSchema")),
-				}, "400", "401", "403", "404"),
-			},
-		},
 		"/api/w/{workspace}/apps/{app}/requeue": map[string]any{
 			"post": map[string]any{
 				"operationId": "requeueApp",
@@ -902,17 +891,6 @@ func controlPlaneSchemas() map[string]any {
 				"effective_route_tag":    oapiStringSchema(),
 			},
 			"required": []any{"id", "workspace_id", "app_key", "action_key", "input_schema", "output_schema", "updated_at"},
-		},
-		"ActionSchema": map[string]any{
-			"type":        "object",
-			"description": "Materialized input and output JSON Schema documents for one deployed action.",
-			"properties": map[string]any{
-				"app_key":       oapiStringSchema(),
-				"action_key":    oapiStringSchema(),
-				"input_schema":  jsonSchema,
-				"output_schema": jsonSchema,
-			},
-			"required": []any{"app_key", "action_key", "input_schema", "output_schema"},
 		},
 		"AppDetailResponse": map[string]any{
 			"type": "object",

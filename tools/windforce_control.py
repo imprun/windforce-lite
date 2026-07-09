@@ -86,7 +86,7 @@ def main(argv: list[str] | None = None) -> int:
     action.add_argument("--action", required=True)
     action.set_defaults(func=cmd_action)
 
-    schema = sub.add_parser("schema", help="get action input/output schemas")
+    schema = sub.add_parser("schema", help="get action input/output schemas from action detail")
     schema.add_argument("--app", required=True)
     schema.add_argument("--action", required=True)
     schema.add_argument(
@@ -103,6 +103,29 @@ def main(argv: list[str] | None = None) -> int:
 
     control_openapi = sub.add_parser("control-openapi", help="get workspace control-plane OpenAPI")
     control_openapi.set_defaults(func=cmd_control_openapi)
+
+    variables = sub.add_parser("variables", help="list workspace variables")
+    variables.set_defaults(func=cmd_variables)
+
+    variable_set = sub.add_parser("variable-set", help="set a workspace or app-scoped variable")
+    variable_set.add_argument("--path", required=True)
+    value_group = variable_set.add_mutually_exclusive_group(required=True)
+    value_group.add_argument("--value")
+    value_group.add_argument("--value-env", dest="value_env")
+    variable_set.add_argument("--app", dest="app_key", default="")
+    variable_set.add_argument("--secret", action="store_true", help="store as a secret variable")
+    variable_set.add_argument("--description", default="")
+    variable_set.set_defaults(func=cmd_variable_set)
+
+    variable_get = sub.add_parser("variable-get", help="get one variable by path")
+    variable_get.add_argument("--path", required=True)
+    variable_get.add_argument("--app", dest="app_key", default="")
+    variable_get.set_defaults(func=cmd_variable_get)
+
+    variable_delete = sub.add_parser("variable-delete", help="delete one variable by path")
+    variable_delete.add_argument("--path", required=True)
+    variable_delete.add_argument("--app", dest="app_key", default="")
+    variable_delete.set_defaults(func=cmd_variable_delete)
 
     source = sub.add_parser("source", help="get materialized app source bundle")
     source.add_argument("--app", required=True)
@@ -229,6 +252,50 @@ def cmd_control_openapi(args: argparse.Namespace) -> Any:
     return request(args, "GET", f"/api/w/{quote_path(args.workspace)}/openapi.json")
 
 
+def cmd_variables(args: argparse.Namespace) -> Any:
+    return request(args, "GET", f"/api/w/{quote_path(args.workspace)}/variables")
+
+
+def cmd_variable_set(args: argparse.Namespace) -> Any:
+    value = args.value
+    if args.value_env:
+        if args.value_env not in os.environ:
+            raise APIError({"error": f"environment variable {args.value_env} is not set"})
+        value = os.environ[args.value_env]
+    return request(
+        args,
+        "POST",
+        f"/api/w/{quote_path(args.workspace)}/variables",
+        compact(
+            {
+                "path": args.path,
+                "value": value,
+                "app_key": args.app_key,
+                "is_secret": args.secret,
+                "description": args.description,
+            }
+        ),
+    )
+
+
+def cmd_variable_get(args: argparse.Namespace) -> Any:
+    suffix = f"?app={quote_query(args.app_key)}" if args.app_key else ""
+    return request(
+        args,
+        "GET",
+        f"/api/w/{quote_path(args.workspace)}/variables/get/p/{quote_path_tail(args.path)}{suffix}",
+    )
+
+
+def cmd_variable_delete(args: argparse.Namespace) -> Any:
+    suffix = f"?app={quote_query(args.app_key)}" if args.app_key else ""
+    return request(
+        args,
+        "DELETE",
+        f"/api/w/{quote_path(args.workspace)}/variables/p/{quote_path_tail(args.path)}{suffix}",
+    )
+
+
 def cmd_source(args: argparse.Namespace) -> Any:
     return request(args, "GET", f"/api/w/{quote_path(args.workspace)}/apps/{quote_path(args.app)}/source")
 
@@ -249,14 +316,13 @@ def get_action(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def get_schema(args: argparse.Namespace) -> dict[str, Any]:
-    payload = request(
-        args,
-        "GET",
-        f"/api/w/{quote_path(args.workspace)}/apps/{quote_path(args.app)}/actions/{quote_path(args.action)}/schema",
-    )
-    if not isinstance(payload, dict):
-        raise APIError({"error": "schema response was not a JSON object"})
-    return payload
+    action = get_action(args)
+    return {
+        "app_key": action.get("app_key"),
+        "action_key": action.get("action_key"),
+        "input_schema": action.get("input_schema") or {},
+        "output_schema": action.get("output_schema") or {},
+    }
 
 
 def request(args: argparse.Namespace, method: str, path: str, body: dict[str, Any] | None = None) -> Any:
@@ -309,6 +375,18 @@ def quote_path(value: str) -> str:
     from urllib.parse import quote
 
     return quote(str(value).strip(), safe="")
+
+
+def quote_path_tail(value: str) -> str:
+    from urllib.parse import quote
+
+    return "/".join(quote(part, safe="") for part in str(value).strip("/").split("/") if part)
+
+
+def quote_query(value: str) -> str:
+    from urllib.parse import quote
+
+    return quote(str(value), safe="")
 
 
 if __name__ == "__main__":
