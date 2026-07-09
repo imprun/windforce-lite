@@ -535,6 +535,27 @@ func TestCanonicalVariablesAndResourcesAPI(t *testing.T) {
 	if !resource["headless"] {
 		t.Fatalf("resource body = %q", body)
 	}
+
+	setNullResourceResp, err := http.Post(server.URL+"/api/w/ws-a/resources", "application/json", bytes.NewBufferString(`{"path":"browser/default"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer setNullResourceResp.Body.Close()
+	if setNullResourceResp.StatusCode != http.StatusOK {
+		t.Fatalf("set null resource status = %d, want %d", setNullResourceResp.StatusCode, http.StatusOK)
+	}
+	getNullResourceResp, err := http.Get(server.URL + "/api/w/ws-a/resources/get/p/browser/default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer getNullResourceResp.Body.Close()
+	nullBody, err := io.ReadAll(getNullResourceResp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(bytes.TrimSpace(nullBody)) != "null" {
+		t.Fatalf("default resource body = %q, want null", nullBody)
+	}
 }
 
 func TestCanonicalVariableAppScopeShadowing(t *testing.T) {

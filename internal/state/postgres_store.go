@@ -334,7 +334,7 @@ WHERE workspace_id=$1 AND app_key=$2 AND path=$3
 
 func (s *PostgresStore) SetResource(ctx context.Context, workspaceID string, path string, value json.RawMessage, resourceType string, description string) error {
 	if len(value) == 0 {
-		value = json.RawMessage("{}")
+		value = json.RawMessage("null")
 	}
 	if !json.Valid(value) {
 		return errors.New("resource value is not valid JSON")

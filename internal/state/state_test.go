@@ -312,6 +312,16 @@ func exerciseStoreVariablesAndResources(t *testing.T, store Store) {
 	if !found || !got["headless"] || resource.ResourceType != "json" {
 		t.Fatalf("resource found=%v resource=%#v", found, resource)
 	}
+	if err := store.SetResource(ctx, "ws-a", "browser/default", nil, "", "default settings"); err != nil {
+		t.Fatalf("SetResource nil value returned error: %v", err)
+	}
+	resource, found, err = store.GetResource(ctx, "ws-a", "browser/default")
+	if err != nil {
+		t.Fatalf("GetResource nil value returned error: %v", err)
+	}
+	if !found || string(resource.Value) != "null" {
+		t.Fatalf("nil resource found=%v value=%s", found, resource.Value)
+	}
 }
 
 func exerciseStoreJobState(t *testing.T, store Store) {

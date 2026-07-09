@@ -2146,9 +2146,6 @@ func (h *Handler) handleSetResource(w http.ResponseWriter, r *http.Request, work
 		writeError(w, http.StatusBadRequest, "path required")
 		return
 	}
-	if len(request.Value) == 0 {
-		request.Value = json.RawMessage("{}")
-	}
 	if err := h.store.SetResource(r.Context(), workspaceID, request.Path, request.Value, request.ResourceType, request.Description); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

@@ -703,7 +703,7 @@ func (s *LocalStore) DeleteVariable(ctx context.Context, workspaceID string, app
 
 func (s *LocalStore) SetResource(ctx context.Context, workspaceID string, path string, value json.RawMessage, resourceType string, description string) error {
 	if len(value) == 0 {
-		value = json.RawMessage("{}")
+		value = json.RawMessage("null")
 	}
 	if !json.Valid(value) {
 		return errors.New("resource value is not valid JSON")
