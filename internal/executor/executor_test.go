@@ -121,6 +121,46 @@ async def main(ctx):
 	}
 }
 
+func TestRunPythonInvalidInputFallsBackToEmptyObject(t *testing.T) {
+	requirePython(t)
+	entrypoint := filepath.Join(t.TempDir(), "main.py")
+	if err := os.WriteFile(entrypoint, []byte(`
+def main(ctx):
+    return {"input": ctx.input}
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := Run(context.Background(), RunParams{
+		ScriptLang:        "python",
+		BaseDir:           t.TempDir(),
+		EntrypointAbsPath: entrypoint,
+		Input:             []byte(`{`),
+		Env: []string{
+			"WF_WORKSPACE=ws-a",
+			"WF_BASE_URL=http://127.0.0.1",
+			"WF_TOKEN=job-token",
+			"WF_APP=demo",
+			"WF_ACTION=echo",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if !res.Success() {
+		t.Fatalf("success = false, exit=%d, result=%s, logs=%s", res.ExitCode, res.Result, res.Logs)
+	}
+	var output struct {
+		Input map[string]any `json:"input"`
+	}
+	if err := json.Unmarshal(res.Result, &output); err != nil {
+		t.Fatalf("result is not JSON: %v", err)
+	}
+	if len(output.Input) != 0 {
+		t.Fatalf("input = %#v, want empty object", output.Input)
+	}
+}
+
 func TestGeneratedWrappersSendJobIdentityForVariableReads(t *testing.T) {
 	ts := wrapper("main.ts")
 	if strings.Contains(ts, `?app=`) {

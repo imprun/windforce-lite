@@ -137,11 +137,8 @@ func Run(ctx context.Context, p RunParams) (Result, error) {
 		return Result{}, errors.New("entrypoint is required")
 	}
 	input := p.Input
-	if len(bytes.TrimSpace(input)) == 0 {
+	if len(input) == 0 {
 		input = []byte("{}")
-	}
-	if !json.Valid(input) {
-		return Result{}, errors.New("input is not valid JSON")
 	}
 
 	jobDir, err := os.MkdirTemp(p.BaseDir, "job-")
