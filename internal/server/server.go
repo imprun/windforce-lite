@@ -233,6 +233,10 @@ func (h *Handler) handleAPI(w http.ResponseWriter, r *http.Request) bool {
 		h.handleGetResource(w, r, parts[2], joinPathParts(parts, 6))
 		return true
 	}
+	if len(parts) == 4 && parts[0] == "api" && parts[1] == "w" && parts[3] == "openapi.json" && r.Method == http.MethodGet {
+		h.handleCanonicalControlPlaneOpenAPI(w, r, parts[2])
+		return true
+	}
 	if len(parts) == 4 && parts[0] == "api" && parts[1] == "w" && parts[3] == "git_sources" && r.Method == http.MethodGet {
 		h.handleCanonicalGitSources(w, r, parts[2])
 		return true

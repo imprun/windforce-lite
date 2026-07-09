@@ -2,7 +2,7 @@
 	sync-example run-example smoke \
 	compose-up compose-db compose-build compose-down compose-reset compose-logs compose-ps postgres-dsn \
 	dev-standalone dev-standalone-postgres dev-api dev-worker worker-once \
-	windforce-register windforce-sync windforce-sample windforce-schema windforce-openapi
+	windforce-register windforce-sync windforce-sample windforce-schema windforce-openapi windforce-control-openapi
 
 APP := windforce-lite
 CMD := ./cmd/windforce-lite
@@ -71,6 +71,7 @@ help:
 	@echo "  windforce-sample       create and sync WF_APP as a managed sample source"
 	@echo "  windforce-schema       print WF_APP/WF_ACTION schemas from the control API"
 	@echo "  windforce-openapi      print WF_APP invocation OpenAPI from the control API"
+	@echo "  windforce-control-openapi print workspace control-plane OpenAPI"
 	@echo "  compose-up             start Postgres and control-plane API"
 	@echo "  compose-db             start only Postgres"
 	@echo "  compose-build          build the control-plane API image"
@@ -153,6 +154,9 @@ windforce-schema:
 
 windforce-openapi:
 	python tools/windforce_control.py --api-url "$(WF_API_URL)" --workspace "$(WF_WORKSPACE)" --pretty openapi --app "$(WF_APP)"
+
+windforce-control-openapi:
+	python tools/windforce_control.py --api-url "$(WF_API_URL)" --workspace "$(WF_WORKSPACE)" --pretty control-openapi
 
 clean:
 	rm -rf "$(WFL_TMP)"

@@ -101,6 +101,9 @@ def main(argv: list[str] | None = None) -> int:
     openapi.add_argument("--app", required=True)
     openapi.set_defaults(func=cmd_openapi)
 
+    control_openapi = sub.add_parser("control-openapi", help="get workspace control-plane OpenAPI")
+    control_openapi.set_defaults(func=cmd_control_openapi)
+
     source = sub.add_parser("source", help="get materialized app source bundle")
     source.add_argument("--app", required=True)
     source.set_defaults(func=cmd_source)
@@ -220,6 +223,10 @@ def cmd_openapi(args: argparse.Namespace) -> Any:
         "GET",
         f"/api/w/{quote_path(args.workspace)}/apps/{quote_path(args.app)}/openapi.json",
     )
+
+
+def cmd_control_openapi(args: argparse.Namespace) -> Any:
+    return request(args, "GET", f"/api/w/{quote_path(args.workspace)}/openapi.json")
 
 
 def cmd_source(args: argparse.Namespace) -> Any:

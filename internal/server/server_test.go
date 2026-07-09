@@ -889,6 +889,66 @@ func TestCanonicalControlPlaneRejectsInvalidAppAndActionKeys(t *testing.T) {
 	}
 }
 
+func TestCanonicalControlPlaneOpenAPIExposesSchemaDiscovery(t *testing.T) {
+	server := httptest.NewServer(New(Config{EnableAPI: true}))
+	defer server.Close()
+
+	req, err := http.NewRequest(http.MethodGet, server.URL+"/api/w/ws-a/openapi.json", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("X-Forwarded-Proto", "https")
+	req.Header.Set("X-Forwarded-Host", "api.example.test")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("control openapi status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	var body map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if body["openapi"] != "3.1.0" {
+		t.Fatalf("control openapi version = %#v", body["openapi"])
+	}
+	if serverURL := body["servers"].([]any)[0].(map[string]any)["url"]; serverURL != "https://api.example.test" {
+		t.Fatalf("control openapi server url = %#v", serverURL)
+	}
+
+	paths := body["paths"].(map[string]any)
+	actionPath := paths["/api/w/{workspace}/apps/{app}/actions/{action}"].(map[string]any)
+	actionGet := actionPath["get"].(map[string]any)
+	actionDescription := actionGet["description"].(string)
+	if !bytes.Contains([]byte(actionDescription), []byte("schema discovery")) ||
+		!bytes.Contains([]byte(actionDescription), []byte("input_schema")) ||
+		!bytes.Contains([]byte(actionDescription), []byte("output_schema")) {
+		t.Fatalf("action discovery description = %q", actionDescription)
+	}
+	if paths["/api/w/{workspace}/apps/{app}/openapi.json"] == nil {
+		t.Fatalf("app invocation openapi path missing: %#v", paths)
+	}
+
+	components := body["components"].(map[string]any)
+	schemas := components["schemas"].(map[string]any)
+	actionSchema := schemas["Action"].(map[string]any)
+	properties := actionSchema["properties"].(map[string]any)
+	inputSchema := properties["input_schema"].(map[string]any)
+	outputSchema := properties["output_schema"].(map[string]any)
+	if !bytes.Contains([]byte(inputSchema["description"].(string)), []byte("Materialized JSON Schema")) ||
+		!bytes.Contains([]byte(outputSchema["description"].(string)), []byte("Materialized JSON Schema")) {
+		t.Fatalf("action schema components = input:%#v output:%#v", inputSchema, outputSchema)
+	}
+	appDetail := schemas["AppDetailResponse"].(map[string]any)
+	appDetailActions := appDetail["properties"].(map[string]any)["actions"].(map[string]any)
+	if appDetailActions["items"].(map[string]any)["$ref"] != "#/components/schemas/Action" {
+		t.Fatalf("app detail actions schema = %#v", appDetailActions)
+	}
+}
+
 func TestCanonicalControlPlaneNotFoundMessagesMatchCanonicalAPI(t *testing.T) {
 	tempDir := t.TempDir()
 	fileCatalog := catalog.NewFileCatalog(filepath.Join(tempDir, "catalog.json"))

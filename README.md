@@ -212,6 +212,7 @@ when omitted, the worker claims every queued tag for simple local development.
 
 Implemented control-plane endpoints:
 
+- `GET /api/w/{workspace}/openapi.json` (workspace control-plane OpenAPI)
 - `GET /api/w/{workspace}/git_sources`
 - `POST /api/w/{workspace}/git_sources`
 - `POST /api/w/{workspace}/git_sources/probe`
@@ -272,6 +273,7 @@ python tools/windforce_control.py --api-url http://127.0.0.1:8080 sync --git-sou
 python tools/windforce_control.py --api-url http://127.0.0.1:8080 sample --app-key sample_hello
 python tools/windforce_control.py --api-url http://127.0.0.1:8080 --pretty schema `
   --app echo --action echo
+python tools/windforce_control.py --api-url http://127.0.0.1:8080 --pretty control-openapi
 ```
 
 The schema command reads the canonical action detail endpoint,
@@ -280,7 +282,9 @@ materialized `input_schema` and `output_schema`.
 
 Action schemas are exposed through the Windforce control-plane API. Protocol
 adapters may translate trigger ingress and response envelopes, but they do not
-publish separate schema routes or own schema discovery.
+publish separate schema routes or own schema discovery. The workspace
+`control-openapi` command documents that control-plane contract, while the app
+`openapi` command returns invocation OpenAPI generated from the action schemas.
 
 The full Windforce control plane derives job actor provenance from the
 authenticated principal. Lite deployments that use only the admin token can pass
