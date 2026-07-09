@@ -1097,6 +1097,8 @@ func controlPlaneSchemas() map[string]any {
 				"permissioned_as": oapiStringSchema(),
 				"canceled_by":     nullableString,
 				"canceled_reason": nullableString,
+				"flow_run_id":     nullableString,
+				"flow_step_id":    nullableString,
 				"error_snippet":   nullableString,
 			},
 			"required": []any{"id", "workspace_id", "app_key", "action_key", "trigger_kind", "status", "queued", "running", "completed", "created_at"},

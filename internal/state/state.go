@@ -96,6 +96,10 @@ type JobPayload struct {
 	Env            []string            `json:"env,omitempty"`
 	CreatedBy      string              `json:"createdBy,omitempty"`
 	PermissionedAs string              `json:"permissionedAs,omitempty"`
+	FlowRunID      string              `json:"flowRunId,omitempty"`
+	FlowStepID     string              `json:"flowStepId,omitempty"`
+	FlowKey        string              `json:"flowKey,omitempty"`
+	FlowStepKey    string              `json:"flowStepKey,omitempty"`
 }
 
 type Job struct {
@@ -185,6 +189,8 @@ type JobListItem struct {
 	PermissionedAs string     `json:"permissioned_as"`
 	CanceledBy     *string    `json:"canceled_by"`
 	CanceledReason *string    `json:"canceled_reason"`
+	FlowRunID      *string    `json:"flow_run_id,omitempty"`
+	FlowStepID     *string    `json:"flow_step_id,omitempty"`
 	ErrorSnippet   *string    `json:"error_snippet,omitempty"`
 }
 
@@ -1428,6 +1434,8 @@ func newJobListItem(workspaceID string, job Job, run Run) JobListItem {
 		PermissionedAs: firstNonEmpty(strings.TrimSpace(job.Payload.PermissionedAs), strings.TrimSpace(run.PermissionedAs), strings.TrimSpace(job.Payload.CreatedBy), strings.TrimSpace(run.CreatedBy), defaultActorSubject),
 		CanceledBy:     firstPresentStringPtr(job.CanceledBy, canceledBy(run)),
 		CanceledReason: firstPresentStringPtr(job.CanceledReason, canceledReason(run)),
+		FlowRunID:      stringPtr(job.Payload.FlowRunID),
+		FlowStepID:     stringPtr(job.Payload.FlowStepID),
 		ErrorSnippet:   failureSnippet(status, run),
 	}
 }

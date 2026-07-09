@@ -1041,6 +1041,12 @@ func TestCanonicalControlPlaneOpenAPIExposesSchemaDiscovery(t *testing.T) {
 			t.Fatalf("job status schema missing %s: %#v", field, jobStatus)
 		}
 	}
+	jobListItem := schemas["JobListItem"].(map[string]any)["properties"].(map[string]any)
+	for _, field := range []string{"flow_run_id", "flow_step_id"} {
+		if jobListItem[field] == nil {
+			t.Fatalf("job list item schema missing %s: %#v", field, jobListItem)
+		}
+	}
 	jobLogs := paths["/api/w/{workspace}/jobs/{jobId}/logs"].(map[string]any)["get"].(map[string]any)
 	logContent := jobLogs["responses"].(map[string]any)["200"].(map[string]any)["content"].(map[string]any)
 	if logContent["text/plain"] == nil {

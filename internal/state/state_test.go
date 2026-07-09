@@ -156,6 +156,8 @@ func TestActionJobPreservesActorAudit(t *testing.T) {
 	run.PermissionedAs = "delegate@example.test"
 
 	job := NewActionJob(run, nil)
+	job.Payload.FlowRunID = "flow-run-a"
+	job.Payload.FlowStepID = "flow-step-a"
 	if job.Payload.CreatedBy != "runner@example.test" || job.Payload.PermissionedAs != "delegate@example.test" {
 		t.Fatalf("job actor = %q/%q", job.Payload.CreatedBy, job.Payload.PermissionedAs)
 	}
@@ -165,6 +167,9 @@ func TestActionJobPreservesActorAudit(t *testing.T) {
 	}
 	if item.Entrypoint != "main.ts" {
 		t.Fatalf("list entrypoint = %q, want main.ts", item.Entrypoint)
+	}
+	if item.FlowRunID == nil || *item.FlowRunID != "flow-run-a" || item.FlowStepID == nil || *item.FlowStepID != "flow-step-a" {
+		t.Fatalf("list flow linkage = %v/%v", item.FlowRunID, item.FlowStepID)
 	}
 }
 

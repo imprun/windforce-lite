@@ -2461,6 +2461,9 @@ func newJobStatus(workspaceID string, job state.Job, run state.Run) jobStatusRes
 		CompletedAt:    completedAt,
 		CanceledBy:     firstPresentStringPtr(job.CanceledBy, jobStatusCanceledBy(run)),
 		CanceledReason: firstPresentStringPtr(job.CanceledReason, jobStatusCanceledReason(run)),
+		FlowRunID:      stringPtr(job.Payload.FlowRunID),
+		FlowKey:        stringPtr(job.Payload.FlowKey),
+		FlowStepKey:    stringPtr(job.Payload.FlowStepKey),
 	}
 	if run.Result != nil {
 		response.DurationMs = run.Result.DurationMs
