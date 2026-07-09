@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/imprun/windforce-lite/internal/bundle"
 	"github.com/imprun/windforce-lite/internal/catalog"
@@ -839,12 +840,13 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 		InputSchema  json.RawMessage `json:"input_schema"`
 		OutputSchema json.RawMessage `json:"output_schema"`
 		TimeoutS     int32           `json:"timeout_s"`
+		UpdatedAt    time.Time       `json:"updated_at"`
 	}
 	if err := json.NewDecoder(actionResp.Body).Decode(&actionBody); err != nil {
 		t.Fatal(err)
 	}
 	if actionBody.AppKey != "echo" || actionBody.ActionKey != "echo" ||
-		actionBody.TimeoutS != 120 ||
+		actionBody.TimeoutS != 120 || actionBody.UpdatedAt.IsZero() ||
 		!bytes.Contains(actionBody.InputSchema, []byte(`"message"`)) || !bytes.Contains(actionBody.OutputSchema, []byte(`"ok"`)) {
 		t.Fatalf("action body = %#v input=%s output=%s", actionBody, actionBody.InputSchema, actionBody.OutputSchema)
 	}
@@ -868,11 +870,12 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 	}
 	var appBody struct {
 		App struct {
-			AppKey      string `json:"app_key"`
-			GitSourceID string `json:"git_source_id"`
-			Entrypoint  string `json:"entrypoint"`
-			ScriptLang  string `json:"script_lang"`
-			TimeoutS    int32  `json:"timeout_s"`
+			AppKey      string    `json:"app_key"`
+			GitSourceID string    `json:"git_source_id"`
+			Entrypoint  string    `json:"entrypoint"`
+			ScriptLang  string    `json:"script_lang"`
+			TimeoutS    int32     `json:"timeout_s"`
+			UpdatedAt   time.Time `json:"updated_at"`
 		} `json:"app"`
 		Actions []struct {
 			ActionKey   string          `json:"action_key"`
@@ -883,7 +886,8 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 		t.Fatal(err)
 	}
 	if appBody.App.AppKey != "echo" || appBody.App.GitSourceID != "source-a" ||
-		appBody.App.Entrypoint != "main.ts" || appBody.App.ScriptLang != "typescript" || appBody.App.TimeoutS != 120 ||
+		appBody.App.Entrypoint != "main.ts" || appBody.App.ScriptLang != "typescript" ||
+		appBody.App.TimeoutS != 120 || appBody.App.UpdatedAt.IsZero() ||
 		len(appBody.Actions) != 1 || appBody.Actions[0].ActionKey != "echo" ||
 		!bytes.Contains(appBody.Actions[0].InputSchema, []byte(`"message"`)) {
 		t.Fatalf("app body = %#v", appBody)

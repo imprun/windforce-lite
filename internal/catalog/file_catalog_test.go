@@ -14,6 +14,9 @@ func TestFileCatalogUpsertAndGet(t *testing.T) {
 		App:       "echo",
 		Commit:    "commit-a",
 		ObjectURI: "bundle://echo/commit-a",
+		Actions: map[string]contract.Action{
+			"echo": {Action: "echo"},
+		},
 	}
 	if err := catalog.UpsertDeployment(context.Background(), deployment); err != nil {
 		t.Fatalf("UpsertDeployment returned error: %v", err)
@@ -25,6 +28,12 @@ func TestFileCatalogUpsertAndGet(t *testing.T) {
 	}
 	if got.Commit != "commit-a" {
 		t.Fatalf("commit = %q", got.Commit)
+	}
+	if got.UpdatedAt == nil {
+		t.Fatalf("deployment updatedAt was not set")
+	}
+	if got.Actions["echo"].UpdatedAt == nil {
+		t.Fatalf("action updatedAt was not set")
 	}
 	snapshot, err := catalog.Load(context.Background())
 	if err != nil {

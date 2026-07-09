@@ -84,6 +84,10 @@ func TestSyncMaterializesBeforeCatalogUpdate(t *testing.T) {
 	if deployment.Actions["echo"].Entrypoint != "main.ts" || deployment.Actions["echo"].TimeoutMs != 120000 {
 		t.Fatalf("canonical app defaults were not pinned: %#v", deployment.Actions["echo"])
 	}
+	if deployment.UpdatedAt == nil || deployment.Actions["echo"].UpdatedAt == nil ||
+		!deployment.Actions["echo"].UpdatedAt.Equal(*deployment.UpdatedAt) {
+		t.Fatalf("canonical updatedAt was not pinned: deployment=%v action=%v", deployment.UpdatedAt, deployment.Actions["echo"].UpdatedAt)
+	}
 }
 
 func TestSyncRejectsInvalidSchemaReferences(t *testing.T) {

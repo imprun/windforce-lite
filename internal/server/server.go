@@ -1250,17 +1250,18 @@ func newCanonicalSyncResult(deployment contract.Deployment) canonicalSyncResult 
 }
 
 type canonicalAppModel struct {
-	ID                   string   `json:"id"`
-	WorkspaceID          string   `json:"workspace_id"`
-	AppKey               string   `json:"app_key"`
-	GitSourceID          *string  `json:"git_source_id"`
-	CommitSha            string   `json:"commit_sha"`
-	Entrypoint           string   `json:"entrypoint"`
-	Tag                  string   `json:"tag"`
-	TagOverride          *string  `json:"tag_override,omitempty"`
-	TimeoutS             int32    `json:"timeout_s"`
-	ScriptLang           string   `json:"script_lang"`
-	RequiredCapabilities []string `json:"required_capabilities"`
+	ID                   string    `json:"id"`
+	WorkspaceID          string    `json:"workspace_id"`
+	AppKey               string    `json:"app_key"`
+	GitSourceID          *string   `json:"git_source_id"`
+	CommitSha            string    `json:"commit_sha"`
+	Entrypoint           string    `json:"entrypoint"`
+	Tag                  string    `json:"tag"`
+	TagOverride          *string   `json:"tag_override,omitempty"`
+	TimeoutS             int32     `json:"timeout_s"`
+	ScriptLang           string    `json:"script_lang"`
+	RequiredCapabilities []string  `json:"required_capabilities"`
+	UpdatedAt            time.Time `json:"updated_at"`
 }
 
 type canonicalAppView struct {
@@ -1296,6 +1297,7 @@ type canonicalActionModel struct {
 	TagOverride          *string         `json:"tag_override,omitempty"`
 	TimeoutS             *int32          `json:"timeout_s,omitempty"`
 	RequiredCapabilities []string        `json:"required_capabilities,omitempty"`
+	UpdatedAt            time.Time       `json:"updated_at"`
 }
 
 type canonicalActionView struct {
@@ -1361,6 +1363,7 @@ func newCanonicalAppModel(deployment contract.Deployment) canonicalAppModel {
 		TimeoutS:             canonicalDeploymentTimeoutSeconds(deployment),
 		ScriptLang:           canonicalDeploymentScriptLang(deployment),
 		RequiredCapabilities: []string{},
+		UpdatedAt:            canonicalDeploymentUpdatedAt(deployment),
 	}
 }
 
@@ -1408,6 +1411,7 @@ func (h *Handler) newCanonicalActionModel(schemaReader *canonicalSchemaReader, d
 		TagOverride:          cloneStringPtr(action.TagOverride),
 		TimeoutS:             canonicalTimeoutSeconds(action.TimeoutMs),
 		RequiredCapabilities: []string{},
+		UpdatedAt:            canonicalActionUpdatedAt(deployment, action),
 	}, nil
 }
 
@@ -1547,6 +1551,20 @@ func canonicalDeploymentTimeoutSeconds(deployment contract.Deployment) int32 {
 		return deployment.TimeoutS
 	}
 	return 0
+}
+
+func canonicalDeploymentUpdatedAt(deployment contract.Deployment) time.Time {
+	if deployment.UpdatedAt != nil {
+		return *deployment.UpdatedAt
+	}
+	return time.Time{}
+}
+
+func canonicalActionUpdatedAt(deployment contract.Deployment, action contract.Action) time.Time {
+	if action.UpdatedAt != nil {
+		return *action.UpdatedAt
+	}
+	return canonicalDeploymentUpdatedAt(deployment)
 }
 
 func canonicalTimeoutSeconds(timeoutMs int64) *int32 {

@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/imprun/windforce-lite/internal/bundle"
 	"github.com/imprun/windforce-lite/internal/contract"
@@ -88,6 +89,7 @@ func (s *Syncer) Sync(ctx context.Context, src Source) (contract.Deployment, err
 		}
 	}
 
+	updatedAt := time.Now().UTC()
 	deployment := contract.Deployment{
 		Workspace:   workspace,
 		GitSourceID: gitSourceID,
@@ -99,6 +101,11 @@ func (s *Syncer) Sync(ctx context.Context, src Source) (contract.Deployment, err
 		TimeoutS:    app.TimeoutS,
 		Commit:      commit,
 		Actions:     app.Actions,
+		UpdatedAt:   &updatedAt,
+	}
+	for key, action := range deployment.Actions {
+		action.UpdatedAt = &updatedAt
+		deployment.Actions[key] = action
 	}
 	deployment.ObjectURI = deployment.SourceObjectURI()
 
