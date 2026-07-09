@@ -57,7 +57,7 @@ type langRuntime struct {
 var ErrScriptLang = errors.New("unsupported script_lang")
 
 func runtimeFor(lang string) (langRuntime, error) {
-	switch strings.TrimSpace(lang) {
+	switch lang {
 	case "", "typescript":
 		return langRuntime{
 			label:          "bun",

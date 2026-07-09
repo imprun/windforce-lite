@@ -3,6 +3,7 @@ package executor
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -158,6 +159,17 @@ def main(ctx):
 	}
 	if len(output.Input) != 0 {
 		t.Fatalf("input = %#v, want empty object", output.Input)
+	}
+}
+
+func TestRunRejectsWhitespaceScriptLangCanonically(t *testing.T) {
+	_, err := Run(context.Background(), RunParams{
+		ScriptLang:        " python ",
+		BaseDir:           t.TempDir(),
+		EntrypointAbsPath: filepath.Join(t.TempDir(), "main.py"),
+	})
+	if !errors.Is(err, ErrScriptLang) {
+		t.Fatalf("Run error = %v, want ErrScriptLang", err)
 	}
 }
 
