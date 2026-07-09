@@ -132,11 +132,12 @@ func TestRunnerJobEnvIncludesSDKCallbackEndpoint(t *testing.T) {
 				"run": {Action: "run"},
 			},
 		},
-		Action:         "run",
-		TriggerKind:    "api",
-		CreatedBy:      "runner@example.test",
-		PermissionedAs: "delegate@example.test",
-		WorkerGroup:    "test",
+		Action:          "run",
+		TriggerKind:     "api",
+		CreatedBy:       "runner@example.test",
+		PermissionedAs:  "delegate@example.test",
+		WorkerGroup:     "test",
+		EgressProxyAddr: "proxy:18080",
 	}, contract.Action{Action: "run"})
 
 	for _, want := range []string{
@@ -147,6 +148,9 @@ func TestRunnerJobEnvIncludesSDKCallbackEndpoint(t *testing.T) {
 		"WF_USERNAME=runner@example.test",
 		"WF_PERMISSIONED_AS=delegate@example.test",
 		"WF_WORKER_GROUP=test",
+		"WF_PROXY_URL=http://job-job-a@proxy:18080",
+		"HTTP_PROXY=http://job-job-a@proxy:18080",
+		"HTTPS_PROXY=http://job-job-a@proxy:18080",
 	} {
 		if !containsEnv(env, want) {
 			t.Fatalf("env missing %q in %#v", want, env)

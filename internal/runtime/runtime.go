@@ -24,22 +24,23 @@ type Runner struct {
 }
 
 type RunRequest struct {
-	JobID          string
-	WorkspaceID    string
-	Deployment     contract.Deployment
-	Action         string
-	Input          json.RawMessage
-	TriggerKind    string
-	TriggerHeaders json.RawMessage
-	Tag            string
-	InputPath      string
-	OutputPath     string
-	Timeout        time.Duration
-	Env            []string
-	CreatedBy      string
-	PermissionedAs string
-	WorkerGroup    string
-	LogSink        func([]byte)
+	JobID           string
+	WorkspaceID     string
+	Deployment      contract.Deployment
+	Action          string
+	Input           json.RawMessage
+	TriggerKind     string
+	TriggerHeaders  json.RawMessage
+	Tag             string
+	InputPath       string
+	OutputPath      string
+	Timeout         time.Duration
+	Env             []string
+	CreatedBy       string
+	PermissionedAs  string
+	WorkerGroup     string
+	EgressProxyAddr string
+	LogSink         func([]byte)
 }
 
 const actionAdapterProtocolVersion = "windforce.action-adapter/v1"
@@ -302,6 +303,7 @@ func (r *Runner) jobEnv(req RunRequest, action contract.Action) []string {
 	createdBy := firstNonEmpty(strings.TrimSpace(req.CreatedBy), "system")
 	permissionedAs := firstNonEmpty(strings.TrimSpace(req.PermissionedAs), createdBy)
 	workerGroup := firstNonEmpty(strings.TrimSpace(req.WorkerGroup), "default")
+	egressProxyAddr := strings.TrimSpace(req.EgressProxyAddr)
 	env := append(curatedHostEnv(), req.Env...)
 	add := func(key string, value string) {
 		env = append(env, key+"="+value)
@@ -318,6 +320,12 @@ func (r *Runner) jobEnv(req RunRequest, action contract.Action) []string {
 	add("WF_STATE_PATH", req.Deployment.App+"/"+req.Action)
 	add("WF_TRIGGER_KIND", triggerKind)
 	add("WF_WORKER_GROUP", workerGroup)
+	if egressProxyAddr != "" {
+		proxyURL := "http://job-" + req.JobID + "@" + egressProxyAddr
+		add("WF_PROXY_URL", proxyURL)
+		add("HTTP_PROXY", proxyURL)
+		add("HTTPS_PROXY", proxyURL)
+	}
 	if r.BaseURL != "" {
 		add("WF_BASE_URL", r.BaseURL)
 	}

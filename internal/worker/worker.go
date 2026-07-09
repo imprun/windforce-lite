@@ -13,12 +13,13 @@ import (
 )
 
 type Processor struct {
-	Store    state.Store
-	Runner   actionruntime.Runner
-	WorkerID string
-	Group    string
-	Tags     []string
-	LeaseTTL time.Duration
+	Store           state.Store
+	Runner          actionruntime.Runner
+	WorkerID        string
+	Group           string
+	Tags            []string
+	EgressProxyAddr string
+	LeaseTTL        time.Duration
 }
 
 func (p *Processor) ProcessOne(ctx context.Context) (bool, error) {
@@ -43,18 +44,19 @@ func (p *Processor) ProcessOne(ctx context.Context) (bool, error) {
 	}
 	workspaceID = contract.NormalizeWorkspace(workspaceID)
 	result, runErr := p.Runner.Run(ctx, actionruntime.RunRequest{
-		JobID:          job.ID,
-		WorkspaceID:    workspaceID,
-		Deployment:     job.Payload.PinnedDeployment(),
-		Action:         job.Payload.Action,
-		Input:          job.Payload.Input,
-		TriggerKind:    job.Payload.TriggerKind,
-		TriggerHeaders: job.Payload.TriggerHeaders,
-		Tag:            job.Payload.Tag,
-		Env:            job.Payload.Env,
-		CreatedBy:      job.Payload.CreatedBy,
-		PermissionedAs: job.Payload.PermissionedAs,
-		WorkerGroup:    p.Group,
+		JobID:           job.ID,
+		WorkspaceID:     workspaceID,
+		Deployment:      job.Payload.PinnedDeployment(),
+		Action:          job.Payload.Action,
+		Input:           job.Payload.Input,
+		TriggerKind:     job.Payload.TriggerKind,
+		TriggerHeaders:  job.Payload.TriggerHeaders,
+		Tag:             job.Payload.Tag,
+		Env:             job.Payload.Env,
+		CreatedBy:       job.Payload.CreatedBy,
+		PermissionedAs:  job.Payload.PermissionedAs,
+		WorkerGroup:     p.Group,
+		EgressProxyAddr: p.EgressProxyAddr,
 		LogSink: func(chunk []byte) {
 			_ = p.Store.AppendLogs(context.Background(), job.ID, workspaceID, string(chunk))
 		},

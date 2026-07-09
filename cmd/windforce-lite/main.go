@@ -179,6 +179,7 @@ func runServer(args []string, mode string) int {
 	leaseTTL := flags.Duration("lease", 30*time.Second, "worker job lease TTL")
 	workerID := flags.String("worker-id", "", "worker identity for standalone processing")
 	workerGroup := flags.String("worker-group", "default", "worker group name exposed to action ctx")
+	egressProxy := flags.String("egress-proxy", "", "host:port of a co-located egress proxy sidecar")
 	workerTags := flags.String("tags", "", "comma-separated route tags this worker claims")
 	if err := flags.Parse(args); err != nil {
 		return 2
@@ -215,10 +216,11 @@ func runServer(args []string, mode string) int {
 				BaseURL:   runtimeBaseURL,
 				APIToken:  adminToken,
 			},
-			WorkerID: *workerID,
-			Group:    *workerGroup,
-			Tags:     parseTags(*workerTags),
-			LeaseTTL: *leaseTTL,
+			WorkerID:        *workerID,
+			Group:           *workerGroup,
+			Tags:            parseTags(*workerTags),
+			EgressProxyAddr: strings.TrimSpace(*egressProxy),
+			LeaseTTL:        *leaseTTL,
 		}
 		go func() {
 			if err := processor.RunLoop(context.Background(), *poll); err != nil {
@@ -250,6 +252,7 @@ func runWorker(args []string) int {
 	leaseTTL := flags.Duration("lease", 30*time.Second, "job lease TTL")
 	workerID := flags.String("worker-id", "", "worker identity")
 	workerGroup := flags.String("worker-group", "default", "worker group name exposed to action ctx")
+	egressProxy := flags.String("egress-proxy", "", "host:port of a co-located egress proxy sidecar")
 	workerTags := flags.String("tags", "", "comma-separated route tags this worker claims")
 	once := flags.Bool("once", false, "process at most one queued job and exit")
 	if err := flags.Parse(args); err != nil {
@@ -270,10 +273,11 @@ func runWorker(args []string) int {
 			BaseURL:   strings.TrimSpace(*baseURL),
 			APIToken:  tokenFromEnv(*apiTokenEnv),
 		},
-		WorkerID: *workerID,
-		Group:    *workerGroup,
-		Tags:     parseTags(*workerTags),
-		LeaseTTL: *leaseTTL,
+		WorkerID:        *workerID,
+		Group:           *workerGroup,
+		Tags:            parseTags(*workerTags),
+		EgressProxyAddr: strings.TrimSpace(*egressProxy),
+		LeaseTTL:        *leaseTTL,
 	}
 	if *once {
 		processed, err := processor.ProcessOne(context.Background())
@@ -434,7 +438,7 @@ func printUsage(file *os.File) {
 	fmt.Fprintln(file, "  windforce-lite sync --repo <url> [--branch main] [--subpath <subdir>] [--store <dir>] [--catalog <path>]")
 	fmt.Fprintln(file, "  windforce-lite run --app <app> --action <action> [--input <path>] [--output <path>]")
 	fmt.Fprintln(file, "  windforce-lite api [--addr :8080] [--state-backend local|postgres] [--git-sources <path>]")
-	fmt.Fprintln(file, "  windforce-lite worker [--state-backend local|postgres] [--worker-group default] [--once]")
-	fmt.Fprintln(file, "  windforce-lite standalone [--addr :8080] [--state-backend local|postgres] [--worker-group default] [--git-sources <path>]")
+	fmt.Fprintln(file, "  windforce-lite worker [--state-backend local|postgres] [--worker-group default] [--egress-proxy host:port] [--once]")
+	fmt.Fprintln(file, "  windforce-lite standalone [--addr :8080] [--state-backend local|postgres] [--worker-group default] [--egress-proxy host:port] [--git-sources <path>]")
 	fmt.Fprintln(file, "  windforce-lite run-json [flags] -- <command> [args...]")
 }

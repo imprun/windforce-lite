@@ -51,6 +51,7 @@ func TestProcessorCompletesQueuedRun(t *testing.T) {
 	var output struct {
 		OK          bool   `json:"ok"`
 		WorkerGroup string `json:"worker_group"`
+		ProxyURL    string `json:"proxy_url"`
 		Input       struct {
 			Message string `json:"message"`
 		} `json:"input"`
@@ -58,7 +59,8 @@ func TestProcessorCompletesQueuedRun(t *testing.T) {
 	if err := json.Unmarshal(completed.Output, &output); err != nil {
 		t.Fatalf("output is not JSON: %v", err)
 	}
-	if !output.OK || output.Input.Message != "hello" || output.WorkerGroup != "test" {
+	if !output.OK || output.Input.Message != "hello" || output.WorkerGroup != "test" ||
+		output.ProxyURL != "http://job-"+completed.Result.JobID+"@proxy:18080" {
 		t.Fatalf("output = %s", completed.Output)
 	}
 }
@@ -138,9 +140,10 @@ func newProcessorTestHarness(t *testing.T, helperMode string) (Processor, *state
 			Store:     bundleStore,
 			CacheRoot: filepath.Join(tempDir, "cache"),
 		},
-		WorkerID: "worker-a",
-		Group:    "test",
-		LeaseTTL: time.Minute,
+		WorkerID:        "worker-a",
+		Group:           "test",
+		EgressProxyAddr: "proxy:18080",
+		LeaseTTL:        time.Minute,
 	}, stateStore, run
 }
 
@@ -157,7 +160,7 @@ func TestWorkerHelperProcess(t *testing.T) {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(2)
 		}
-		output := []byte(`{"ok":true,"worker_group":` + strconv.Quote(os.Getenv("WF_WORKER_GROUP")) + `,"input":` + string(input) + `}`)
+		output := []byte(`{"ok":true,"worker_group":` + strconv.Quote(os.Getenv("WF_WORKER_GROUP")) + `,"proxy_url":` + strconv.Quote(os.Getenv("WF_PROXY_URL")) + `,"input":` + string(input) + `}`)
 		if err := os.WriteFile(os.Getenv("WF_RESULT_JSON"), output, 0o644); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(2)
