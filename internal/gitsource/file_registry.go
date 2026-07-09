@@ -43,6 +43,33 @@ func NewFileRegistry(path string) *FileRegistry {
 	return &FileRegistry{Path: path}
 }
 
+func (r *FileRegistry) Create(ctx context.Context, source Source) (Source, error) {
+	if err := ctx.Err(); err != nil {
+		return Source{}, err
+	}
+	source, err := normalizeSource(source)
+	if err != nil {
+		return Source{}, err
+	}
+
+	snapshot, err := r.Load(ctx)
+	if err != nil {
+		return Source{}, err
+	}
+	if snapshot.Sources == nil {
+		snapshot.Sources = map[string]Source{}
+	}
+	sourceKey := key(source.Workspace, source.ID)
+	if _, exists := snapshot.Sources[sourceKey]; exists {
+		return Source{}, ErrGitSourceConflict
+	}
+	snapshot.Sources[sourceKey] = source
+	if err := r.write(snapshot); err != nil {
+		return Source{}, err
+	}
+	return source, nil
+}
+
 func (r *FileRegistry) Upsert(ctx context.Context, source Source) error {
 	if err := ctx.Err(); err != nil {
 		return err

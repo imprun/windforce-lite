@@ -646,6 +646,24 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 		t.Fatalf("registered source = %#v", registered)
 	}
 
+	duplicateResp, err := http.Post(server.URL+"/api/w/ws-a/git_sources", "application/json", bytes.NewReader(registerBody))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer duplicateResp.Body.Close()
+	if duplicateResp.StatusCode != http.StatusConflict {
+		t.Fatalf("duplicate register status = %d, want %d", duplicateResp.StatusCode, http.StatusConflict)
+	}
+	var duplicateBody struct {
+		Error string `json:"error"`
+	}
+	if err := json.NewDecoder(duplicateResp.Body).Decode(&duplicateBody); err != nil {
+		t.Fatal(err)
+	}
+	if duplicateBody.Error != "git source name already exists" {
+		t.Fatalf("duplicate register error = %q", duplicateBody.Error)
+	}
+
 	listResp, err := http.Get(server.URL + "/api/w/ws-a/git_sources")
 	if err != nil {
 		t.Fatal(err)

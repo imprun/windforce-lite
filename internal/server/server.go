@@ -642,16 +642,46 @@ func (h *Handler) handleCanonicalRegisterGitSource(w http.ResponseWriter, r *htt
 		Subpath:   subpath,
 		TokenEnv:  credsRef,
 	}
-	if err := h.gitSources.Upsert(r.Context(), source); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	source, err := h.gitSources.Get(r.Context(), workspaceID, name)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+	source, ok := h.createGitSource(w, r, source)
+	if !ok {
 		return
 	}
 	writeJSON(w, http.StatusCreated, newCanonicalGitSourceView(source))
+}
+
+func (h *Handler) createGitSource(w http.ResponseWriter, r *http.Request, source gitsourcepkg.Source) (gitsourcepkg.Source, bool) {
+	if creator, ok := h.gitSources.(interface {
+		Create(context.Context, gitsourcepkg.Source) (gitsourcepkg.Source, error)
+	}); ok {
+		created, err := creator.Create(r.Context(), source)
+		if errors.Is(err, gitsourcepkg.ErrGitSourceConflict) {
+			writeError(w, http.StatusConflict, "git source name already exists")
+			return gitsourcepkg.Source{}, false
+		}
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return gitsourcepkg.Source{}, false
+		}
+		return created, true
+	}
+
+	if _, err := h.gitSources.Get(r.Context(), source.Workspace, source.ID); err == nil {
+		writeError(w, http.StatusConflict, "git source name already exists")
+		return gitsourcepkg.Source{}, false
+	} else if !errors.Is(err, gitsourcepkg.ErrGitSourceNotFound) {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return gitsourcepkg.Source{}, false
+	}
+	if err := h.gitSources.Upsert(r.Context(), source); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return gitsourcepkg.Source{}, false
+	}
+	source, err := h.gitSources.Get(r.Context(), source.Workspace, source.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return gitsourcepkg.Source{}, false
+	}
+	return source, true
 }
 
 func (h *Handler) handleCanonicalProbeGitSource(w http.ResponseWriter, r *http.Request, workspaceID string) {
