@@ -371,6 +371,35 @@ func TestCanonicalVariablesAndResourcesAPI(t *testing.T) {
 	}
 }
 
+func TestGitSourceCredsRefResolvesWorkspaceVariableOnly(t *testing.T) {
+	tempDir := t.TempDir()
+	store := state.NewLocalStore(filepath.Join(tempDir, "state.json"))
+	if err := store.SetVariable(context.Background(), "ws-a", "echo", "secrets/git/token", "scoped-token", true, ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetVariable(context.Background(), "ws-a", "", "secrets/git/token", "shared-token", true, ""); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("secrets/git/missing", "env-token")
+	handler := New(Config{Store: store}).(*Handler)
+
+	token, err := handler.resolveGitSourceCreds(context.Background(), "ws-a", "secrets/git/token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if token != "shared-token" {
+		t.Fatalf("resolved token = %q, want workspace-shared variable", token)
+	}
+
+	missing, err := handler.resolveGitSourceCreds(context.Background(), "ws-a", "secrets/git/missing")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if missing != "" {
+		t.Fatalf("missing creds_ref resolved from env = %q, want empty", missing)
+	}
+}
+
 func TestCanonicalJobRunStatusAndResultAPI(t *testing.T) {
 	tempDir := t.TempDir()
 	store := state.NewLocalStore(filepath.Join(tempDir, "state.json"))
@@ -1320,7 +1349,7 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 		"name":      "source-a",
 		"repo_url":  filepath.ToSlash(repoDir),
 		"branch":    "main",
-		"creds_ref": "WINDFORCE_LITE_GIT_TOKEN",
+		"creds_ref": "secrets/git/token",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -1346,7 +1375,7 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 		t.Fatal(err)
 	}
 	if registered.ID <= 0 || registered.Name != "source-a" || registered.WorkspaceID != "ws-a" ||
-		registered.RepoURL != filepath.ToSlash(repoDir) || registered.CredsRef != "WINDFORCE_LITE_GIT_TOKEN" ||
+		registered.RepoURL != filepath.ToSlash(repoDir) || registered.CredsRef != "secrets/git/token" ||
 		registered.CreatedAt.IsZero() {
 		t.Fatalf("registered source = %#v", registered)
 	}
@@ -1926,7 +1955,7 @@ func TestCanonicalGitSourceProbePatchAndDelete(t *testing.T) {
 	patchBody, err := json.Marshal(map[string]string{
 		"name":      "source-b",
 		"branch":    "feature",
-		"creds_ref": "WINDFORCE_LITE_GIT_TOKEN",
+		"creds_ref": "secrets/git/token",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -1953,7 +1982,7 @@ func TestCanonicalGitSourceProbePatchAndDelete(t *testing.T) {
 	if err := json.NewDecoder(patchResp.Body).Decode(&patched); err != nil {
 		t.Fatal(err)
 	}
-	if patched.ID != registered.ID || patched.Name != "source-b" || patched.Branch != "feature" || patched.CredsRef != "WINDFORCE_LITE_GIT_TOKEN" {
+	if patched.ID != registered.ID || patched.Name != "source-b" || patched.Branch != "feature" || patched.CredsRef != "secrets/git/token" {
 		t.Fatalf("patched = %#v", patched)
 	}
 	if _, err := registry.Get(context.Background(), "ws-a", "source-a"); !errors.Is(err, gitsource.ErrGitSourceNotFound) {

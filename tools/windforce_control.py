@@ -48,13 +48,13 @@ def main(argv: list[str] | None = None) -> int:
     register.add_argument("--repo-url", "--repo", dest="repo_url", required=True)
     register.add_argument("--branch", default="main")
     register.add_argument("--subpath", default="")
-    register.add_argument("--token-env", "--creds-ref", dest="creds_ref", default="")
+    register.add_argument("--creds-ref", dest="creds_ref", default="")
     register.set_defaults(func=cmd_register)
 
     probe = sub.add_parser("probe", help="probe a remote git source")
     probe.add_argument("--repo-url", "--repo", dest="repo_url", required=True)
     probe.add_argument("--branch", default="main")
-    probe.add_argument("--token-env", "--creds-ref", dest="creds_ref", default="")
+    probe.add_argument("--creds-ref", dest="creds_ref", default="")
     probe.set_defaults(func=cmd_probe)
 
     list_sources = sub.add_parser("git-sources", help="list registered git sources")
@@ -67,10 +67,6 @@ def main(argv: list[str] | None = None) -> int:
         required=True,
         help="numeric git source id returned by register/list",
     )
-    # Compatibility with earlier local scripts. These fields belong to the
-    # registered git source and are not sent to the sync endpoint.
-    sync.add_argument("--subpath", default=argparse.SUPPRESS)
-    sync.add_argument("--token-env", default=argparse.SUPPRESS)
     sync.set_defaults(func=cmd_sync)
 
     sample = sub.add_parser("sample", help="create and sync a managed sample git source")

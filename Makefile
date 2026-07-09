@@ -38,11 +38,12 @@ WF_API_URL ?= http://127.0.0.1:$(WINDFORCE_LITE_API_PORT)
 WF_WORKSPACE ?= default
 WF_APP ?= echo
 WF_ACTION ?= echo
-WF_GIT_SOURCE_ID ?= $(WF_APP)
+WF_GIT_SOURCE_NAME ?= $(WF_APP)
+WF_GIT_SOURCE_ID ?= 1
 WF_REPO_URL ?= https://github.com/imprun/windforce-lite.git
 WF_BRANCH ?= main
 WF_SUBPATH ?= examples/echo
-WF_GIT_TOKEN_ENV ?=
+WF_GIT_CREDS_REF ?=
 
 WINDFORCE_POSTGRES_DB ?= windforce_lite
 WINDFORCE_POSTGRES_USER ?= postgres
@@ -65,8 +66,8 @@ help:
 	@echo "  dev-api                run API process with PostgreSQL state"
 	@echo "  dev-worker             run worker process with PostgreSQL state"
 	@echo "  worker-once            claim at most one PostgreSQL-backed queued job"
-	@echo "  windforce-register     register WF_REPO_URL as a git source through the control API"
-	@echo "  windforce-sync         sync WF_GIT_SOURCE_ID through the control API"
+	@echo "  windforce-register     register WF_REPO_URL as WF_GIT_SOURCE_NAME through the control API"
+	@echo "  windforce-sync         sync numeric WF_GIT_SOURCE_ID through the control API"
 	@echo "  windforce-sample       create and sync WF_APP as a managed sample source"
 	@echo "  windforce-schema       print WF_APP/WF_ACTION schemas from the control API"
 	@echo "  windforce-openapi      print WF_APP invocation OpenAPI from the control API"
@@ -139,7 +140,7 @@ worker-once: compose-up
 	$(GO) run $(CMD) worker --store "$(STORE)" --cache "$(CACHE)" --state-backend postgres --database-url "$(POSTGRES_DSN)" --migrate --once
 
 windforce-register:
-	python tools/windforce_control.py --api-url "$(WF_API_URL)" --workspace "$(WF_WORKSPACE)" --pretty register --name "$(WF_GIT_SOURCE_ID)" --repo-url "$(WF_REPO_URL)" --branch "$(WF_BRANCH)" --subpath "$(WF_SUBPATH)" --token-env "$(WF_GIT_TOKEN_ENV)"
+	python tools/windforce_control.py --api-url "$(WF_API_URL)" --workspace "$(WF_WORKSPACE)" --pretty register --name "$(WF_GIT_SOURCE_NAME)" --repo-url "$(WF_REPO_URL)" --branch "$(WF_BRANCH)" --subpath "$(WF_SUBPATH)" --creds-ref "$(WF_GIT_CREDS_REF)"
 
 windforce-sync:
 	python tools/windforce_control.py --api-url "$(WF_API_URL)" --workspace "$(WF_WORKSPACE)" --pretty sync --git-source-id "$(WF_GIT_SOURCE_ID)"

@@ -448,9 +448,12 @@ func (h *Handler) handleCanonicalProbeGitSource(w http.ResponseWriter, r *http.R
 	}
 	token := strings.TrimSpace(request.AccessToken)
 	if token == "" {
-		if credsRef := strings.TrimSpace(request.CredsRef); credsRef != "" {
-			token = os.Getenv(credsRef)
+		resolved, err := h.resolveGitSourceCreds(r.Context(), workspaceID, request.CredsRef)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
 		}
+		token = resolved
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), probeTimeout)
 	defer cancel()
@@ -633,9 +636,10 @@ func (h *Handler) handleCanonicalGitSourceSync(w http.ResponseWriter, r *http.Re
 }
 
 func (h *Handler) syncGitSource(w http.ResponseWriter, r *http.Request, workspaceID string, source gitsourcepkg.Source) (contract.Deployment, bool) {
-	token := ""
-	if source.TokenEnv != "" {
-		token = os.Getenv(source.TokenEnv)
+	token, err := h.resolveGitSourceCreds(r.Context(), workspaceID, source.TokenEnv)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return contract.Deployment{}, false
 	}
 	s := *h.syncer
 	deployment, err := s.Sync(r.Context(), syncer.Source{
@@ -659,6 +663,18 @@ func (h *Handler) syncGitSource(w http.ResponseWriter, r *http.Request, workspac
 		}
 	}
 	return deployment, true
+}
+
+func (h *Handler) resolveGitSourceCreds(ctx context.Context, workspaceID string, credsRef string) (string, error) {
+	credsRef = strings.TrimSpace(credsRef)
+	if credsRef == "" || h.store == nil {
+		return "", nil
+	}
+	variable, found, err := h.store.GetVariable(ctx, workspaceID, "", credsRef)
+	if err != nil || !found {
+		return "", err
+	}
+	return variable.Value, nil
 }
 
 func (h *Handler) handleCanonicalApps(w http.ResponseWriter, r *http.Request, workspaceID string) {

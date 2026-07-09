@@ -252,6 +252,11 @@ numeric source identifier used by `{gitSourceId}` routes, and `name` is the
 human-readable source name. Control-plane integrations, including the lite CLI,
 must store and call the returned numeric `id`.
 
+`creds_ref` is a workspace-shared variable path for the git access token, not an
+environment variable name. Register the token through `POST
+/api/w/{workspace}/variables` with an empty `app_key`, then pass that path as
+`creds_ref`.
+
 For local development without the full UI, `tools/windforce_control.py` calls
 the same control-plane API:
 
