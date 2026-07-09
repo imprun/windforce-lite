@@ -1372,9 +1372,19 @@ func TestCanonicalControlPlaneOpenAPIExposesSchemaDiscovery(t *testing.T) {
 		"id", "workspace_id", "app_key", "git_source_id", "commit_sha", "entrypoint", "tag",
 		"tag_override", "timeout_s", "script_lang", "required_capabilities", "max_concurrent", "updated_at",
 	})
+	assertSchemaFields("AppView", []string{
+		"id", "workspace_id", "app_key", "git_source_id", "commit_sha", "entrypoint", "tag",
+		"tag_override", "timeout_s", "script_lang", "required_capabilities", "max_concurrent", "updated_at",
+		"effective_route_tag",
+	})
 	assertSchemaFields("Action", []string{
 		"id", "workspace_id", "app_key", "action_key", "input_schema", "output_schema", "tag",
 		"tag_override", "timeout_s", "required_capabilities", "updated_at",
+	})
+	assertSchemaFields("AppAction", []string{
+		"id", "workspace_id", "app_key", "action_key", "input_schema", "output_schema", "tag",
+		"tag_override", "timeout_s", "required_capabilities", "updated_at",
+		"effective_capabilities", "effective_route_tag",
 	})
 	assertSchemaFields("AppHistoryItem", []string{
 		"id", "commit_sha", "entrypoint", "source", "deployment_id", "message", "created_at",
@@ -1433,8 +1443,15 @@ func TestCanonicalControlPlaneOpenAPIExposesSchemaDiscovery(t *testing.T) {
 			t.Fatalf("app summary schema missing %s: %#v", field, appSummary)
 		}
 	}
+	appSchemaProperties := schemas["App"].(map[string]any)["properties"].(map[string]any)
+	if appSchemaProperties["effective_route_tag"] != nil {
+		t.Fatalf("base App schema must match canonical patch response without effective_route_tag: %#v", appSchemaProperties)
+	}
 	actionSchema := schemas["Action"].(map[string]any)
 	properties := actionSchema["properties"].(map[string]any)
+	if properties["effective_capabilities"] != nil || properties["effective_route_tag"] != nil {
+		t.Fatalf("base Action schema must match canonical action response without effective fields: %#v", properties)
+	}
 	inputSchema := properties["input_schema"].(map[string]any)
 	outputSchema := properties["output_schema"].(map[string]any)
 	if !bytes.Contains([]byte(inputSchema["description"].(string)), []byte("Materialized JSON Schema")) ||
@@ -1442,8 +1459,12 @@ func TestCanonicalControlPlaneOpenAPIExposesSchemaDiscovery(t *testing.T) {
 		t.Fatalf("action schema components = input:%#v output:%#v", inputSchema, outputSchema)
 	}
 	appDetail := schemas["AppDetailResponse"].(map[string]any)
+	appDetailApp := appDetail["properties"].(map[string]any)["app"].(map[string]any)
+	if appDetailApp["$ref"] != "#/components/schemas/AppView" {
+		t.Fatalf("app detail app schema = %#v", appDetailApp)
+	}
 	appDetailActions := appDetail["properties"].(map[string]any)["actions"].(map[string]any)
-	if appDetailActions["items"].(map[string]any)["$ref"] != "#/components/schemas/Action" {
+	if appDetailActions["items"].(map[string]any)["$ref"] != "#/components/schemas/AppAction" {
 		t.Fatalf("app detail actions schema = %#v", appDetailActions)
 	}
 	for _, schemaName := range []string{

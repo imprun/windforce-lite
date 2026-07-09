@@ -726,6 +726,14 @@ func openAPISecuritySchemes() map[string]any {
 	}
 }
 
+func cloneSchemaProperties(properties map[string]any) map[string]any {
+	clone := make(map[string]any, len(properties)+2)
+	for key, value := range properties {
+		clone[key] = value
+	}
+	return clone
+}
+
 func controlPlaneSchemas() map[string]any {
 	jsonSchema := map[string]any{
 		"type":                 "object",
@@ -736,6 +744,39 @@ func controlPlaneSchemas() map[string]any {
 	nullableString := map[string]any{"type": []any{"string", "null"}}
 	nullableInteger := map[string]any{"type": []any{"integer", "null"}}
 	nullableDateTime := map[string]any{"type": []any{"string", "null"}, "format": "date-time"}
+	appProperties := map[string]any{
+		"id":                    oapiStringSchema(),
+		"workspace_id":          oapiStringSchema(),
+		"app_key":               oapiStringSchema(),
+		"git_source_id":         oapiIntegerSchema(),
+		"commit_sha":            oapiStringSchema(),
+		"entrypoint":            oapiStringSchema(),
+		"tag":                   oapiStringSchema(),
+		"tag_override":          nullableString,
+		"timeout_s":             oapiIntegerSchema(),
+		"script_lang":           oapiStringSchema(),
+		"required_capabilities": stringArray,
+		"max_concurrent":        nullableInteger,
+		"updated_at":            oapiDateTimeSchema(),
+	}
+	appViewProperties := cloneSchemaProperties(appProperties)
+	appViewProperties["effective_route_tag"] = oapiStringSchema()
+	actionProperties := map[string]any{
+		"id":                    oapiStringSchema(),
+		"workspace_id":          oapiStringSchema(),
+		"app_key":               oapiStringSchema(),
+		"action_key":            oapiStringSchema(),
+		"input_schema":          jsonSchema,
+		"output_schema":         jsonSchema,
+		"tag":                   nullableString,
+		"tag_override":          nullableString,
+		"timeout_s":             nullableInteger,
+		"required_capabilities": stringArray,
+		"updated_at":            oapiDateTimeSchema(),
+	}
+	appActionProperties := cloneSchemaProperties(actionProperties)
+	appActionProperties["effective_capabilities"] = stringArray
+	appActionProperties["effective_route_tag"] = oapiStringSchema()
 
 	return map[string]any{
 		"Error": map[string]any{
@@ -826,24 +867,15 @@ func controlPlaneSchemas() map[string]any {
 			"required": []any{"source", "sync_result"},
 		},
 		"App": map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"id":                    oapiStringSchema(),
-				"workspace_id":          oapiStringSchema(),
-				"app_key":               oapiStringSchema(),
-				"git_source_id":         oapiIntegerSchema(),
-				"commit_sha":            oapiStringSchema(),
-				"entrypoint":            oapiStringSchema(),
-				"tag":                   oapiStringSchema(),
-				"tag_override":          nullableString,
-				"timeout_s":             oapiIntegerSchema(),
-				"script_lang":           oapiStringSchema(),
-				"required_capabilities": stringArray,
-				"max_concurrent":        nullableInteger,
-				"updated_at":            oapiDateTimeSchema(),
-				"effective_route_tag":   oapiStringSchema(),
-			},
-			"required": []any{"id", "workspace_id", "app_key", "git_source_id", "commit_sha", "entrypoint", "timeout_s", "updated_at"},
+			"type":       "object",
+			"properties": appProperties,
+			"required":   []any{"id", "workspace_id", "app_key", "git_source_id", "commit_sha", "entrypoint", "timeout_s", "updated_at"},
+		},
+		"AppView": map[string]any{
+			"type":        "object",
+			"description": "App detail view returned by GET /apps/{app}, including server-computed routing fields.",
+			"properties":  appViewProperties,
+			"required":    []any{"id", "workspace_id", "app_key", "git_source_id", "commit_sha", "entrypoint", "timeout_s", "updated_at", "effective_route_tag"},
 		},
 		"AppSummary": map[string]any{
 			"type": "object",
@@ -875,28 +907,23 @@ func controlPlaneSchemas() map[string]any {
 		"Action": map[string]any{
 			"type":        "object",
 			"description": "Canonical action detail. input_schema and output_schema expose the materialized action contract.",
-			"properties": map[string]any{
-				"id":                     oapiStringSchema(),
-				"workspace_id":           oapiStringSchema(),
-				"app_key":                oapiStringSchema(),
-				"action_key":             oapiStringSchema(),
-				"input_schema":           jsonSchema,
-				"output_schema":          jsonSchema,
-				"tag":                    nullableString,
-				"tag_override":           nullableString,
-				"timeout_s":              nullableInteger,
-				"required_capabilities":  stringArray,
-				"updated_at":             oapiDateTimeSchema(),
-				"effective_capabilities": stringArray,
-				"effective_route_tag":    oapiStringSchema(),
+			"properties":  actionProperties,
+			"required":    []any{"id", "workspace_id", "app_key", "action_key", "input_schema", "output_schema", "updated_at"},
+		},
+		"AppAction": map[string]any{
+			"type":        "object",
+			"description": "Action view returned inside app detail, including server-computed routing fields.",
+			"properties":  appActionProperties,
+			"required": []any{
+				"id", "workspace_id", "app_key", "action_key", "input_schema", "output_schema", "updated_at",
+				"effective_capabilities", "effective_route_tag",
 			},
-			"required": []any{"id", "workspace_id", "app_key", "action_key", "input_schema", "output_schema", "updated_at"},
 		},
 		"AppDetailResponse": map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"app":     oapiSchemaRef("App"),
-				"actions": map[string]any{"type": "array", "items": oapiSchemaRef("Action")},
+				"app":     oapiSchemaRef("AppView"),
+				"actions": map[string]any{"type": "array", "items": oapiSchemaRef("AppAction")},
 			},
 			"required": []any{"app", "actions"},
 		},
