@@ -726,7 +726,7 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 		t.Fatalf("sources = %#v", sources)
 	}
 
-	syncResp, err := http.Post(server.URL+"/api/w/ws-a/git_sources/source-a/sync", "application/json", bytes.NewBufferString(`{"app":"echo"}`))
+	syncResp, err := http.Post(server.URL+"/api/w/ws-a/git_sources/source-a/sync", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

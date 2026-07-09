@@ -782,16 +782,6 @@ func (h *Handler) handleCanonicalGitSourceSync(w http.ResponseWriter, r *http.Re
 		writeError(w, http.StatusServiceUnavailable, "git source registry is not configured")
 		return
 	}
-	var request struct {
-		App            string `json:"app"`
-		Commit         string `json:"commit"`
-		CloneRoot      string `json:"cloneRoot"`
-		CloneRootSnake string `json:"clone_root"`
-	}
-	if err := readOptionalJSON(r, &request); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
 	source, err := h.gitSources.Get(r.Context(), workspaceID, sourceID)
 	if err != nil {
 		status := http.StatusInternalServerError
@@ -806,16 +796,11 @@ func (h *Handler) handleCanonicalGitSourceSync(w http.ResponseWriter, r *http.Re
 		token = os.Getenv(source.TokenEnv)
 	}
 	s := *h.syncer
-	if cloneRoot := firstNonEmpty(request.CloneRoot, request.CloneRootSnake); cloneRoot != "" {
-		s.CloneRoot = cloneRoot
-	}
 	deployment, err := s.Sync(r.Context(), syncer.Source{
 		Workspace:   workspaceID,
 		GitSourceID: source.ID,
-		App:         request.App,
 		RepoURL:     source.RepoURL,
 		Branch:      source.Branch,
-		Commit:      request.Commit,
 		Subpath:     source.Subpath,
 		Token:       token,
 	})

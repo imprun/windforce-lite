@@ -42,7 +42,6 @@ WF_GIT_SOURCE_ID ?= $(WF_APP)
 WF_REPO_URL ?= .
 WF_BRANCH ?= main
 WF_SUBPATH ?= examples/echo
-WF_COMMIT ?=
 WF_GIT_TOKEN_ENV ?=
 
 WINDFORCE_POSTGRES_DB ?= windforce_lite
@@ -136,7 +135,7 @@ windforce-register:
 	python tools/windforce_control.py --api-url "$(WF_API_URL)" --workspace "$(WF_WORKSPACE)" --pretty register --name "$(WF_GIT_SOURCE_ID)" --repo-url "$(WF_REPO_URL)" --branch "$(WF_BRANCH)" --subpath "$(WF_SUBPATH)" --token-env "$(WF_GIT_TOKEN_ENV)"
 
 windforce-sync:
-	python tools/windforce_control.py --api-url "$(WF_API_URL)" --workspace "$(WF_WORKSPACE)" --pretty sync --git-source-id "$(WF_GIT_SOURCE_ID)" --app "$(WF_APP)" --commit "$(WF_COMMIT)"
+	python tools/windforce_control.py --api-url "$(WF_API_URL)" --workspace "$(WF_WORKSPACE)" --pretty sync --git-source-id "$(WF_GIT_SOURCE_ID)"
 
 windforce-schema:
 	python tools/windforce_control.py --api-url "$(WF_API_URL)" --workspace "$(WF_WORKSPACE)" --pretty schema --app "$(WF_APP)" --action "$(WF_ACTION)"

@@ -61,9 +61,6 @@ def main(argv: list[str] | None = None) -> int:
 
     sync = sub.add_parser("sync", help="sync a registered git source")
     sync.add_argument("--git-source-id", "--name", dest="git_source_id", required=True)
-    sync.add_argument("--app", default="")
-    sync.add_argument("--commit", default="")
-    sync.add_argument("--clone-root", default="")
     # Compatibility with earlier local scripts. These fields belong to the
     # registered git source and are not sent to the sync endpoint.
     sync.add_argument("--subpath", default=argparse.SUPPRESS)
@@ -163,13 +160,6 @@ def cmd_sync(args: argparse.Namespace) -> Any:
         args,
         "POST",
         f"/api/w/{quote_path(args.workspace)}/git_sources/{quote_path(args.git_source_id)}/sync",
-        compact(
-            {
-                "app": args.app,
-                "commit": args.commit,
-                "clone_root": args.clone_root,
-            }
-        ),
     )
 
 

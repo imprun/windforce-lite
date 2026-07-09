@@ -68,19 +68,22 @@ Every app source has a `windforce.json` file:
 ```json
 {
   "app": "echo",
+  "entrypoint": "action.go",
+  "timeout": 30,
   "actions": {
     "echo": {
       "runtime": "go",
       "command": ["go", "run", "./action.go"],
-      "adapter": { "type": "json-file" },
-      "timeoutMs": 30000
+      "adapter": { "type": "json-file" }
     }
   }
 }
 ```
 
-`command` is executed from the fetched app source directory. If `adapter` is
-omitted, windforce-lite uses the built-in `json-file` adapter.
+`entrypoint` and `timeout` follow the canonical Windforce manifest shape and
+are pinned onto each action unless the action overrides them. `command` is the
+Lite execution command run from the fetched app source directory. If `adapter`
+is omitted, windforce-lite uses the built-in `json-file` adapter.
 
 ## Action adapters
 
@@ -256,8 +259,7 @@ the same control-plane API:
 ```powershell
 python tools/windforce_control.py --api-url http://127.0.0.1:8080 register `
   --name echo --repo-url . --subpath examples/echo
-python tools/windforce_control.py --api-url http://127.0.0.1:8080 sync `
-  --git-source-id echo --app echo
+python tools/windforce_control.py --api-url http://127.0.0.1:8080 sync --git-source-id echo
 python tools/windforce_control.py --api-url http://127.0.0.1:8080 --pretty schema `
   --app echo --action echo
 ```
