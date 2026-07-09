@@ -2439,6 +2439,8 @@ type jobStatusResponse struct {
 	StartedAt      *time.Time      `json:"started_at,omitempty"`
 	CompletedAt    *time.Time      `json:"completed_at,omitempty"`
 	DurationMs     int64           `json:"duration_ms,omitempty"`
+	CanceledBy     *string         `json:"canceled_by,omitempty"`
+	CanceledReason *string         `json:"canceled_reason,omitempty"`
 }
 
 func newJobStatus(workspaceID string, job state.Job, run state.Run) jobStatusResponse {
@@ -2489,6 +2491,7 @@ func newJobStatus(workspaceID string, job state.Job, run state.Run) jobStatusRes
 		CreatedAt:      &job.CreatedAt,
 		StartedAt:      startedAt,
 		CompletedAt:    completedAt,
+		CanceledReason: jobStatusCanceledReason(run),
 	}
 	if run.Result != nil {
 		response.DurationMs = run.Result.DurationMs
@@ -2508,6 +2511,19 @@ func jobStatusTriggerKind(job state.Job, run state.Run) string {
 		return job.Payload.TriggerKind
 	}
 	return run.Adapter
+}
+
+func jobStatusCanceledReason(run state.Run) *string {
+	if run.State != state.RunCanceled || len(run.Error) == 0 {
+		return nil
+	}
+	var payload struct {
+		Message string `json:"message"`
+	}
+	if json.Unmarshal(run.Error, &payload) == nil && strings.TrimSpace(payload.Message) != "" {
+		return stringPtr(payload.Message)
+	}
+	return nil
 }
 
 func timeoutSeconds(timeoutMs int64) int32 {

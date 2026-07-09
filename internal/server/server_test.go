@@ -781,14 +781,18 @@ func TestCanonicalJobCancelAPI(t *testing.T) {
 	}
 	defer statusResp.Body.Close()
 	var statusBody struct {
-		State  string `json:"state"`
-		Status string `json:"status"`
+		State          string  `json:"state"`
+		Status         string  `json:"status"`
+		CanceledReason *string `json:"canceled_reason"`
 	}
 	if err := json.NewDecoder(statusResp.Body).Decode(&statusBody); err != nil {
 		t.Fatal(err)
 	}
 	if statusBody.State != "completed" || statusBody.Status != "canceled" {
 		t.Fatalf("job status = %#v", statusBody)
+	}
+	if statusBody.CanceledReason == nil || *statusBody.CanceledReason != "operator canceled" {
+		t.Fatalf("canceled_reason = %v, want operator canceled", statusBody.CanceledReason)
 	}
 
 	secondCancelResp, err := http.Post(server.URL+"/api/w/ws-a/jobs/"+runBody.JobID+"/cancel", "application/json", bytes.NewBufferString(`{}`))
