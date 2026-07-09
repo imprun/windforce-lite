@@ -476,6 +476,115 @@ func TestCanonicalVariablesAndResourcesAPI(t *testing.T) {
 	}
 }
 
+func TestCanonicalVariableAppScopeShadowing(t *testing.T) {
+	tempDir := t.TempDir()
+	store := state.NewLocalStore(filepath.Join(tempDir, "state.json"))
+	server := httptest.NewServer(New(Config{
+		Store:     store,
+		EnableAPI: true,
+	}))
+	defer server.Close()
+
+	set := func(appKey, path, value string) {
+		t.Helper()
+		body, err := json.Marshal(map[string]any{
+			"app_key": appKey,
+			"path":    path,
+			"value":   value,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp, err := http.Post(server.URL+"/api/w/ws-a/variables", "application/json", bytes.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("set %s@%q status = %d, want %d", path, appKey, resp.StatusCode, http.StatusOK)
+		}
+	}
+	reveal := func(path, query, jobID string) (string, int) {
+		t.Helper()
+		req, err := http.NewRequest(http.MethodGet, server.URL+"/api/w/ws-a/variables/get/p/"+path+query, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if jobID != "" {
+			req.Header.Set("X-Windforce-Job-ID", jobID)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		var body struct {
+			Value string `json:"value"`
+		}
+		_ = json.NewDecoder(resp.Body).Decode(&body)
+		return body.Value, resp.StatusCode
+	}
+	enqueue := func(appKey string) string {
+		t.Helper()
+		deployment := contract.Deployment{
+			Workspace: "ws-a",
+			App:       appKey,
+			Commit:    "commit-" + appKey,
+			Actions: map[string]contract.Action{
+				"run": {Action: "run"},
+			},
+		}
+		run := state.NewRun("windforce", "run-"+appKey, appKey, "run", deployment, json.RawMessage(`{}`))
+		job := state.NewActionJob(run, nil)
+		if err := store.CreateRunAndEnqueue(context.Background(), run, job); err != nil {
+			t.Fatal(err)
+		}
+		return job.ID
+	}
+
+	set("", "token", "shared-value")
+	set("appa", "token", "appa-value")
+	set("appa", "only-a", "secret-a")
+
+	if value, code := reveal("token", "", ""); code != http.StatusOK || value != "shared-value" {
+		t.Fatalf("console shared = %d %q, want shared-value", code, value)
+	}
+	if value, code := reveal("token", "?app=appa", ""); code != http.StatusOK || value != "appa-value" {
+		t.Fatalf("console appa = %d %q, want appa-value", code, value)
+	}
+
+	jobA := enqueue("appa")
+	jobB := enqueue("appb")
+	if value, code := reveal("token", "", jobA); code != http.StatusOK || value != "appa-value" {
+		t.Fatalf("job appa shadowed read = %d %q, want appa-value", code, value)
+	}
+	if value, code := reveal("token", "", jobB); code != http.StatusOK || value != "shared-value" {
+		t.Fatalf("job appb fallback read = %d %q, want shared-value", code, value)
+	}
+	if value, code := reveal("only-a", "", jobA); code != http.StatusOK || value != "secret-a" {
+		t.Fatalf("job appa scoped read = %d %q", code, value)
+	}
+	if _, code := reveal("only-a", "", jobB); code != http.StatusNotFound {
+		t.Fatalf("job appb foreign read = %d, want %d", code, http.StatusNotFound)
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, server.URL+"/api/w/ws-a/variables/p/token?app=appa", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("delete scoped status = %d, want %d", resp.StatusCode, http.StatusNoContent)
+	}
+	if value, code := reveal("token", "", jobA); code != http.StatusOK || value != "shared-value" {
+		t.Fatalf("post-delete appa read = %d %q, want shared fallback", code, value)
+	}
+}
+
 func TestGitSourceCredsRefResolvesWorkspaceVariableOnly(t *testing.T) {
 	tempDir := t.TempDir()
 	store := state.NewLocalStore(filepath.Join(tempDir, "state.json"))
