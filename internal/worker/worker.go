@@ -56,21 +56,28 @@ func (p *Processor) ProcessOne(ctx context.Context) (bool, error) {
 		if result.Error == "" {
 			result.Error = runErr.Error()
 		}
-		return true, p.Store.CompleteJobFailed(ctx, lease, result)
+		return completeProcessed(p.Store.CompleteJobFailed(ctx, lease, result))
 	}
 	if result.ExitCode != 0 {
-		return true, p.Store.CompleteJobFailed(ctx, lease, result)
+		return completeProcessed(p.Store.CompleteJobFailed(ctx, lease, result))
 	}
 
 	task, ok, err := HumanTaskFromOutput(job.RunID, result.Output)
 	if err != nil {
 		result.Error = err.Error()
-		return true, p.Store.CompleteJobFailed(ctx, lease, result)
+		return completeProcessed(p.Store.CompleteJobFailed(ctx, lease, result))
 	}
 	if ok {
-		return true, p.Store.CompleteJobWaitingHuman(ctx, lease, result, task)
+		return completeProcessed(p.Store.CompleteJobWaitingHuman(ctx, lease, result, task))
 	}
-	return true, p.Store.CompleteJobSucceeded(ctx, lease, result)
+	return completeProcessed(p.Store.CompleteJobSucceeded(ctx, lease, result))
+}
+
+func completeProcessed(err error) (bool, error) {
+	if errors.Is(err, state.ErrInvalidLease) {
+		return true, nil
+	}
+	return true, err
 }
 
 func (p *Processor) RunLoop(ctx context.Context, pollInterval time.Duration) error {

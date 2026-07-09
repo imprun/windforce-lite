@@ -491,6 +491,75 @@ func (s *PostgresStore) ResumeRun(ctx context.Context, runID string, resumeInput
 	return s.ResumeHumanTask(ctx, run.TaskID, resumeInput)
 }
 
+func (s *PostgresStore) CancelJob(ctx context.Context, workspaceID string, jobID string, reason string) (CancelResult, error) {
+	workspaceID = contract.NormalizeWorkspace(workspaceID)
+	var result CancelResult
+	err := s.withTx(ctx, func(tx pgx.Tx) error {
+		job, err := scanJob(tx.QueryRow(ctx, `
+SELECT `+jobColumns+`
+FROM jobs
+WHERE id=$1
+  AND COALESCE(NULLIF(payload->>'workspace', ''), NULLIF(payload->'deployment'->>'workspace', ''), 'default')=$2
+FOR UPDATE
+`, jobID, workspaceID))
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		run, err := scanRun(tx.QueryRow(ctx, `SELECT `+runColumns+` FROM runs WHERE id=$1 FOR UPDATE`, job.RunID))
+		if err != nil {
+			return err
+		}
+		result.Found = true
+		if IsTerminal(run) || job.State == JobSucceeded || job.State == JobFailed {
+			result.AlreadyCompleted = true
+			return nil
+		}
+		if job.State == JobRunning {
+			result.SoftCanceled = true
+		} else {
+			result.CompletedNow = true
+		}
+		message := reason
+		if message == "" {
+			message = "job canceled"
+		}
+		now := time.Now().UTC()
+		job.State = JobFailed
+		job.LeaseOwner = ""
+		job.LeaseExpiresAt = nil
+		job.UpdatedAt = now
+		run.State = RunCanceled
+		run.Result = &contract.JobResult{
+			JobID:    job.ID,
+			App:      run.App,
+			Action:   run.Action,
+			ExitCode: -1,
+			Error:    message,
+		}
+		run.Error = mustRaw(map[string]string{"message": message})
+		run.UpdatedAt = now
+		if _, err := tx.Exec(ctx, `
+UPDATE jobs
+SET state=$1, lease_owner=NULL, lease_expires_at=NULL, updated_at=$2
+WHERE id=$3
+`, string(job.State), job.UpdatedAt, job.ID); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `
+UPDATE runs
+SET state=$1, result=$2, error=$3, updated_at=$4
+WHERE id=$5
+`, string(run.State), mustRaw(run.Result), run.Error, run.UpdatedAt, run.ID); err != nil {
+			return err
+		}
+		return insertEvent(ctx, tx, run.ID, "run_canceled", eventPayload(run.CorrelationID, map[string]any{"jobId": job.ID, "reason": reason}))
+	})
+	return result, err
+}
+
 func (s *PostgresStore) CancelRun(ctx context.Context, runID string, reason string) (Run, error) {
 	var canceled Run
 	err := s.withTx(ctx, func(tx pgx.Tx) error {

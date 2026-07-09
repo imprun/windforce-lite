@@ -123,6 +123,13 @@ type HumanTask struct {
 	ExpiresAt   *time.Time      `json:"expiresAt,omitempty"`
 }
 
+type CancelResult struct {
+	Found            bool `json:"found"`
+	CompletedNow     bool `json:"completed_now"`
+	SoftCanceled     bool `json:"soft_canceled"`
+	AlreadyCompleted bool `json:"already_completed"`
+}
+
 type RunEvent struct {
 	ID        int64           `json:"id"`
 	RunID     string          `json:"runId,omitempty"`
@@ -160,6 +167,7 @@ type Store interface {
 	CompleteJobWaitingHuman(ctx context.Context, lease Lease, result contract.JobResult, task HumanTask) error
 	ResumeHumanTask(ctx context.Context, taskID string, resumeInput json.RawMessage) (Run, Job, error)
 	ResumeRun(ctx context.Context, runID string, resumeInput json.RawMessage) (Run, Job, error)
+	CancelJob(ctx context.Context, workspaceID string, jobID string, reason string) (CancelResult, error)
 	CancelRun(ctx context.Context, runID string, reason string) (Run, error)
 	RetryRun(ctx context.Context, runID string) (Run, Job, error)
 }
@@ -564,6 +572,33 @@ func (s *LocalStore) ResumeRun(ctx context.Context, runID string, resumeInput js
 	return s.ResumeHumanTask(ctx, run.TaskID, resumeInput)
 }
 
+func (s *LocalStore) CancelJob(ctx context.Context, workspaceID string, jobID string, reason string) (CancelResult, error) {
+	var result CancelResult
+	err := s.update(ctx, func(snapshot *Snapshot, now time.Time) error {
+		job, ok := snapshot.Jobs[jobID]
+		if !ok || normalizedJobWorkspace("", job) != contract.NormalizeWorkspace(workspaceID) {
+			return nil
+		}
+		run, ok := snapshot.Runs[job.RunID]
+		if !ok {
+			return fmt.Errorf("%w: run %q", ErrNotFound, job.RunID)
+		}
+		result.Found = true
+		if IsTerminal(run) || job.State == JobSucceeded || job.State == JobFailed {
+			result.AlreadyCompleted = true
+			return nil
+		}
+		if job.State == JobRunning {
+			result.SoftCanceled = true
+		} else {
+			result.CompletedNow = true
+		}
+		applyCanceledJob(snapshot, job, run, reason, now)
+		return nil
+	})
+	return result, err
+}
+
 func (s *LocalStore) CancelRun(ctx context.Context, runID string, reason string) (Run, error) {
 	var canceled Run
 	err := s.update(ctx, func(snapshot *Snapshot, now time.Time) error {
@@ -787,6 +822,30 @@ func appendEvent(snapshot *Snapshot, runID string, eventType string, payload any
 		Payload:   mustRaw(payload),
 		CreatedAt: now,
 	})
+}
+
+func applyCanceledJob(snapshot *Snapshot, job Job, run Run, reason string, now time.Time) {
+	message := reason
+	if strings.TrimSpace(message) == "" {
+		message = "job canceled"
+	}
+	job.State = JobFailed
+	job.LeaseOwner = ""
+	job.LeaseExpiresAt = nil
+	job.UpdatedAt = now
+	run.State = RunCanceled
+	run.Result = &contract.JobResult{
+		JobID:    job.ID,
+		App:      run.App,
+		Action:   run.Action,
+		ExitCode: -1,
+		Error:    message,
+	}
+	run.Error = mustRaw(map[string]string{"message": message})
+	run.UpdatedAt = now
+	snapshot.Jobs[job.ID] = job
+	snapshot.Runs[run.ID] = run
+	appendEvent(snapshot, run.ID, "run_canceled", eventPayload(run.CorrelationID, map[string]any{"jobId": job.ID, "reason": reason}), now)
 }
 
 func eventPayload(correlationID string, values map[string]any) map[string]any {

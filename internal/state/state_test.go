@@ -146,4 +146,18 @@ func exerciseStoreLifecycle(t *testing.T, store Store) {
 	if retryInput.Message != "hello" {
 		t.Fatalf("retry job input = %s", retryJob.Payload.Input)
 	}
+	cancelResult, err := store.CancelJob(context.Background(), "default", retryJob.ID, "operator canceled")
+	if err != nil {
+		t.Fatalf("CancelJob returned error: %v", err)
+	}
+	if !cancelResult.Found || !cancelResult.CompletedNow || cancelResult.SoftCanceled || cancelResult.AlreadyCompleted {
+		t.Fatalf("cancel result = %#v", cancelResult)
+	}
+	canceledAgain, err := store.CancelJob(context.Background(), "default", retryJob.ID, "")
+	if err != nil {
+		t.Fatalf("CancelJob second call returned error: %v", err)
+	}
+	if !canceledAgain.Found || !canceledAgain.AlreadyCompleted {
+		t.Fatalf("second cancel result = %#v", canceledAgain)
+	}
 }

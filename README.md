@@ -220,6 +220,7 @@ Implemented control-plane endpoints:
 - `GET /api/w/{workspace}/jobs/{jobID}`
 - `GET /api/w/{workspace}/jobs/{jobID}/result`
 - `GET /api/w/{workspace}/jobs/{jobID}/logs?tail_bytes={bytes}`
+- `POST /api/w/{workspace}/jobs/{jobID}/cancel`
 - `POST /v1/runs/{runID}/cancel`
 - `POST /v1/runs/{runID}/retry`
 - `GET /v1/human-tasks/{humanTaskID}`

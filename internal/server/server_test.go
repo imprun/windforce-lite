@@ -270,6 +270,89 @@ func TestCanonicalJobRunStatusAndResultAPI(t *testing.T) {
 	}
 }
 
+func TestCanonicalJobCancelAPI(t *testing.T) {
+	tempDir := t.TempDir()
+	store := state.NewLocalStore(filepath.Join(tempDir, "state.json"))
+	fileCatalog := catalog.NewFileCatalog(filepath.Join(tempDir, "catalog.json"))
+	if err := fileCatalog.UpsertDeployment(context.Background(), contract.Deployment{
+		Workspace:   "ws-a",
+		GitSourceID: "source-a",
+		App:         "echo",
+		Commit:      "commit-a",
+		Actions: map[string]contract.Action{
+			"echo": {Action: "echo", Command: []string{"helper"}},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	server := httptest.NewServer(New(Config{Store: store, Catalog: fileCatalog, EnableAPI: true}))
+	defer server.Close()
+
+	runResp, err := http.Post(server.URL+"/api/w/ws-a/jobs/run/echo/echo", "application/json", bytes.NewBufferString(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runResp.Body.Close()
+	var runBody struct {
+		JobID string `json:"job_id"`
+	}
+	if err := json.NewDecoder(runResp.Body).Decode(&runBody); err != nil {
+		t.Fatal(err)
+	}
+	if runBody.JobID == "" {
+		t.Fatalf("missing job id")
+	}
+
+	cancelResp, err := http.Post(server.URL+"/api/w/ws-a/jobs/"+runBody.JobID+"/cancel", "application/json", bytes.NewBufferString(`{"reason":"operator canceled"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cancelResp.Body.Close()
+	if cancelResp.StatusCode != http.StatusOK {
+		t.Fatalf("cancel status = %d, want %d", cancelResp.StatusCode, http.StatusOK)
+	}
+	var cancelBody state.CancelResult
+	if err := json.NewDecoder(cancelResp.Body).Decode(&cancelBody); err != nil {
+		t.Fatal(err)
+	}
+	if !cancelBody.Found || !cancelBody.CompletedNow || cancelBody.SoftCanceled || cancelBody.AlreadyCompleted {
+		t.Fatalf("cancel body = %#v", cancelBody)
+	}
+
+	resultResp, err := http.Get(server.URL + "/api/w/ws-a/jobs/" + runBody.JobID + "/result")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resultResp.Body.Close()
+	if resultResp.StatusCode != http.StatusOK {
+		t.Fatalf("result status = %d, want %d", resultResp.StatusCode, http.StatusOK)
+	}
+	var resultBody struct {
+		Status string          `json:"status"`
+		Result json.RawMessage `json:"result"`
+	}
+	if err := json.NewDecoder(resultResp.Body).Decode(&resultBody); err != nil {
+		t.Fatal(err)
+	}
+	if resultBody.Status != "canceled" || !bytes.Contains(resultBody.Result, []byte("operator canceled")) {
+		t.Fatalf("result body = %#v result=%s", resultBody, resultBody.Result)
+	}
+
+	secondCancelResp, err := http.Post(server.URL+"/api/w/ws-a/jobs/"+runBody.JobID+"/cancel", "application/json", bytes.NewBufferString(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer secondCancelResp.Body.Close()
+	var secondCancelBody state.CancelResult
+	if err := json.NewDecoder(secondCancelResp.Body).Decode(&secondCancelBody); err != nil {
+		t.Fatal(err)
+	}
+	if !secondCancelBody.Found || !secondCancelBody.AlreadyCompleted {
+		t.Fatalf("second cancel body = %#v", secondCancelBody)
+	}
+}
+
 type fakeTriggerAdapter struct{}
 
 func (fakeTriggerAdapter) Name() string {

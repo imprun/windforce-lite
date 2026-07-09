@@ -202,6 +202,10 @@ func (h *Handler) handleAPI(w http.ResponseWriter, r *http.Request) bool {
 		h.handleJobResult(w, r, parts[2], parts[4])
 		return true
 	}
+	if len(parts) == 6 && parts[0] == "api" && parts[1] == "w" && parts[3] == "jobs" && parts[5] == "cancel" && r.Method == http.MethodPost {
+		h.handleJobCancel(w, r, parts[2], parts[4])
+		return true
+	}
 	if len(parts) == 6 && parts[0] == "api" && parts[1] == "w" && parts[3] == "jobs" && parts[5] == "logs" && r.Method == http.MethodGet {
 		h.handleJobLogs(w, r, parts[2], parts[4])
 		return true
@@ -583,6 +587,30 @@ func (h *Handler) handleJobResult(w http.ResponseWriter, r *http.Request, worksp
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"status": status, "result": result})
+}
+
+func (h *Handler) handleJobCancel(w http.ResponseWriter, r *http.Request, workspaceID string, jobID string) {
+	if h.store == nil {
+		writeError(w, http.StatusServiceUnavailable, "state store is not configured")
+		return
+	}
+	var request struct {
+		Reason string `json:"reason"`
+	}
+	if err := readOptionalJSON(r, &request); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	result, err := h.store.CancelJob(r.Context(), workspaceID, jobID, request.Reason)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if !result.Found {
+		writeError(w, http.StatusNotFound, "job not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
 }
 
 func (h *Handler) waitForJobResult(w http.ResponseWriter, r *http.Request, workspaceID string, jobID string, timeout time.Duration) {
