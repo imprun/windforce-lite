@@ -884,7 +884,7 @@ func (h *Handler) handleCanonicalAppSource(w http.ResponseWriter, r *http.Reques
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"app_key":       deployment.App,
-		"git_source_id": nil,
+		"git_source_id": deployment.SourceGitSourceID(),
 		"commit_sha":    deployment.Commit,
 		"files":         files,
 		"skipped":       skipped,
@@ -1276,11 +1276,9 @@ type canonicalAppHistoryItem struct {
 	CommitSha    string    `json:"commit_sha"`
 	Entrypoint   string    `json:"entrypoint"`
 	Source       string    `json:"source"`
-	GitSourceKey string    `json:"git_source_key,omitempty"`
 	DeploymentID *string   `json:"deployment_id,omitempty"`
 	Message      *string   `json:"message,omitempty"`
 	CreatedAt    time.Time `json:"created_at"`
-	Status       string    `json:"status,omitempty"`
 }
 
 type canonicalActionView struct {
@@ -1334,13 +1332,11 @@ func newCanonicalAppSummaryView(deployment contract.Deployment) canonicalAppSumm
 
 func newCanonicalAppHistoryItem(item catalogpkg.DeploymentHistory) canonicalAppHistoryItem {
 	return canonicalAppHistoryItem{
-		ID:           item.ID,
-		CommitSha:    item.Commit,
-		Entrypoint:   item.Entrypoint,
-		Source:       firstNonEmpty(item.Source, "external_sync"),
-		GitSourceKey: item.GitSourceID,
-		CreatedAt:    item.CreatedAt,
-		Status:       item.Status,
+		ID:         item.ID,
+		CommitSha:  item.Commit,
+		Entrypoint: item.Entrypoint,
+		Source:     firstNonEmpty(item.Source, "external_sync"),
+		CreatedAt:  item.CreatedAt,
 	}
 }
 

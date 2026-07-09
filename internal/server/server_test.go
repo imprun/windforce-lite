@@ -973,15 +973,16 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 		t.Fatalf("source status = %d, want %d", sourceResp.StatusCode, http.StatusOK)
 	}
 	var sourceBody struct {
-		AppKey    string            `json:"app_key"`
-		CommitSha string            `json:"commit_sha"`
-		Files     map[string]string `json:"files"`
-		Skipped   []string          `json:"skipped"`
+		AppKey      string            `json:"app_key"`
+		GitSourceID string            `json:"git_source_id"`
+		CommitSha   string            `json:"commit_sha"`
+		Files       map[string]string `json:"files"`
+		Skipped     []string          `json:"skipped"`
 	}
 	if err := json.NewDecoder(sourceResp.Body).Decode(&sourceBody); err != nil {
 		t.Fatal(err)
 	}
-	if sourceBody.AppKey != "echo" || sourceBody.CommitSha == "" ||
+	if sourceBody.AppKey != "echo" || sourceBody.GitSourceID != "source-a" || sourceBody.CommitSha == "" ||
 		!bytes.Contains([]byte(sourceBody.Files["windforce.json"]), []byte(`"app": "echo"`)) ||
 		!bytes.Contains([]byte(sourceBody.Files["input.schema.json"]), []byte(`"message"`)) ||
 		len(sourceBody.Skipped) != 0 {
@@ -996,18 +997,18 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 	if historyResp.StatusCode != http.StatusOK {
 		t.Fatalf("history status = %d, want %d", historyResp.StatusCode, http.StatusOK)
 	}
-	var history []struct {
-		ID           string `json:"id"`
-		CommitSha    string `json:"commit_sha"`
-		Source       string `json:"source"`
-		GitSourceKey string `json:"git_source_key"`
-		Status       string `json:"status"`
-	}
+	var history []map[string]any
 	if err := json.NewDecoder(historyResp.Body).Decode(&history); err != nil {
 		t.Fatal(err)
 	}
-	if len(history) != 1 || history[0].ID == "" || history[0].CommitSha != syncBody.Commit ||
-		history[0].Source != "external_sync" || history[0].GitSourceKey != "source-a" || history[0].Status != "deployed" {
+	if len(history) != 1 || history[0]["id"] == "" || history[0]["commit_sha"] != syncBody.Commit ||
+		history[0]["source"] != "external_sync" {
+		t.Fatalf("history = %#v", history)
+	}
+	if _, ok := history[0]["git_source_key"]; ok {
+		t.Fatalf("history contains noncanonical git_source_key: %#v", history)
+	}
+	if _, ok := history[0]["status"]; ok {
 		t.Fatalf("history = %#v", history)
 	}
 }
