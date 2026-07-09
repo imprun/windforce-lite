@@ -808,6 +808,14 @@ func (h *Handler) handleCanonicalGitSourceSync(w http.ResponseWriter, r *http.Re
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	if marker, ok := h.gitSources.(interface {
+		MarkSynced(context.Context, string, string, string, time.Time) (gitsourcepkg.Source, error)
+	}); ok {
+		if _, err := marker.MarkSynced(r.Context(), workspaceID, source.ID, deployment.Commit, time.Now().UTC()); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+	}
 	writeJSON(w, http.StatusOK, newCanonicalSyncResult(deployment))
 }
 
@@ -1144,18 +1152,22 @@ type canonicalGitSourceView struct {
 	Kind             string     `json:"kind"`
 	LastSyncedCommit *string    `json:"last_synced_commit"`
 	LastSyncedAt     *time.Time `json:"last_synced_at"`
+	CreatedAt        time.Time  `json:"created_at"`
 }
 
 func newCanonicalGitSourceView(source gitsourcepkg.Source) canonicalGitSourceView {
 	return canonicalGitSourceView{
-		ID:          source.ID,
-		WorkspaceID: contract.NormalizeWorkspace(source.Workspace),
-		Name:        source.ID,
-		RepoURL:     source.RepoURL,
-		Branch:      firstNonEmpty(source.Branch, "main"),
-		Subpath:     source.Subpath,
-		CredsRef:    source.TokenEnv,
-		Kind:        "external",
+		ID:               source.ID,
+		WorkspaceID:      contract.NormalizeWorkspace(source.Workspace),
+		Name:             source.ID,
+		RepoURL:          source.RepoURL,
+		Branch:           firstNonEmpty(source.Branch, "main"),
+		Subpath:          source.Subpath,
+		CredsRef:         source.TokenEnv,
+		Kind:             "external",
+		LastSyncedCommit: cloneStringPtr(source.LastSyncedCommit),
+		LastSyncedAt:     cloneTimePtr(source.LastSyncedAt),
+		CreatedAt:        timeValue(source.CreatedAt),
 	}
 }
 
@@ -1645,6 +1657,21 @@ func cloneStringPtr(value *string) *string {
 	}
 	clone := *value
 	return &clone
+}
+
+func cloneTimePtr(value *time.Time) *time.Time {
+	if value == nil {
+		return nil
+	}
+	clone := *value
+	return &clone
+}
+
+func timeValue(value *time.Time) time.Time {
+	if value == nil {
+		return time.Time{}
+	}
+	return *value
 }
 
 func cloneInt32Ptr(value *int32) *int32 {

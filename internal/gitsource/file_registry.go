@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/imprun/windforce-lite/internal/contract"
 )
@@ -15,12 +16,15 @@ var ErrGitSourceNotFound = errors.New("git source not found")
 var ErrGitSourceConflict = errors.New("git source already exists")
 
 type Source struct {
-	Workspace string `json:"workspace,omitempty"`
-	ID        string `json:"id"`
-	RepoURL   string `json:"repoUrl"`
-	Branch    string `json:"branch,omitempty"`
-	Subpath   string `json:"subpath,omitempty"`
-	TokenEnv  string `json:"tokenEnv,omitempty"`
+	Workspace        string     `json:"workspace,omitempty"`
+	ID               string     `json:"id"`
+	RepoURL          string     `json:"repoUrl"`
+	Branch           string     `json:"branch,omitempty"`
+	Subpath          string     `json:"subpath,omitempty"`
+	TokenEnv         string     `json:"tokenEnv,omitempty"`
+	CreatedAt        *time.Time `json:"createdAt,omitempty"`
+	LastSyncedCommit *string    `json:"lastSyncedCommit,omitempty"`
+	LastSyncedAt     *time.Time `json:"lastSyncedAt,omitempty"`
 }
 
 type Patch struct {
@@ -63,6 +67,10 @@ func (r *FileRegistry) Create(ctx context.Context, source Source) (Source, error
 	if _, exists := snapshot.Sources[sourceKey]; exists {
 		return Source{}, ErrGitSourceConflict
 	}
+	now := time.Now().UTC()
+	if source.CreatedAt == nil {
+		source.CreatedAt = &now
+	}
 	snapshot.Sources[sourceKey] = source
 	if err := r.write(snapshot); err != nil {
 		return Source{}, err
@@ -86,7 +94,23 @@ func (r *FileRegistry) Upsert(ctx context.Context, source Source) error {
 	if snapshot.Sources == nil {
 		snapshot.Sources = map[string]Source{}
 	}
-	snapshot.Sources[key(source.Workspace, source.ID)] = source
+	sourceKey := key(source.Workspace, source.ID)
+	if existing, ok := snapshot.Sources[sourceKey]; ok {
+		if source.CreatedAt == nil {
+			source.CreatedAt = existing.CreatedAt
+		}
+		if source.LastSyncedCommit == nil {
+			source.LastSyncedCommit = existing.LastSyncedCommit
+		}
+		if source.LastSyncedAt == nil {
+			source.LastSyncedAt = existing.LastSyncedAt
+		}
+	}
+	now := time.Now().UTC()
+	if source.CreatedAt == nil {
+		source.CreatedAt = &now
+	}
+	snapshot.Sources[sourceKey] = source
 	return r.write(snapshot)
 }
 
@@ -133,6 +157,31 @@ func (r *FileRegistry) Patch(ctx context.Context, workspace string, id string, p
 		delete(snapshot.Sources, oldKey)
 	}
 	snapshot.Sources[newKey] = source
+	if err := r.write(snapshot); err != nil {
+		return Source{}, err
+	}
+	return source, nil
+}
+
+func (r *FileRegistry) MarkSynced(ctx context.Context, workspace string, id string, commit string, syncedAt time.Time) (Source, error) {
+	if err := ctx.Err(); err != nil {
+		return Source{}, err
+	}
+	snapshot, err := r.Load(ctx)
+	if err != nil {
+		return Source{}, err
+	}
+	sourceKey := key(workspace, id)
+	source, ok := snapshot.Sources[sourceKey]
+	if !ok {
+		return Source{}, ErrGitSourceNotFound
+	}
+	if syncedAt.IsZero() {
+		syncedAt = time.Now().UTC()
+	}
+	source.LastSyncedCommit = &commit
+	source.LastSyncedAt = &syncedAt
+	snapshot.Sources[sourceKey] = source
 	if err := r.write(snapshot); err != nil {
 		return Source{}, err
 	}

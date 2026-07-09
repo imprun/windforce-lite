@@ -724,17 +724,19 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 		t.Fatalf("register status = %d, want %d", registerResp.StatusCode, http.StatusCreated)
 	}
 	var registered struct {
-		ID          string `json:"id"`
-		WorkspaceID string `json:"workspace_id"`
-		Name        string `json:"name"`
-		RepoURL     string `json:"repo_url"`
-		CredsRef    string `json:"creds_ref"`
+		ID          string    `json:"id"`
+		WorkspaceID string    `json:"workspace_id"`
+		Name        string    `json:"name"`
+		RepoURL     string    `json:"repo_url"`
+		CredsRef    string    `json:"creds_ref"`
+		CreatedAt   time.Time `json:"created_at"`
 	}
 	if err := json.NewDecoder(registerResp.Body).Decode(&registered); err != nil {
 		t.Fatal(err)
 	}
 	if registered.ID != "source-a" || registered.Name != "source-a" || registered.WorkspaceID != "ws-a" ||
-		registered.RepoURL != filepath.ToSlash(repoDir) || registered.CredsRef != "WINDFORCE_LITE_GIT_TOKEN" {
+		registered.RepoURL != filepath.ToSlash(repoDir) || registered.CredsRef != "WINDFORCE_LITE_GIT_TOKEN" ||
+		registered.CreatedAt.IsZero() {
 		t.Fatalf("registered source = %#v", registered)
 	}
 
@@ -792,6 +794,28 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 	}
 	if syncBody.Commit == "" || syncBody.App != "echo" || len(syncBody.Actions) != 1 || syncBody.Actions[0] != "echo.echo" {
 		t.Fatalf("sync body = %#v", syncBody)
+	}
+
+	syncedSourcesResp, err := http.Get(server.URL + "/api/w/ws-a/git_sources")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer syncedSourcesResp.Body.Close()
+	if syncedSourcesResp.StatusCode != http.StatusOK {
+		t.Fatalf("synced sources status = %d, want %d", syncedSourcesResp.StatusCode, http.StatusOK)
+	}
+	var syncedSources []struct {
+		Name             string     `json:"name"`
+		LastSyncedCommit *string    `json:"last_synced_commit"`
+		LastSyncedAt     *time.Time `json:"last_synced_at"`
+	}
+	if err := json.NewDecoder(syncedSourcesResp.Body).Decode(&syncedSources); err != nil {
+		t.Fatal(err)
+	}
+	if len(syncedSources) != 1 || syncedSources[0].Name != "source-a" ||
+		syncedSources[0].LastSyncedCommit == nil || *syncedSources[0].LastSyncedCommit != syncBody.Commit ||
+		syncedSources[0].LastSyncedAt == nil || syncedSources[0].LastSyncedAt.IsZero() {
+		t.Fatalf("synced sources = %#v", syncedSources)
 	}
 
 	appsResp, err := http.Get(server.URL + "/api/w/ws-a/apps")
