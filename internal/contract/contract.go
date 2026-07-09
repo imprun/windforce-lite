@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path"
 	"strings"
+	"time"
 	"unicode/utf8"
 )
 
@@ -42,6 +43,7 @@ type Action struct {
 	OutputSchema string         `json:"outputSchema,omitempty"`
 	TimeoutS     *int32         `json:"timeout,omitempty"`
 	TimeoutMs    int64          `json:"timeoutMs,omitempty"`
+	UpdatedAt    *time.Time     `json:"updatedAt,omitempty"`
 }
 
 // ActionAdapter selects the contract between windforce-lite and an action script.
@@ -72,6 +74,7 @@ type Deployment struct {
 	BundleDigest string            `json:"bundleDigest,omitempty"`
 	ObjectURI    string            `json:"objectUri"`
 	Actions      map[string]Action `json:"actions"`
+	UpdatedAt    *time.Time        `json:"updatedAt,omitempty"`
 }
 
 // JobRequest is the runtime request passed into windforce-lite.

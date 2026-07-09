@@ -54,6 +54,7 @@ func (c *FileCatalog) UpsertDeployment(ctx context.Context, deployment contract.
 	if snapshot.Deployments == nil {
 		snapshot.Deployments = map[string]contract.Deployment{}
 	}
+	deployment = ensureDeploymentUpdatedAt(deployment, time.Now().UTC())
 	snapshot.Deployments[deployment.App] = deployment
 	snapshot.History = append(snapshot.History, newDeploymentHistory(deployment))
 	return c.write(snapshot)
@@ -84,6 +85,7 @@ func (c *FileCatalog) SetAppTagOverride(ctx context.Context, workspace string, a
 		return contract.Deployment{}, ErrDeploymentNotFound
 	}
 	deployment.TagOverride = cloneStringPtr(tagOverride)
+	deployment.UpdatedAt = timePtr(time.Now().UTC())
 	snapshot.Deployments[app] = deployment
 	if err := c.write(snapshot); err != nil {
 		return contract.Deployment{}, err
@@ -108,6 +110,7 @@ func (c *FileCatalog) SetActionTagOverride(ctx context.Context, workspace string
 		return contract.Action{}, ErrActionNotFound
 	}
 	action.TagOverride = cloneStringPtr(tagOverride)
+	action.UpdatedAt = timePtr(time.Now().UTC())
 	deployment.Actions[actionKey] = action
 	snapshot.Deployments[app] = deployment
 	if err := c.write(snapshot); err != nil {
@@ -155,6 +158,23 @@ func (c *FileCatalog) write(snapshot Snapshot) error {
 		return err
 	}
 	return os.Rename(tmpPath, c.Path)
+}
+
+func ensureDeploymentUpdatedAt(deployment contract.Deployment, updatedAt time.Time) contract.Deployment {
+	if deployment.UpdatedAt == nil {
+		deployment.UpdatedAt = timePtr(updatedAt)
+	}
+	for key, action := range deployment.Actions {
+		if action.UpdatedAt == nil {
+			action.UpdatedAt = timePtr(updatedAt)
+			deployment.Actions[key] = action
+		}
+	}
+	return deployment
+}
+
+func timePtr(value time.Time) *time.Time {
+	return &value
 }
 
 func newDeploymentHistory(deployment contract.Deployment) DeploymentHistory {
