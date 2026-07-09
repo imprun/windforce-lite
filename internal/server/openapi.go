@@ -537,12 +537,12 @@ func controlPlaneSchemas() map[string]any {
 				"branch":             oapiStringSchema(),
 				"subpath":            oapiStringSchema(),
 				"creds_ref":          oapiStringSchema(),
+				"kind":               oapiStringSchema(),
 				"last_synced_commit": nullableString,
 				"last_synced_at":     nullableDateTime,
 				"created_at":         oapiDateTimeSchema(),
-				"updated_at":         oapiDateTimeSchema(),
 			},
-			"required": []any{"id", "name", "workspace_id", "repo_url", "branch", "created_at", "updated_at"},
+			"required": []any{"id", "name", "workspace_id", "repo_url", "branch", "subpath", "creds_ref", "kind", "last_synced_commit", "last_synced_at", "created_at"},
 		},
 		"RegisterGitSourceRequest": map[string]any{
 			"type": "object",
@@ -558,9 +558,10 @@ func controlPlaneSchemas() map[string]any {
 		"ProbeGitSourceRequest": map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"repo_url":  oapiStringSchema(),
-				"branch":    oapiStringSchema(),
-				"creds_ref": oapiStringSchema(),
+				"repo_url":     oapiStringSchema(),
+				"branch":       oapiStringSchema(),
+				"access_token": oapiStringSchema(),
+				"creds_ref":    oapiStringSchema(),
 			},
 			"required": []any{"repo_url"},
 		},
@@ -581,9 +582,13 @@ func controlPlaneSchemas() map[string]any {
 		"GitSourceProbeResult": map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"commit":    oapiStringSchema(),
-				"reachable": oapiBooleanSchema(),
+				"reachable":     oapiBooleanSchema(),
+				"branch":        oapiStringSchema(),
+				"branch_exists": oapiBooleanSchema(),
+				"branches":      stringArray,
+				"error":         oapiStringSchema(),
 			},
+			"required": []any{"reachable", "branches"},
 		},
 		"GitSourceSyncResult": map[string]any{
 			"type": "object",
@@ -640,6 +645,8 @@ func controlPlaneSchemas() map[string]any {
 				"updated_at":            oapiDateTimeSchema(),
 				"effective_route_tag":   oapiStringSchema(),
 				"actions_count":         oapiIntegerSchema(),
+				"schedules_count":       oapiIntegerSchema(),
+				"flows_count":           oapiIntegerSchema(),
 			},
 		},
 		"AppsSummaryResponse": map[string]any{

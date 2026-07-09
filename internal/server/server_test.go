@@ -934,6 +934,31 @@ func TestCanonicalControlPlaneOpenAPIExposesSchemaDiscovery(t *testing.T) {
 
 	components := body["components"].(map[string]any)
 	schemas := components["schemas"].(map[string]any)
+	gitSource := schemas["GitSource"].(map[string]any)
+	gitSourceProperties := gitSource["properties"].(map[string]any)
+	if gitSourceProperties["kind"] == nil || gitSourceProperties["updated_at"] != nil {
+		t.Fatalf("git source schema properties = %#v", gitSourceProperties)
+	}
+	probeRequest := schemas["ProbeGitSourceRequest"].(map[string]any)
+	probeRequestProperties := probeRequest["properties"].(map[string]any)
+	if probeRequestProperties["access_token"] == nil {
+		t.Fatalf("probe request schema properties = %#v", probeRequestProperties)
+	}
+	probeResult := schemas["GitSourceProbeResult"].(map[string]any)
+	probeResultProperties := probeResult["properties"].(map[string]any)
+	if probeResultProperties["branches"] == nil || probeResultProperties["branch_exists"] == nil || probeResultProperties["commit"] != nil {
+		t.Fatalf("probe result schema properties = %#v", probeResultProperties)
+	}
+	sampleSyncResponse := schemas["SampleSyncResponse"].(map[string]any)
+	sampleSyncProperties := sampleSyncResponse["properties"].(map[string]any)
+	if sampleSyncProperties["source"] == nil || sampleSyncProperties["sync_result"] == nil {
+		t.Fatalf("sample sync response schema properties = %#v", sampleSyncProperties)
+	}
+	appSummary := schemas["AppSummary"].(map[string]any)
+	appSummaryProperties := appSummary["properties"].(map[string]any)
+	if appSummaryProperties["schedules_count"] == nil || appSummaryProperties["flows_count"] == nil {
+		t.Fatalf("app summary schema properties = %#v", appSummaryProperties)
+	}
 	actionSchema := schemas["Action"].(map[string]any)
 	properties := actionSchema["properties"].(map[string]any)
 	inputSchema := properties["input_schema"].(map[string]any)
@@ -946,6 +971,33 @@ func TestCanonicalControlPlaneOpenAPIExposesSchemaDiscovery(t *testing.T) {
 	appDetailActions := appDetail["properties"].(map[string]any)["actions"].(map[string]any)
 	if appDetailActions["items"].(map[string]any)["$ref"] != "#/components/schemas/Action" {
 		t.Fatalf("app detail actions schema = %#v", appDetailActions)
+	}
+
+	gitSource := schemas["GitSource"].(map[string]any)
+	gitSourceProperties := gitSource["properties"].(map[string]any)
+	for _, field := range []string{"kind", "last_synced_commit", "last_synced_at", "created_at"} {
+		if gitSourceProperties[field] == nil {
+			t.Fatalf("git source schema missing %s: %#v", field, gitSourceProperties)
+		}
+	}
+	if gitSourceProperties["updated_at"] != nil {
+		t.Fatalf("git source schema must match canonical response without updated_at: %#v", gitSourceProperties)
+	}
+	probeRequest := schemas["ProbeGitSourceRequest"].(map[string]any)["properties"].(map[string]any)
+	if probeRequest["access_token"] == nil || probeRequest["creds_ref"] == nil {
+		t.Fatalf("probe request schema = %#v", probeRequest)
+	}
+	probeResult := schemas["GitSourceProbeResult"].(map[string]any)["properties"].(map[string]any)
+	for _, field := range []string{"reachable", "branch", "branch_exists", "branches", "error"} {
+		if probeResult[field] == nil {
+			t.Fatalf("probe result schema missing %s: %#v", field, probeResult)
+		}
+	}
+	appSummary := schemas["AppSummary"].(map[string]any)["properties"].(map[string]any)
+	for _, field := range []string{"actions_count", "schedules_count", "flows_count"} {
+		if appSummary[field] == nil {
+			t.Fatalf("app summary schema missing %s: %#v", field, appSummary)
+		}
 	}
 }
 
