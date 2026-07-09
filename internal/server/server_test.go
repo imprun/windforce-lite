@@ -24,7 +24,7 @@ import (
 	"github.com/imprun/windforce-lite/internal/syncer"
 )
 
-func TestTriggerCreatesRunAndAPIReadsIt(t *testing.T) {
+func TestAdapterTriggerCreatesRunAndAPIReadsIt(t *testing.T) {
 	tempDir := t.TempDir()
 	fileCatalog := catalog.NewFileCatalog(filepath.Join(tempDir, "catalog.json"))
 	if err := fileCatalog.UpsertDeployment(context.Background(), contract.Deployment{
@@ -38,15 +38,16 @@ func TestTriggerCreatesRunAndAPIReadsIt(t *testing.T) {
 	}
 
 	handler := New(Config{
-		Store:         state.NewLocalStore(filepath.Join(tempDir, "state.json")),
-		Catalog:       fileCatalog,
-		EnableTrigger: true,
-		EnableAPI:     true,
+		Store:           state.NewLocalStore(filepath.Join(tempDir, "state.json")),
+		Catalog:         fileCatalog,
+		EnableTrigger:   true,
+		EnableAPI:       true,
+		TriggerAdapters: []TriggerAdapter{fakeTriggerAdapter{}},
 	})
 	server := httptest.NewServer(handler)
 	defer server.Close()
 
-	req, err := http.NewRequest(http.MethodPost, server.URL+"/v1/apps/echo/actions/echo", bytes.NewBufferString(`{"message":"hello"}`))
+	req, err := http.NewRequest(http.MethodPost, server.URL+"/external/v1/echo/echo", bytes.NewBufferString(`{"message":"hello"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,8 +57,8 @@ func TestTriggerCreatesRunAndAPIReadsIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusAccepted {
-		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusAccepted)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
 	}
 	var triggerResponse map[string]any
 	if err := json.NewDecoder(resp.Body).Decode(&triggerResponse); err != nil {
@@ -66,11 +67,11 @@ func TestTriggerCreatesRunAndAPIReadsIt(t *testing.T) {
 	if triggerResponse["runId"] != "task-a" || triggerResponse["state"] != string(state.RunQueued) {
 		t.Fatalf("trigger response = %#v", triggerResponse)
 	}
-	if triggerResponse["correlationId"] != "task-a" {
-		t.Fatalf("trigger correlation id = %#v", triggerResponse)
+	if triggerResponse["externalApp"] != "echo" || triggerResponse["externalAction"] != "echo" {
+		t.Fatalf("adapter trigger response = %#v", triggerResponse)
 	}
 
-	listResp, err := http.Get(server.URL + "/api/w/default/jobs?status=queued&app=echo&action=echo&trigger_kind=windforce&limit=1")
+	listResp, err := http.Get(server.URL + "/api/w/default/jobs?status=queued&app=echo&action=echo&trigger_kind=external&limit=1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +95,7 @@ func TestTriggerCreatesRunAndAPIReadsIt(t *testing.T) {
 		listResponse.Items[0].Status != "queued" ||
 		listResponse.Items[0].AppKey != "echo" ||
 		listResponse.Items[0].ActionKey != "echo" ||
-		listResponse.Items[0].TriggerKind != "windforce" {
+		listResponse.Items[0].TriggerKind != "external" {
 		t.Fatalf("job list response = %#v", listResponse)
 	}
 
@@ -829,6 +830,26 @@ func TestLegacyV1ControlPlaneRoutesAreNotExposed(t *testing.T) {
 		if resp.StatusCode != http.StatusNotFound {
 			t.Fatalf("%s %s status = %d, want %d", tc.method, tc.path, resp.StatusCode, http.StatusNotFound)
 		}
+	}
+}
+
+func TestLegacyCoreTriggerRouteIsNotExposed(t *testing.T) {
+	tempDir := t.TempDir()
+	fileCatalog := catalog.NewFileCatalog(filepath.Join(tempDir, "catalog.json"))
+	server := httptest.NewServer(New(Config{
+		Store:         state.NewLocalStore(filepath.Join(tempDir, "state.json")),
+		Catalog:       fileCatalog,
+		EnableTrigger: true,
+	}))
+	defer server.Close()
+
+	resp, err := http.Post(server.URL+"/v1/apps/echo/actions/echo", "application/json", bytes.NewBufferString(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("legacy core trigger status = %d, want %d", resp.StatusCode, http.StatusNotFound)
 	}
 }
 
@@ -2048,11 +2069,10 @@ func TestAdapterTriggerReturnsCustomEnvelope(t *testing.T) {
 	}
 
 	handler := New(Config{
-		Store:              state.NewLocalStore(filepath.Join(tempDir, "state.json")),
-		Catalog:            fileCatalog,
-		EnableTrigger:      true,
-		DisableCoreTrigger: true,
-		TriggerAdapters:    []TriggerAdapter{fakeTriggerAdapter{}},
+		Store:           state.NewLocalStore(filepath.Join(tempDir, "state.json")),
+		Catalog:         fileCatalog,
+		EnableTrigger:   true,
+		TriggerAdapters: []TriggerAdapter{fakeTriggerAdapter{}},
 	})
 	server := httptest.NewServer(handler)
 	defer server.Close()
@@ -2087,14 +2107,15 @@ func TestTriggerTokenAuthorization(t *testing.T) {
 		t.Fatal(err)
 	}
 	server := httptest.NewServer(New(Config{
-		Store:         state.NewLocalStore(filepath.Join(tempDir, "state.json")),
-		Catalog:       fileCatalog,
-		EnableTrigger: true,
-		TriggerToken:  "secret-token",
+		Store:           state.NewLocalStore(filepath.Join(tempDir, "state.json")),
+		Catalog:         fileCatalog,
+		EnableTrigger:   true,
+		TriggerAdapters: []TriggerAdapter{fakeTriggerAdapter{}},
+		TriggerToken:    "secret-token",
 	}))
 	defer server.Close()
 
-	resp, err := http.Post(server.URL+"/v1/apps/echo/actions/echo", "application/json", bytes.NewBufferString(`{}`))
+	resp, err := http.Post(server.URL+"/external/v1/echo/echo", "application/json", bytes.NewBufferString(`{}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2103,7 +2124,7 @@ func TestTriggerTokenAuthorization(t *testing.T) {
 		t.Fatalf("unauthorized status = %d, want %d", resp.StatusCode, http.StatusUnauthorized)
 	}
 
-	req, err := http.NewRequest(http.MethodPost, server.URL+"/v1/apps/echo/actions/echo", bytes.NewBufferString(`{}`))
+	req, err := http.NewRequest(http.MethodPost, server.URL+"/external/v1/echo/echo", bytes.NewBufferString(`{}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2114,8 +2135,8 @@ func TestTriggerTokenAuthorization(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusAccepted {
-		t.Fatalf("authorized status = %d, want %d", resp.StatusCode, http.StatusAccepted)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("authorized status = %d, want %d", resp.StatusCode, http.StatusOK)
 	}
 }
 

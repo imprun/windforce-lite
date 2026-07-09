@@ -51,49 +51,46 @@ type TriggerAdapter interface {
 }
 
 type Config struct {
-	Store              state.Store
-	Catalog            Catalog
-	Syncer             *syncer.Syncer
-	GitSources         GitSourceRegistry
-	EnableTrigger      bool
-	EnableAPI          bool
-	DisableCoreTrigger bool
-	TriggerAdapters    []TriggerAdapter
-	TriggerToken       string
-	AdminToken         string
-	SampleRoot         string
-	Wait               time.Duration
+	Store           state.Store
+	Catalog         Catalog
+	Syncer          *syncer.Syncer
+	GitSources      GitSourceRegistry
+	EnableTrigger   bool
+	EnableAPI       bool
+	TriggerAdapters []TriggerAdapter
+	TriggerToken    string
+	AdminToken      string
+	SampleRoot      string
+	Wait            time.Duration
 }
 
 type Handler struct {
-	store              state.Store
-	catalog            Catalog
-	syncer             *syncer.Syncer
-	gitSources         GitSourceRegistry
-	enableTrigger      bool
-	enableAPI          bool
-	disableCoreTrigger bool
-	triggerAdapters    []TriggerAdapter
-	triggerToken       string
-	adminToken         string
-	sampleRoot         string
-	wait               time.Duration
+	store           state.Store
+	catalog         Catalog
+	syncer          *syncer.Syncer
+	gitSources      GitSourceRegistry
+	enableTrigger   bool
+	enableAPI       bool
+	triggerAdapters []TriggerAdapter
+	triggerToken    string
+	adminToken      string
+	sampleRoot      string
+	wait            time.Duration
 }
 
 func New(config Config) http.Handler {
 	return &Handler{
-		store:              config.Store,
-		catalog:            config.Catalog,
-		syncer:             config.Syncer,
-		gitSources:         config.GitSources,
-		enableTrigger:      config.EnableTrigger,
-		enableAPI:          config.EnableAPI,
-		disableCoreTrigger: config.DisableCoreTrigger,
-		triggerAdapters:    append([]TriggerAdapter(nil), config.TriggerAdapters...),
-		triggerToken:       config.TriggerToken,
-		adminToken:         config.AdminToken,
-		sampleRoot:         config.SampleRoot,
-		wait:               config.Wait,
+		store:           config.Store,
+		catalog:         config.Catalog,
+		syncer:          config.Syncer,
+		gitSources:      config.GitSources,
+		enableTrigger:   config.EnableTrigger,
+		enableAPI:       config.EnableAPI,
+		triggerAdapters: append([]TriggerAdapter(nil), config.TriggerAdapters...),
+		triggerToken:    config.TriggerToken,
+		adminToken:      config.AdminToken,
+		sampleRoot:      config.SampleRoot,
+		wait:            config.Wait,
 	}
 }
 
@@ -1220,6 +1217,7 @@ func newCanonicalAppHistoryItem(item catalogpkg.DeploymentHistory) canonicalAppH
 		CommitSha:  item.Commit,
 		Entrypoint: item.Entrypoint,
 		Source:     firstNonEmpty(item.Source, "external_sync"),
+		Message:    item.Message,
 		CreatedAt:  item.CreatedAt,
 	}
 }
@@ -2114,20 +2112,7 @@ type triggerRoute struct {
 	env          []string
 }
 
-func parseTriggerRoute(path string) (triggerRoute, bool) {
-	parts := splitPath(path)
-	if len(parts) == 5 && parts[0] == "v1" && parts[1] == "apps" && parts[3] == "actions" {
-		return triggerRoute{adapterName: "windforce", app: parts[2], action: parts[4]}, true
-	}
-	return triggerRoute{}, false
-}
-
 func (h *Handler) matchTriggerRoute(path string) (triggerRoute, bool) {
-	if !h.disableCoreTrigger {
-		if route, ok := parseTriggerRoute(path); ok {
-			return route, true
-		}
-	}
 	for _, adapter := range h.triggerAdapters {
 		if adapter == nil {
 			continue

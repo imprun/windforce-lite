@@ -185,16 +185,15 @@ go run ./cmd/windforce-lite standalone `
   --addr :8080 `
   --store .tmp/store `
   --catalog .tmp/catalog.json `
-  --state .tmp/state.json `
-  --wait 30s
+  --state .tmp/state.json
 ```
 
-Trigger an action through HTTP:
+Enqueue an action through the canonical control-plane HTTP API:
 
 ```powershell
 Invoke-RestMethod `
   -Method Post `
-  -Uri http://127.0.0.1:8080/v1/apps/echo/actions/echo `
+  -Uri http://127.0.0.1:8080/api/w/default/jobs/run/echo/echo `
   -ContentType application/json `
   -Body '{"message":"hello"}'
 ```
@@ -202,8 +201,7 @@ Invoke-RestMethod `
 Separated local processes use the same state file:
 
 ```powershell
-go run ./cmd/windforce-lite trigger --addr :8081 --state .tmp/state.json --wait 30s
-go run ./cmd/windforce-lite api --addr :8082 --state .tmp/state.json
+go run ./cmd/windforce-lite api --addr :8081 --state .tmp/state.json
 go run ./cmd/windforce-lite worker --state .tmp/state.json --store .tmp/store
 ```
 
@@ -211,10 +209,6 @@ go run ./cmd/windforce-lite worker --state .tmp/state.json --store .tmp/store
 tests and scripted smoke checks.
 `worker --tags default,app-blue` restricts claims to those pinned route tags;
 when omitted, the worker claims every queued tag for simple local development.
-
-Implemented trigger endpoint:
-
-- `POST /v1/apps/{app}/actions/{action}`
 
 Implemented control-plane endpoints:
 
@@ -280,7 +274,7 @@ PostgreSQL is the production state backend. All runtime modes accept
 ```powershell
 $env:WINDFORCE_DATABASE_URL = "postgres://user:pass@host:5432/windforce_lite?sslmode=disable"
 
-go run ./cmd/windforce-lite trigger `
+go run ./cmd/windforce-lite api `
   --state-backend postgres `
   --database-url $env:WINDFORCE_DATABASE_URL `
   --migrate
@@ -290,31 +284,26 @@ go run ./cmd/windforce-lite worker `
   --database-url $env:WINDFORCE_DATABASE_URL
 ```
 
-HTTP trigger/API token checks are optional for local development. Set token
-values through environment variables and pass only the variable names to the
-process:
+API token checks are optional for local development. Set token values through
+environment variables and pass only the variable names to the process:
 
 ```powershell
-go run ./cmd/windforce-lite trigger `
-  --trigger-token-env WINDFORCE_TRIGGER_TOKEN
-
 go run ./cmd/windforce-lite api `
   --admin-token-env WINDFORCE_ADMIN_TOKEN
 ```
 
 ## Runtime architecture
 
-The long-term runtime follows the original Windforce trigger/worker model:
+The runtime follows the original Windforce control-plane/worker model:
 
-- HTTP trigger creates a run and enqueues a job
+- the control-plane run API creates a run and enqueues a job
 - worker polls the queue and executes the pinned deployment
 - HITL pauses a run in `WAITING_HUMAN`
 - resume API enqueues the next job
 
 Production process roles are separated:
 
-- `windforce-lite trigger`: external execution ingress
-- `windforce-lite api`: control plane, run status, HITL resume
+- `windforce-lite api`: control plane, HTTP run ingress, run status, HITL resume
 - `windforce-lite worker`: job polling and action execution
 - `windforce-lite standalone`: local/dev combined mode
 

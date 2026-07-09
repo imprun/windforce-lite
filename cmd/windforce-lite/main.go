@@ -45,8 +45,6 @@ func run(args []string) int {
 		return runAction(args[1:])
 	case "run-json":
 		return runJSON(args[1:])
-	case "trigger":
-		return runServer(args[1:], "trigger")
 	case "api":
 		return runServer(args[1:], "api")
 	case "worker":
@@ -171,14 +169,12 @@ func runServer(args []string, mode string) int {
 	statePath := flags.String("state", defaultStatePath(), "local runtime state JSON path")
 	databaseURL := flags.String("database-url", "", "PostgreSQL database URL for --state-backend postgres")
 	migrate := flags.Bool("migrate", false, "run state backend schema migration before starting")
-	triggerTokenEnv := flags.String("trigger-token-env", "", "environment variable that contains the trigger bearer token")
 	adminTokenEnv := flags.String("admin-token-env", "", "environment variable that contains the admin/API bearer token")
 	baseURL := flags.String("base-url", "", "public API base URL injected into job ctx helpers")
 	storeDir := flags.String("store", defaultStoreDir(), "bundle store directory")
 	catalogPath := flags.String("catalog", defaultCatalogPath(), "catalog JSON path")
 	gitSourcesPath := flags.String("git-sources", defaultGitSourcesPath(), "registered git sources JSON path")
 	cacheRoot := flags.String("cache", defaultCacheDir(), "runtime cache directory")
-	wait := flags.Duration("wait", 0, "maximum trigger wait for a completed or pending run")
 	poll := flags.Duration("poll", 500*time.Millisecond, "standalone worker poll interval")
 	leaseTTL := flags.Duration("lease", 30*time.Second, "worker job lease TTL")
 	workerID := flags.String("worker-id", "", "worker identity for standalone processing")
@@ -201,15 +197,12 @@ func runServer(args []string, mode string) int {
 		runtimeBaseURL = localBaseURL(*addr)
 	}
 	handler := server.New(server.Config{
-		Store:         stateStore,
-		Catalog:       fileCatalog,
-		Syncer:        &syncer.Syncer{Store: bundle.NewLocalStore(*storeDir), Catalog: fileCatalog},
-		GitSources:    gitSources,
-		EnableTrigger: mode == "trigger" || mode == "standalone",
-		EnableAPI:     mode == "api" || mode == "standalone",
-		TriggerToken:  tokenFromEnv(*triggerTokenEnv),
-		AdminToken:    adminToken,
-		Wait:          *wait,
+		Store:      stateStore,
+		Catalog:    fileCatalog,
+		Syncer:     &syncer.Syncer{Store: bundle.NewLocalStore(*storeDir), Catalog: fileCatalog},
+		GitSources: gitSources,
+		EnableAPI:  mode == "api" || mode == "standalone",
+		AdminToken: adminToken,
 	})
 
 	if mode == "standalone" {
@@ -436,9 +429,8 @@ func printUsage(file *os.File) {
 	fmt.Fprintln(file, "  windforce-lite sync --source <dir> [--subpath <subdir>] [--store <dir>] [--catalog <path>]")
 	fmt.Fprintln(file, "  windforce-lite sync --repo <url> [--branch main] [--subpath <subdir>] [--store <dir>] [--catalog <path>]")
 	fmt.Fprintln(file, "  windforce-lite run --app <app> --action <action> [--input <path>] [--output <path>]")
-	fmt.Fprintln(file, "  windforce-lite trigger [--addr :8080] [--state-backend local|postgres] [--wait 30s] [--git-sources <path>]")
 	fmt.Fprintln(file, "  windforce-lite api [--addr :8080] [--state-backend local|postgres] [--git-sources <path>]")
 	fmt.Fprintln(file, "  windforce-lite worker [--state-backend local|postgres] [--once]")
-	fmt.Fprintln(file, "  windforce-lite standalone [--addr :8080] [--state-backend local|postgres] [--wait 30s] [--git-sources <path>]")
+	fmt.Fprintln(file, "  windforce-lite standalone [--addr :8080] [--state-backend local|postgres] [--git-sources <path>]")
 	fmt.Fprintln(file, "  windforce-lite run-json [flags] -- <command> [args...]")
 }

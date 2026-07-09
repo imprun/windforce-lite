@@ -1,7 +1,7 @@
 .PHONY: help fmt test test-postgres build clean \
 	sync-example run-example smoke \
 	compose-up compose-db compose-build compose-down compose-reset compose-logs compose-ps postgres-dsn \
-	dev-standalone dev-standalone-postgres dev-trigger dev-api dev-worker worker-once \
+	dev-standalone dev-standalone-postgres dev-api dev-worker worker-once \
 	windforce-register windforce-sync windforce-sample windforce-schema windforce-openapi
 
 APP := windforce-lite
@@ -32,7 +32,6 @@ CACHE ?= $(DEV_DIR)/cache
 INPUT ?= $(DEV_DIR)/input.json
 OUTPUT ?= $(DEV_DIR)/output.json
 ADDR ?= 127.0.0.1:8080
-WAIT ?= 30s
 
 WINDFORCE_LITE_API_PORT ?= 18090
 WF_API_URL ?= http://127.0.0.1:$(WINDFORCE_LITE_API_PORT)
@@ -63,7 +62,6 @@ help:
 	@echo "  smoke                  sync and run examples/echo through the direct CLI"
 	@echo "  dev-standalone         run local JSON-state standalone server"
 	@echo "  dev-standalone-postgres run PostgreSQL-backed standalone server"
-	@echo "  dev-trigger            run trigger process with PostgreSQL state"
 	@echo "  dev-api                run API process with PostgreSQL state"
 	@echo "  dev-worker             run worker process with PostgreSQL state"
 	@echo "  worker-once            claim at most one PostgreSQL-backed queued job"
@@ -126,13 +124,10 @@ postgres-dsn:
 	@echo "$(POSTGRES_DSN)"
 
 dev-standalone: sync-example
-	$(GO) run $(CMD) standalone --addr "$(ADDR)" --store "$(STORE)" --catalog "$(CATALOG)" --state "$(STATE)" --cache "$(CACHE)" --wait "$(WAIT)"
+	$(GO) run $(CMD) standalone --addr "$(ADDR)" --store "$(STORE)" --catalog "$(CATALOG)" --state "$(STATE)" --cache "$(CACHE)"
 
 dev-standalone-postgres: compose-up sync-example
-	$(GO) run $(CMD) standalone --addr "$(ADDR)" --store "$(STORE)" --catalog "$(CATALOG)" --cache "$(CACHE)" --state-backend postgres --database-url "$(POSTGRES_DSN)" --migrate --wait "$(WAIT)"
-
-dev-trigger: compose-up sync-example
-	$(GO) run $(CMD) trigger --addr "$(ADDR)" --store "$(STORE)" --catalog "$(CATALOG)" --state-backend postgres --database-url "$(POSTGRES_DSN)" --migrate --wait "$(WAIT)"
+	$(GO) run $(CMD) standalone --addr "$(ADDR)" --store "$(STORE)" --catalog "$(CATALOG)" --cache "$(CACHE)" --state-backend postgres --database-url "$(POSTGRES_DSN)" --migrate
 
 dev-api: compose-up
 	$(GO) run $(CMD) api --addr "$(ADDR)" --store "$(STORE)" --catalog "$(CATALOG)" --state-backend postgres --database-url "$(POSTGRES_DSN)" --migrate
