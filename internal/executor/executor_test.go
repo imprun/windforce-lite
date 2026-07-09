@@ -125,10 +125,40 @@ func writeJSON(w http.ResponseWriter, value any) {
 	}
 }
 
+func TestDefaultWindowsPythonPathSkipsWindowsAppsAlias(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("windows path resolution only")
+	}
+	tempDir := t.TempDir()
+	windowsApps := filepath.Join(tempDir, "Microsoft", "WindowsApps")
+	realBin := filepath.Join(tempDir, "Python", "bin")
+	if err := os.MkdirAll(windowsApps, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(realBin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(windowsApps, "python.exe"), []byte("alias"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	realPython := filepath.Join(realBin, "python.exe")
+	if err := os.WriteFile(realPython, []byte("real"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", windowsApps+string(os.PathListSeparator)+realBin)
+
+	if got := defaultWindowsPythonPath(); got != realPython {
+		t.Fatalf("defaultWindowsPythonPath() = %q, want %q", got, realPython)
+	}
+}
+
 func requirePython(t *testing.T) {
 	t.Helper()
 	python := "python3"
 	if runtime.GOOS == "windows" {
+		if defaultWindowsPythonPath() != "" {
+			return
+		}
 		if _, err := exec.LookPath("py"); err == nil {
 			return
 		}

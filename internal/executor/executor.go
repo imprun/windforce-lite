@@ -77,19 +77,49 @@ func runtimeFor(lang string) (langRuntime, error) {
 			wrapperName:    "wrapper.py",
 			wrapperContent: wrapperPy,
 			argv: func(p RunParams) []string {
-				py := p.PythonPath
-				if py != "" {
-					return []string{py, "wrapper.py"}
-				}
-				if runtime.GOOS == "windows" {
-					return []string{"py", "-3", "wrapper.py"}
-				}
-				return []string{"python3", "wrapper.py"}
+				return pythonArgv(p.PythonPath, "wrapper.py")
 			},
 		}, nil
 	default:
 		return langRuntime{}, fmt.Errorf("%w: %q", ErrScriptLang, lang)
 	}
+}
+
+func pythonArgv(pythonPath string, wrapperName string) []string {
+	if pythonPath != "" {
+		return []string{pythonPath, wrapperName}
+	}
+	if runtime.GOOS == "windows" {
+		if py := defaultWindowsPythonPath(); py != "" {
+			return []string{py, wrapperName}
+		}
+		return []string{"py", "-3", wrapperName}
+	}
+	return []string{"python3", wrapperName}
+}
+
+func defaultWindowsPythonPath() string {
+	for _, dir := range filepath.SplitList(os.Getenv("PATH")) {
+		if strings.TrimSpace(dir) == "" {
+			continue
+		}
+		for _, name := range []string{"python.exe", "python3.exe"} {
+			candidate := filepath.Join(dir, name)
+			if isWindowsAppsAlias(candidate) {
+				continue
+			}
+			info, err := os.Stat(candidate)
+			if err == nil && !info.IsDir() {
+				return candidate
+			}
+		}
+	}
+	return ""
+}
+
+func isWindowsAppsAlias(path string) bool {
+	clean := strings.ToLower(filepath.Clean(path))
+	return strings.Contains(clean, `\microsoft\windowsapps\`)
 }
 
 // Run executes the job and returns its result. An error is returned only for
