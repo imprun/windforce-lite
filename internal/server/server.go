@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -192,6 +193,14 @@ func (h *Handler) handleAPI(w http.ResponseWriter, r *http.Request) bool {
 	}
 	if len(parts) == 8 && parts[0] == "api" && parts[1] == "w" && parts[3] == "jobs" && parts[4] == "run" && parts[7] == "wait" && r.Method == http.MethodPost {
 		h.handleJobRun(w, r, parts[2], parts[5], parts[6], true)
+		return true
+	}
+	if len(parts) == 4 && parts[0] == "api" && parts[1] == "w" && parts[3] == "jobs" && r.Method == http.MethodGet {
+		h.handleJobList(w, r, parts[2])
+		return true
+	}
+	if len(parts) == 5 && parts[0] == "api" && parts[1] == "w" && parts[3] == "jobs" && parts[4] == "summary" && r.Method == http.MethodGet {
+		h.handleJobSummary(w, r, parts[2])
 		return true
 	}
 	if len(parts) == 5 && parts[0] == "api" && parts[1] == "w" && parts[3] == "jobs" && r.Method == http.MethodGet {
@@ -495,6 +504,59 @@ func (h *Handler) handleCatalog(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, snapshot)
 }
 
+func (h *Handler) handleJobList(w http.ResponseWriter, r *http.Request, workspaceID string) {
+	if h.store == nil {
+		writeError(w, http.StatusServiceUnavailable, "state store is not configured")
+		return
+	}
+	query, limit, ok := parseJobListQuery(w, r, workspaceID)
+	if !ok {
+		return
+	}
+	query.Limit = limit + 1
+	items, err := h.store.ListJobs(r.Context(), query)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	hasMore := len(items) > limit
+	if hasMore {
+		items = items[:limit]
+	}
+	pagination := map[string]any{
+		"limit":    limit,
+		"count":    len(items),
+		"has_more": hasMore,
+	}
+	if hasMore {
+		last := items[len(items)-1]
+		pagination["next_cursor"] = encodeJobCursor(last.CreatedAt, last.ID)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items, "pagination": pagination})
+}
+
+func (h *Handler) handleJobSummary(w http.ResponseWriter, r *http.Request, workspaceID string) {
+	if h.store == nil {
+		writeError(w, http.StatusServiceUnavailable, "state store is not configured")
+		return
+	}
+	recent := 24 * time.Hour
+	if raw := strings.TrimSpace(r.URL.Query().Get("recent_seconds")); raw != "" {
+		value, err := strconv.Atoi(raw)
+		if err != nil || value <= 0 || value > 7*24*60*60 {
+			writeError(w, http.StatusBadRequest, "recent_seconds must be between 1 and 604800")
+			return
+		}
+		recent = time.Duration(value) * time.Second
+	}
+	summary, err := h.store.JobSummary(r.Context(), workspaceID, recent)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, summary)
+}
+
 func (h *Handler) handleJobRun(w http.ResponseWriter, r *http.Request, workspaceID string, app string, action string, wait bool) {
 	timeout := time.Duration(0)
 	if wait {
@@ -539,6 +601,7 @@ func (h *Handler) enqueueJobRun(w http.ResponseWriter, r *http.Request, workspac
 		run.CorrelationID = correlationID
 	}
 	job := state.NewActionJob(run, input)
+	job.Payload.TriggerKind = "api"
 	if err := h.store.CreateRunAndEnqueue(r.Context(), run, job); err != nil {
 		status := http.StatusInternalServerError
 		if errors.Is(err, state.ErrConflict) {
@@ -1113,6 +1176,113 @@ func parseRunWaitTimeout(w http.ResponseWriter, r *http.Request) (time.Duration,
 		timeout = maxRunWaitTimeout
 	}
 	return timeout, true
+}
+
+const (
+	defaultJobListLimit = 50
+	maxJobListLimit     = 500
+)
+
+func parseJobListQuery(w http.ResponseWriter, r *http.Request, workspaceID string) (state.JobListQuery, int, bool) {
+	query := r.URL.Query()
+	status := strings.TrimSpace(query.Get("status"))
+	if status == "" {
+		status = "all"
+	}
+	if !validJobStatusFilter(status) {
+		writeError(w, http.StatusBadRequest, "invalid status filter")
+		return state.JobListQuery{}, 0, false
+	}
+	order := strings.TrimSpace(query.Get("order"))
+	if order != "" && order != "created_at_desc" {
+		writeError(w, http.StatusBadRequest, "unsupported order")
+		return state.JobListQuery{}, 0, false
+	}
+	limit := defaultJobListLimit
+	if raw := strings.TrimSpace(query.Get("limit")); raw != "" {
+		value, err := strconv.Atoi(raw)
+		if err != nil || value <= 0 || value > maxJobListLimit {
+			writeError(w, http.StatusBadRequest, "limit must be between 1 and 500")
+			return state.JobListQuery{}, 0, false
+		}
+		limit = value
+	}
+	var cursorCreatedAt *time.Time
+	cursorID := ""
+	if raw := strings.TrimSpace(query.Get("cursor")); raw != "" {
+		createdAt, id, err := decodeJobCursor(raw)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid cursor")
+			return state.JobListQuery{}, 0, false
+		}
+		cursorCreatedAt = &createdAt
+		cursorID = id
+	}
+	since, ok := parseOptionalTime(w, query.Get("since"), "since")
+	if !ok {
+		return state.JobListQuery{}, 0, false
+	}
+	until, ok := parseOptionalTime(w, query.Get("until"), "until")
+	if !ok {
+		return state.JobListQuery{}, 0, false
+	}
+	return state.JobListQuery{
+		WorkspaceID:     contract.NormalizeWorkspace(workspaceID),
+		Status:          status,
+		AppKey:          strings.TrimSpace(query.Get("app")),
+		ActionKey:       strings.TrimSpace(query.Get("action")),
+		TriggerKind:     strings.TrimSpace(query.Get("trigger_kind")),
+		Limit:           limit,
+		CursorCreatedAt: cursorCreatedAt,
+		CursorID:        cursorID,
+		Since:           since,
+		Until:           until,
+	}, limit, true
+}
+
+func validJobStatusFilter(status string) bool {
+	switch status {
+	case "queued", "running", "success", "failure", "canceled", "completed", "all":
+		return true
+	default:
+		return false
+	}
+}
+
+func parseOptionalTime(w http.ResponseWriter, raw string, name string) (*time.Time, bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, true
+	}
+	value, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, name+" must be RFC3339")
+		return nil, false
+	}
+	return &value, true
+}
+
+func encodeJobCursor(createdAt time.Time, id string) string {
+	return base64.RawURLEncoding.EncodeToString([]byte(createdAt.UTC().Format(time.RFC3339Nano) + "|" + id))
+}
+
+func decodeJobCursor(raw string) (time.Time, string, error) {
+	data, err := base64.RawURLEncoding.DecodeString(raw)
+	if err != nil {
+		return time.Time{}, "", err
+	}
+	createdRaw, id, ok := strings.Cut(string(data), "|")
+	if !ok {
+		return time.Time{}, "", fmt.Errorf("malformed cursor")
+	}
+	createdAt, err := time.Parse(time.RFC3339Nano, createdRaw)
+	if err != nil {
+		return time.Time{}, "", err
+	}
+	if id == "" {
+		return time.Time{}, "", fmt.Errorf("malformed cursor")
+	}
+	return createdAt, id, nil
 }
 
 func firstNonEmpty(values ...string) string {

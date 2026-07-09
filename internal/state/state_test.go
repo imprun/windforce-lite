@@ -160,4 +160,31 @@ func exerciseStoreLifecycle(t *testing.T, store Store) {
 	if !canceledAgain.Found || !canceledAgain.AlreadyCompleted {
 		t.Fatalf("second cancel result = %#v", canceledAgain)
 	}
+	items, err := store.ListJobs(context.Background(), JobListQuery{
+		WorkspaceID: "default",
+		Status:      "canceled",
+		AppKey:      "echo",
+		ActionKey:   "echo",
+		Limit:       10,
+	})
+	if err != nil {
+		t.Fatalf("ListJobs returned error: %v", err)
+	}
+	foundCanceledRetry := false
+	for _, item := range items {
+		if item.ID == retryJob.ID && item.Completed && item.Status == "canceled" {
+			foundCanceledRetry = true
+			break
+		}
+	}
+	if !foundCanceledRetry {
+		t.Fatalf("canceled list items = %#v", items)
+	}
+	summary, err := store.JobSummary(context.Background(), "default", time.Hour)
+	if err != nil {
+		t.Fatalf("JobSummary returned error: %v", err)
+	}
+	if summary.CanceledCountRecent < 1 || len(summary.ByApp) == 0 || summary.ByApp[0].AppKey != "echo" {
+		t.Fatalf("summary = %#v", summary)
+	}
 }

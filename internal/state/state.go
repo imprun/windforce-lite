@@ -81,6 +81,7 @@ type JobPayload struct {
 	Commit        string              `json:"commit,omitempty"`
 	App           string              `json:"app"`
 	Action        string              `json:"action"`
+	TriggerKind   string              `json:"triggerKind,omitempty"`
 	ActionSpec    contract.Action     `json:"actionSpec,omitempty"`
 	Input         json.RawMessage     `json:"input,omitempty"`
 	Deployment    contract.Deployment `json:"deployment"`
@@ -130,6 +131,70 @@ type CancelResult struct {
 	AlreadyCompleted bool `json:"already_completed"`
 }
 
+type JobListQuery struct {
+	WorkspaceID     string
+	Status          string
+	AppKey          string
+	ActionKey       string
+	TriggerKind     string
+	Limit           int
+	CursorCreatedAt *time.Time
+	CursorID        string
+	Since           *time.Time
+	Until           *time.Time
+}
+
+type JobListItem struct {
+	ID             string     `json:"id"`
+	WorkspaceID    string     `json:"workspace_id"`
+	AppKey         string     `json:"app_key"`
+	ActionKey      string     `json:"action_key"`
+	TriggerKind    string     `json:"trigger_kind"`
+	Status         string     `json:"status"`
+	Queued         bool       `json:"queued"`
+	Running        bool       `json:"running"`
+	Completed      bool       `json:"completed"`
+	CreatedAt      time.Time  `json:"created_at"`
+	StartedAt      *time.Time `json:"started_at"`
+	CompletedAt    *time.Time `json:"completed_at"`
+	DurationMs     int64      `json:"duration_ms"`
+	Worker         *string    `json:"worker"`
+	GitSourceID    *int64     `json:"git_source_id"`
+	CommitSha      *string    `json:"commit_sha"`
+	Entrypoint     string     `json:"entrypoint"`
+	Tag            string     `json:"tag"`
+	CreatedBy      string     `json:"created_by"`
+	PermissionedAs string     `json:"permissioned_as"`
+	CanceledBy     *string    `json:"canceled_by"`
+	CanceledReason *string    `json:"canceled_reason"`
+	ErrorSnippet   *string    `json:"error_snippet,omitempty"`
+}
+
+type JobSummaryCounts struct {
+	QueuedCount          int `json:"queued_count"`
+	RunningCount         int `json:"running_count"`
+	CompletedCountRecent int `json:"completed_count_recent"`
+	FailedCountRecent    int `json:"failed_count_recent"`
+	CanceledCountRecent  int `json:"canceled_count_recent"`
+}
+
+type JobSummaryTagBreakdown struct {
+	Tag string `json:"tag"`
+	JobSummaryCounts
+}
+
+type JobSummaryAppBreakdown struct {
+	AppKey string `json:"app_key"`
+	JobSummaryCounts
+}
+
+type JobSummary struct {
+	JobSummaryCounts
+	OldestQueuedAt *time.Time               `json:"oldest_queued_at"`
+	ByTag          []JobSummaryTagBreakdown `json:"by_tag"`
+	ByApp          []JobSummaryAppBreakdown `json:"by_app"`
+}
+
 type RunEvent struct {
 	ID        int64           `json:"id"`
 	RunID     string          `json:"runId,omitempty"`
@@ -158,6 +223,8 @@ type Store interface {
 	CreateRunAndEnqueue(ctx context.Context, run Run, job Job) error
 	GetRun(ctx context.Context, runID string) (Run, error)
 	GetJob(ctx context.Context, workspaceID string, jobID string) (Job, Run, bool, error)
+	ListJobs(ctx context.Context, query JobListQuery) ([]JobListItem, error)
+	JobSummary(ctx context.Context, workspaceID string, recent time.Duration) (JobSummary, error)
 	GetHumanTask(ctx context.Context, taskID string) (HumanTask, error)
 	AppendLogs(ctx context.Context, jobID string, workspaceID string, chunk string) error
 	GetLogs(ctx context.Context, workspaceID string, jobID string) (string, bool, error)
@@ -229,6 +296,7 @@ func NewActionJob(run Run, input json.RawMessage) Job {
 			Commit:        run.Deployment.Commit,
 			App:           run.App,
 			Action:        run.Action,
+			TriggerKind:   run.Adapter,
 			ActionSpec:    actionSpec,
 			Input:         cloneRaw(input),
 			Deployment:    run.Deployment,
@@ -315,6 +383,38 @@ func (s *LocalStore) GetJob(ctx context.Context, workspaceID string, jobID strin
 		return Job{}, Run{}, false, fmt.Errorf("%w: run %q", ErrNotFound, job.RunID)
 	}
 	return job, run, true, nil
+}
+
+func (s *LocalStore) ListJobs(ctx context.Context, query JobListQuery) ([]JobListItem, error) {
+	snapshot, err := s.Load(ctx)
+	if err != nil {
+		return nil, err
+	}
+	records := make([]jobRunRecord, 0, len(snapshot.Jobs))
+	for _, job := range snapshot.Jobs {
+		run, ok := snapshot.Runs[job.RunID]
+		if !ok {
+			continue
+		}
+		records = append(records, jobRunRecord{Job: job, Run: run})
+	}
+	return listJobsFromRecords(records, query), nil
+}
+
+func (s *LocalStore) JobSummary(ctx context.Context, workspaceID string, recent time.Duration) (JobSummary, error) {
+	snapshot, err := s.Load(ctx)
+	if err != nil {
+		return JobSummary{}, err
+	}
+	records := make([]jobRunRecord, 0, len(snapshot.Jobs))
+	for _, job := range snapshot.Jobs {
+		run, ok := snapshot.Runs[job.RunID]
+		if !ok {
+			continue
+		}
+		records = append(records, jobRunRecord{Job: job, Run: run})
+	}
+	return summarizeJobs(records, workspaceID, recent), nil
 }
 
 func (s *LocalStore) GetHumanTask(ctx context.Context, taskID string) (HumanTask, error) {
@@ -846,6 +946,270 @@ func applyCanceledJob(snapshot *Snapshot, job Job, run Run, reason string, now t
 	snapshot.Jobs[job.ID] = job
 	snapshot.Runs[run.ID] = run
 	appendEvent(snapshot, run.ID, "run_canceled", eventPayload(run.CorrelationID, map[string]any{"jobId": job.ID, "reason": reason}), now)
+}
+
+type jobRunRecord struct {
+	Job Job
+	Run Run
+}
+
+func listJobsFromRecords(records []jobRunRecord, query JobListQuery) []JobListItem {
+	query.WorkspaceID = contract.NormalizeWorkspace(query.WorkspaceID)
+	if query.Status == "" {
+		query.Status = "all"
+	}
+	items := make([]JobListItem, 0, len(records))
+	for _, record := range records {
+		job := record.Job
+		run := record.Run
+		if normalizedJobWorkspace("", job) != query.WorkspaceID {
+			continue
+		}
+		if query.AppKey != "" && job.Payload.App != query.AppKey {
+			continue
+		}
+		if query.ActionKey != "" && job.Payload.Action != query.ActionKey {
+			continue
+		}
+		if query.TriggerKind != "" && jobTriggerKind(job) != query.TriggerKind {
+			continue
+		}
+		if query.Since != nil && job.CreatedAt.Before(*query.Since) {
+			continue
+		}
+		if query.Until != nil && job.CreatedAt.After(*query.Until) {
+			continue
+		}
+		item := newJobListItem(query.WorkspaceID, job, run)
+		if !jobStatusMatches(query.Status, item.Status) {
+			continue
+		}
+		if query.CursorCreatedAt != nil {
+			if job.CreatedAt.After(*query.CursorCreatedAt) || job.CreatedAt.Equal(*query.CursorCreatedAt) && job.ID >= query.CursorID {
+				continue
+			}
+		}
+		items = append(items, item)
+	}
+	sort.Slice(items, func(i int, j int) bool {
+		if !items[i].CreatedAt.Equal(items[j].CreatedAt) {
+			return items[i].CreatedAt.After(items[j].CreatedAt)
+		}
+		return items[i].ID > items[j].ID
+	})
+	if query.Limit > 0 && len(items) > query.Limit {
+		items = items[:query.Limit]
+	}
+	return items
+}
+
+func summarizeJobs(records []jobRunRecord, workspaceID string, recent time.Duration) JobSummary {
+	workspaceID = contract.NormalizeWorkspace(workspaceID)
+	if recent <= 0 {
+		recent = 24 * time.Hour
+	}
+	cutoff := time.Now().UTC().Add(-recent)
+	summary := JobSummary{
+		ByTag: []JobSummaryTagBreakdown{},
+		ByApp: []JobSummaryAppBreakdown{},
+	}
+	byTag := map[string]*JobSummaryCounts{}
+	byApp := map[string]*JobSummaryCounts{}
+	for _, record := range records {
+		job := record.Job
+		run := record.Run
+		if normalizedJobWorkspace("", job) != workspaceID {
+			continue
+		}
+		status := jobTerminalStatus(job, run)
+		tag := jobTag(job)
+		app := job.Payload.App
+		tagCounts := byTag[tag]
+		if tagCounts == nil {
+			tagCounts = &JobSummaryCounts{}
+			byTag[tag] = tagCounts
+		}
+		appCounts := byApp[app]
+		if appCounts == nil {
+			appCounts = &JobSummaryCounts{}
+			byApp[app] = appCounts
+		}
+		countJobSummary(&summary.JobSummaryCounts, job, run, status, cutoff)
+		countJobSummary(tagCounts, job, run, status, cutoff)
+		countJobSummary(appCounts, job, run, status, cutoff)
+		if job.State == JobQueued && (summary.OldestQueuedAt == nil || job.CreatedAt.Before(*summary.OldestQueuedAt)) {
+			value := job.CreatedAt
+			summary.OldestQueuedAt = &value
+		}
+	}
+	tags := make([]string, 0, len(byTag))
+	for tag := range byTag {
+		tags = append(tags, tag)
+	}
+	sort.Strings(tags)
+	for _, tag := range tags {
+		summary.ByTag = append(summary.ByTag, JobSummaryTagBreakdown{Tag: tag, JobSummaryCounts: *byTag[tag]})
+	}
+	apps := make([]string, 0, len(byApp))
+	for app := range byApp {
+		apps = append(apps, app)
+	}
+	sort.Strings(apps)
+	for _, app := range apps {
+		summary.ByApp = append(summary.ByApp, JobSummaryAppBreakdown{AppKey: app, JobSummaryCounts: *byApp[app]})
+	}
+	return summary
+}
+
+func countJobSummary(counts *JobSummaryCounts, job Job, run Run, status string, cutoff time.Time) {
+	switch job.State {
+	case JobQueued:
+		counts.QueuedCount++
+	case JobRunning:
+		counts.RunningCount++
+	}
+	if job.State == JobSucceeded || job.State == JobFailed || IsTerminal(run) {
+		completedAt := run.UpdatedAt
+		if completedAt.IsZero() {
+			completedAt = job.UpdatedAt
+		}
+		if !completedAt.Before(cutoff) {
+			counts.CompletedCountRecent++
+			switch status {
+			case "failure":
+				counts.FailedCountRecent++
+			case "canceled":
+				counts.CanceledCountRecent++
+			}
+		}
+	}
+}
+
+func newJobListItem(workspaceID string, job Job, run Run) JobListItem {
+	status := jobTerminalStatus(job, run)
+	var startedAt *time.Time
+	var completedAt *time.Time
+	var worker *string
+	if job.State == JobRunning {
+		startedAt = &job.UpdatedAt
+		worker = stringPtr(job.LeaseOwner)
+	}
+	if job.State == JobSucceeded || job.State == JobFailed || IsTerminal(run) {
+		completedAt = &run.UpdatedAt
+	}
+	var durationMs int64
+	if run.Result != nil {
+		durationMs = run.Result.DurationMs
+	}
+	return JobListItem{
+		ID:             job.ID,
+		WorkspaceID:    contract.NormalizeWorkspace(workspaceID),
+		AppKey:         job.Payload.App,
+		ActionKey:      job.Payload.Action,
+		TriggerKind:    jobTriggerKind(job),
+		Status:         status,
+		Queued:         job.State == JobQueued,
+		Running:        job.State == JobRunning,
+		Completed:      job.State == JobSucceeded || job.State == JobFailed || IsTerminal(run),
+		CreatedAt:      job.CreatedAt,
+		StartedAt:      startedAt,
+		CompletedAt:    completedAt,
+		DurationMs:     durationMs,
+		Worker:         worker,
+		CommitSha:      stringPtr(job.Payload.Commit),
+		Entrypoint:     job.Payload.ActionSpec.Entrypoint,
+		Tag:            jobTag(job),
+		CanceledReason: canceledReason(run),
+		ErrorSnippet:   failureSnippet(status, run),
+	}
+}
+
+func jobStatusMatches(filter string, status string) bool {
+	switch filter {
+	case "", "all":
+		return true
+	case "completed":
+		return status == "success" || status == "failure" || status == "canceled"
+	default:
+		return status == filter
+	}
+}
+
+func jobTerminalStatus(job Job, run Run) string {
+	if run.State == RunCanceled {
+		return "canceled"
+	}
+	if job.State == JobQueued {
+		return "queued"
+	}
+	if job.State == JobRunning {
+		return "running"
+	}
+	if job.State == JobSucceeded || run.State == RunSucceeded || run.State == RunWaitingHuman {
+		return "success"
+	}
+	return "failure"
+}
+
+func jobTriggerKind(job Job) string {
+	if job.Payload.TriggerKind != "" {
+		return job.Payload.TriggerKind
+	}
+	if job.Payload.CorrelationID != "" {
+		return "api"
+	}
+	return "api"
+}
+
+func jobTag(Job) string {
+	return "default"
+}
+
+func canceledReason(run Run) *string {
+	if run.State != RunCanceled || len(run.Error) == 0 {
+		return nil
+	}
+	var payload struct {
+		Message string `json:"message"`
+	}
+	if json.Unmarshal(run.Error, &payload) == nil && payload.Message != "" {
+		return stringPtr(payload.Message)
+	}
+	return nil
+}
+
+func failureSnippet(status string, run Run) *string {
+	if status != "failure" {
+		return nil
+	}
+	message := ""
+	if run.Result != nil && run.Result.Error != "" {
+		message = run.Result.Error
+	}
+	if message == "" && len(run.Error) > 0 {
+		var payload struct {
+			Message string `json:"message"`
+		}
+		if json.Unmarshal(run.Error, &payload) == nil {
+			message = payload.Message
+		}
+	}
+	message = strings.Join(strings.Fields(message), " ")
+	if message == "" {
+		return nil
+	}
+	runes := []rune(message)
+	if len(runes) > 200 {
+		message = string(runes[:200])
+	}
+	return stringPtr(message)
+}
+
+func stringPtr(value string) *string {
+	if value == "" {
+		return nil
+	}
+	return &value
 }
 
 func eventPayload(correlationID string, values map[string]any) map[string]any {

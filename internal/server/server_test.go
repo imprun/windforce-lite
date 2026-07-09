@@ -260,6 +260,60 @@ func TestCanonicalJobRunStatusAndResultAPI(t *testing.T) {
 		t.Fatalf("done result = %#v result=%s", doneBody, doneBody.Result)
 	}
 
+	listResp, err := http.Get(server.URL + "/api/w/ws-a/jobs?status=success&app=echo&limit=1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listResp.Body.Close()
+	if listResp.StatusCode != http.StatusOK {
+		t.Fatalf("list status = %d, want %d", listResp.StatusCode, http.StatusOK)
+	}
+	var listBody struct {
+		Items []struct {
+			ID        string `json:"id"`
+			AppKey    string `json:"app_key"`
+			ActionKey string `json:"action_key"`
+			Status    string `json:"status"`
+			Completed bool   `json:"completed"`
+		} `json:"items"`
+		Pagination struct {
+			Limit   int  `json:"limit"`
+			Count   int  `json:"count"`
+			HasMore bool `json:"has_more"`
+		} `json:"pagination"`
+	}
+	if err := json.NewDecoder(listResp.Body).Decode(&listBody); err != nil {
+		t.Fatal(err)
+	}
+	if len(listBody.Items) != 1 || listBody.Items[0].ID != runResponse.JobID || listBody.Items[0].Status != "success" || !listBody.Items[0].Completed {
+		t.Fatalf("list body = %#v", listBody)
+	}
+	if listBody.Pagination.Limit != 1 || listBody.Pagination.Count != 1 {
+		t.Fatalf("pagination = %#v", listBody.Pagination)
+	}
+
+	summaryResp, err := http.Get(server.URL + "/api/w/ws-a/jobs/summary?recent_seconds=3600")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer summaryResp.Body.Close()
+	if summaryResp.StatusCode != http.StatusOK {
+		t.Fatalf("summary status = %d, want %d", summaryResp.StatusCode, http.StatusOK)
+	}
+	var summaryBody struct {
+		CompletedCountRecent int `json:"completed_count_recent"`
+		ByApp                []struct {
+			AppKey               string `json:"app_key"`
+			CompletedCountRecent int    `json:"completed_count_recent"`
+		} `json:"by_app"`
+	}
+	if err := json.NewDecoder(summaryResp.Body).Decode(&summaryBody); err != nil {
+		t.Fatal(err)
+	}
+	if summaryBody.CompletedCountRecent < 1 || len(summaryBody.ByApp) == 0 || summaryBody.ByApp[0].AppKey != "echo" {
+		t.Fatalf("summary body = %#v", summaryBody)
+	}
+
 	waitResp, err := http.Post(server.URL+"/api/w/ws-a/jobs/run/echo/echo/wait?timeout_ms=0", "application/json", bytes.NewBufferString(`{}`))
 	if err != nil {
 		t.Fatal(err)

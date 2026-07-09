@@ -217,6 +217,8 @@ Implemented control-plane endpoints:
 - `GET /v1/runs/{runID}`
 - `POST /api/w/{workspace}/jobs/run/{app}/{action}`
 - `POST /api/w/{workspace}/jobs/run/{app}/{action}/wait?timeout_ms={ms}`
+- `GET /api/w/{workspace}/jobs?status={status}&limit={limit}`
+- `GET /api/w/{workspace}/jobs/summary`
 - `GET /api/w/{workspace}/jobs/{jobID}`
 - `GET /api/w/{workspace}/jobs/{jobID}/result`
 - `GET /api/w/{workspace}/jobs/{jobID}/logs?tail_bytes={bytes}`

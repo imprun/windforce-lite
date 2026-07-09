@@ -206,6 +206,69 @@ WHERE id=$1
 	return job, run, true, nil
 }
 
+func (s *PostgresStore) ListJobs(ctx context.Context, query JobListQuery) ([]JobListItem, error) {
+	workspaceID := contract.NormalizeWorkspace(query.WorkspaceID)
+	rows, err := s.pool.Query(ctx, `
+SELECT id
+FROM jobs
+WHERE COALESCE(NULLIF(payload->>'workspace', ''), NULLIF(payload->'deployment'->>'workspace', ''), 'default')=$1
+`, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	records := []jobRunRecord{}
+	for rows.Next() {
+		var jobID string
+		if err := rows.Scan(&jobID); err != nil {
+			return nil, err
+		}
+		job, run, found, err := s.GetJob(ctx, workspaceID, jobID)
+		if err != nil {
+			return nil, err
+		}
+		if found {
+			records = append(records, jobRunRecord{Job: job, Run: run})
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	query.WorkspaceID = workspaceID
+	return listJobsFromRecords(records, query), nil
+}
+
+func (s *PostgresStore) JobSummary(ctx context.Context, workspaceID string, recent time.Duration) (JobSummary, error) {
+	workspaceID = contract.NormalizeWorkspace(workspaceID)
+	rows, err := s.pool.Query(ctx, `
+SELECT id
+FROM jobs
+WHERE COALESCE(NULLIF(payload->>'workspace', ''), NULLIF(payload->'deployment'->>'workspace', ''), 'default')=$1
+`, workspaceID)
+	if err != nil {
+		return JobSummary{}, err
+	}
+	defer rows.Close()
+	records := []jobRunRecord{}
+	for rows.Next() {
+		var jobID string
+		if err := rows.Scan(&jobID); err != nil {
+			return JobSummary{}, err
+		}
+		job, run, found, err := s.GetJob(ctx, workspaceID, jobID)
+		if err != nil {
+			return JobSummary{}, err
+		}
+		if found {
+			records = append(records, jobRunRecord{Job: job, Run: run})
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return JobSummary{}, err
+	}
+	return summarizeJobs(records, workspaceID, recent), nil
+}
+
 func (s *PostgresStore) CreateRunAndEnqueue(ctx context.Context, run Run, job Job) error {
 	return s.withTx(ctx, func(tx pgx.Tx) error {
 		now := time.Now().UTC()
