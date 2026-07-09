@@ -257,6 +257,11 @@ environment variable name. Register the token through `POST
 /api/w/{workspace}/variables` with an empty `app_key`, then pass that path as
 `creds_ref`.
 
+The Makefile keeps the source name and route id separate for this reason:
+`WF_GIT_SOURCE_NAME` is the human-readable name used by `make
+windforce-register`; `WF_GIT_SOURCE_ID` is the numeric `id` returned by the
+control plane and used by `make windforce-sync`.
+
 For local development without the full UI, `tools/windforce_control.py` calls
 the same control-plane API:
 

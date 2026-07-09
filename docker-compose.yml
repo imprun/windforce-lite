@@ -28,8 +28,6 @@ services:
         condition: service_healthy
     ports:
       - "127.0.0.1:${WINDFORCE_LITE_API_PORT:-18090}:8080"
-    environment:
-      WINDFORCE_LITE_GIT_TOKEN: ${WINDFORCE_LITE_GIT_TOKEN:-}
     command:
       - api
       - --addr
