@@ -21,6 +21,7 @@ type Runner struct {
 	CacheRoot string
 	BaseURL   string
 	APIToken  string
+	BunPath   string
 }
 
 type RunRequest struct {
@@ -91,6 +92,10 @@ func (r *Runner) Run(ctx context.Context, req RunRequest) (contract.JobResult, e
 	}
 	sourceDir := filepath.Join(cacheRoot, "src", safePath(workspace), safePath(gitSourceID), safePath(req.Deployment.Commit))
 	if err := r.Store.FetchTo(ctx, sourceDir, workspace, gitSourceID, req.Deployment.Commit); err != nil {
+		return contract.JobResult{}, err
+	}
+	scriptLang := firstNonEmpty(req.Deployment.ScriptLang, "typescript")
+	if err := r.prepareSource(ctx, sourceDir, scriptLang); err != nil {
 		return contract.JobResult{}, err
 	}
 	if adapterType == contract.ActionAdapterJSONFile && len(action.Command) == 0 {
@@ -249,6 +254,7 @@ func (r *Runner) runEntrypoint(ctx context.Context, req RunRequest, sourceDir st
 		return contract.JobResult{}, err
 	}
 	result, err := executor.Run(ctx, executor.RunParams{
+		BunPath:           r.BunPath,
 		ScriptLang:        firstNonEmpty(req.Deployment.ScriptLang, "typescript"),
 		EntrypointAbsPath: entrypointPath,
 		Input:             input,

@@ -94,6 +94,12 @@ entrypoints. Other `scriptLang` values are still accepted and pinned during sync
 so the manifest contract stays canonical; an unwired language fails at runtime
 with the executor's unsupported-language error.
 
+For TypeScript entrypoints, the lite worker prepares the fetched source like the
+canonical worker subset: if `package.json` is present it runs
+`bun install --frozen-lockfile --no-progress`, then injects the vendored
+`windforce-client` package into `node_modules` so author scripts can use the
+canonical bare import.
+
 ## Runtime adapter compatibility
 
 The canonical runtime path runs `entrypoint -> main(ctx) -> result.json`.
@@ -345,7 +351,7 @@ go run ./cmd/windforce-lite api `
 The runtime follows the original Windforce control-plane/worker model:
 
 - the control-plane run API creates a run and enqueues a job
-- worker polls the queue and executes the pinned deployment
+- worker polls the queue, prepares the pinned deployment source, and executes it
 - HITL pauses a run in `WAITING_HUMAN`
 - resume API enqueues the next job
 

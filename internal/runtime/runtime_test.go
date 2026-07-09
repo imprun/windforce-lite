@@ -157,6 +157,83 @@ func TestRunnerFetchesBundleAndRunsAction(t *testing.T) {
 	}
 }
 
+func TestRunnerInjectsTypeScriptSDK(t *testing.T) {
+	requireBunRuntime(t)
+	tempDir := t.TempDir()
+	sourceDir := filepath.Join(tempDir, "source")
+	if err := os.MkdirAll(sourceDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sourceDir, "windforce.json"), []byte(`{"app":"echo","entrypoint":"main.ts","scriptLang":"typescript","actions":{"echo":{}}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	actionSource := `import { createApp } from "windforce-client"
+
+export const main = createApp({
+  actions: {
+    echo: async (ctx) => ({
+      app: ctx.app,
+      action: ctx.action,
+      input: ctx.input,
+      job: ctx.job,
+    }),
+  },
+})
+`
+	if err := os.WriteFile(filepath.Join(sourceDir, "main.ts"), []byte(actionSource), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	store := bundle.NewLocalStore(filepath.Join(tempDir, "store"))
+	if err := store.Materialize(context.Background(), "workspace-a", "source-a", "commit-ts", sourceDir); err != nil {
+		t.Fatal(err)
+	}
+
+	cacheRoot := filepath.Join(tempDir, "cache")
+	runner := Runner{Store: store, CacheRoot: cacheRoot}
+	result, err := runner.Run(context.Background(), RunRequest{
+		Deployment: contract.Deployment{
+			Workspace:   "workspace-a",
+			GitSourceID: "source-a",
+			App:         "echo",
+			Commit:      "commit-ts",
+			Entrypoint:  "main.ts",
+			ScriptLang:  "typescript",
+			Actions: map[string]contract.Action{
+				"echo": {Action: "echo"},
+			},
+		},
+		JobID:       "job-ts",
+		WorkspaceID: "workspace-a",
+		Action:      "echo",
+		Input:       json.RawMessage(`{"message":"hello"}`),
+		Tag:         "default",
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if result.ExitCode != 0 {
+		t.Fatalf("exit code = %d, stdout=%s, error=%s", result.ExitCode, result.Stdout, result.Error)
+	}
+	var output struct {
+		App    string            `json:"app"`
+		Action string            `json:"action"`
+		Input  map[string]string `json:"input"`
+		Job    map[string]string `json:"job"`
+	}
+	if err := json.Unmarshal(result.Output, &output); err != nil {
+		t.Fatalf("output is not JSON: %v", err)
+	}
+	if output.App != "echo" || output.Action != "echo" || output.Input["message"] != "hello" ||
+		output.Job["id"] != "job-ts" || output.Job["workspace"] != "workspace-a" {
+		t.Fatalf("output = %#v", output)
+	}
+	injected := filepath.Join(cacheRoot, "src", "workspace-a", "source-a", "commit-ts", "node_modules", "windforce-client", "package.json")
+	if _, err := os.Stat(injected); err != nil {
+		t.Fatalf("injected SDK missing: %v", err)
+	}
+}
+
 func TestRunnerJobEnvIncludesSDKCallbackEndpoint(t *testing.T) {
 	runner := Runner{
 		BaseURL:  "http://127.0.0.1:18080",
@@ -356,6 +433,13 @@ func requirePythonRuntime(t *testing.T) {
 	}
 	if _, err := exec.LookPath(python); err != nil {
 		t.Skipf("%s not found in PATH", python)
+	}
+}
+
+func requireBunRuntime(t *testing.T) {
+	t.Helper()
+	if _, err := exec.LookPath("bun"); err != nil {
+		t.Skipf("bun not found in PATH")
 	}
 }
 
