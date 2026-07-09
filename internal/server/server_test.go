@@ -180,6 +180,67 @@ func TestJobLogsAPI(t *testing.T) {
 	if missingBody.Error != "job not found" {
 		t.Fatalf("missing logs body = %#v", missingBody)
 	}
+
+	for _, tc := range []struct {
+		query string
+		want  string
+	}{
+		{"tail_bytes=-1", "tail_bytes must be a non-negative integer"},
+		{"tail_bytes=bad", "tail_bytes must be a non-negative integer"},
+		{fmt.Sprintf("tail_bytes=%d", maxTailBytes+1), "tail_bytes exceeds server limit"},
+	} {
+		resp, err := http.Get(server.URL + "/api/w/ws-a/jobs/" + job.ID + "/logs?" + tc.query)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		var body struct {
+			Error string `json:"error"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		if resp.StatusCode != http.StatusBadRequest || body.Error != tc.want {
+			t.Fatalf("logs %s response = %d %#v, want 400 %q", tc.query, resp.StatusCode, body, tc.want)
+		}
+	}
+}
+
+func TestCanonicalJobListQueryValidation(t *testing.T) {
+	tempDir := t.TempDir()
+	server := httptest.NewServer(New(Config{
+		Store:     state.NewLocalStore(filepath.Join(tempDir, "state.json")),
+		EnableAPI: true,
+	}))
+	defer server.Close()
+
+	for _, tc := range []struct {
+		query string
+		want  string
+	}{
+		{"status=bogus", "invalid status filter"},
+		{"order=created_at_asc", "unsupported order"},
+		{"limit=0", "limit must be between 1 and 500"},
+		{"limit=501", "limit must be between 1 and 500"},
+		{"cursor=bad", "invalid cursor"},
+		{"since=bad", "since must be RFC3339"},
+		{"until=bad", "until must be RFC3339"},
+	} {
+		resp, err := http.Get(server.URL + "/api/w/ws-a/jobs?" + tc.query)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		var body struct {
+			Error string `json:"error"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		if resp.StatusCode != http.StatusBadRequest || body.Error != tc.want {
+			t.Fatalf("jobs?%s response = %d %#v, want 400 %q", tc.query, resp.StatusCode, body, tc.want)
+		}
+	}
 }
 
 func TestCanonicalStateAPI(t *testing.T) {
