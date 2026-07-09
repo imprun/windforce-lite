@@ -1613,31 +1613,52 @@ func firstPresentStringPtr(values ...*string) *string {
 	return nil
 }
 
+const errorSnippetMax = 200
+
 func failureSnippet(status string, run Run) *string {
 	if status != "failure" {
 		return nil
 	}
-	message := ""
-	if run.Result != nil && run.Result.Error != "" {
-		message = run.Result.Error
-	}
-	if message == "" && len(run.Error) > 0 {
-		var payload struct {
-			Message string `json:"message"`
+	if run.Result != nil {
+		if len(run.Result.Output) > 0 {
+			if snippet := errorSnippet(run.Result.Output); snippet != nil {
+				return snippet
+			}
 		}
-		if json.Unmarshal(run.Error, &payload) == nil {
-			message = payload.Message
+		if run.Result.Error != "" {
+			return errorSnippet([]byte(run.Result.Error))
 		}
 	}
-	message = strings.Join(strings.Fields(message), " ")
-	if message == "" {
+	if len(run.Error) > 0 {
+		return errorSnippet(run.Error)
+	}
+	return nil
+}
+
+func errorSnippet(plain []byte) *string {
+	var workerError struct {
+		Name    string `json:"name"`
+		Message string `json:"message"`
+	}
+	text := ""
+	if err := json.Unmarshal(plain, &workerError); err == nil && workerError.Message != "" {
+		if workerError.Name != "" {
+			text = workerError.Name + ": " + workerError.Message
+		} else {
+			text = workerError.Message
+		}
+	} else {
+		text = string(plain)
+	}
+	text = strings.Join(strings.Fields(text), " ")
+	if text == "" {
 		return nil
 	}
-	runes := []rune(message)
-	if len(runes) > 200 {
-		message = string(runes[:200])
+	runes := []rune(text)
+	if len(runes) > errorSnippetMax {
+		text = string(runes[:errorSnippetMax]) + "\u2026"
 	}
-	return stringPtr(message)
+	return stringPtr(text)
 }
 
 func stringPtr(value string) *string {

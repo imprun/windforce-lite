@@ -173,6 +173,50 @@ func TestActionJobPreservesActorAudit(t *testing.T) {
 	}
 }
 
+func TestJobListFailureSnippetMatchesCanonicalResult(t *testing.T) {
+	deployment := contract.Deployment{
+		Workspace:   "ws-a",
+		GitSourceID: "1",
+		App:         "echo",
+		Commit:      "commit-a",
+		Actions: map[string]contract.Action{
+			"echo": {Action: "echo"},
+		},
+	}
+	run := NewRun("windforce", "run-a", "echo", "echo", deployment, json.RawMessage(`{}`))
+	run.State = RunFailed
+	run.Result = &contract.JobResult{
+		Output: json.RawMessage(`{"name":"TargetError","message":"target rejected"}`),
+		Error:  "fallback should not win",
+	}
+	job := NewActionJob(run, nil)
+	job.State = JobFailed
+
+	item := newJobListItem("ws-a", job, run)
+	if item.ErrorSnippet == nil || *item.ErrorSnippet != "TargetError: target rejected" {
+		t.Fatalf("error snippet = %v, want TargetError: target rejected", item.ErrorSnippet)
+	}
+}
+
+func TestJobListFailureSnippetCapsWithCanonicalEllipsis(t *testing.T) {
+	run := Run{
+		State: RunFailed,
+		Result: &contract.JobResult{
+			Error: strings.Repeat("x", errorSnippetMax+5),
+		},
+	}
+	snippet := failureSnippet("failure", run)
+	if snippet == nil {
+		t.Fatal("error snippet is nil")
+	}
+	if got := len([]rune(*snippet)); got != errorSnippetMax+1 {
+		t.Fatalf("snippet rune length = %d, want %d", got, errorSnippetMax+1)
+	}
+	if !strings.HasSuffix(*snippet, "\u2026") {
+		t.Fatalf("snippet = %q, want canonical ellipsis suffix", *snippet)
+	}
+}
+
 func TestActionJobDefaultsActorAudit(t *testing.T) {
 	deployment := contract.Deployment{
 		Workspace:   "ws-a",
