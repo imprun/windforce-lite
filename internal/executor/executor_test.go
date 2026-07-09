@@ -21,7 +21,7 @@ func TestRunPythonBuildsCanonicalCtxHelpers(t *testing.T) {
 			t.Errorf("authorization header = %q", r.Header.Get("Authorization"))
 		}
 		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/api/w/ws-a/variables/get/p/secret":
+		case r.Method == http.MethodGet && r.URL.Path == "/api/w/ws-a/variables/get/p/secret" && r.URL.Query().Get("app") == "demo":
 			writeJSON(w, map[string]string{"value": "var-ok"})
 		case r.Method == http.MethodGet && r.URL.Path == "/api/w/ws-a/resources/get/p/browser":
 			writeJSON(w, map[string]string{"resource": "browser-ok"})
@@ -115,6 +115,24 @@ async def main(ctx):
 		output.Headers["X-Test"] != "ok" || output.Job["id"] != "job-a" ||
 		output.Job["workspace"] != "ws-a" || output.Job["tag"] != "default" {
 		t.Fatalf("output = %#v", output)
+	}
+}
+
+func TestGeneratedWrappersScopeVariableReadsByApp(t *testing.T) {
+	ts := wrapper("main.ts")
+	if !strings.Contains(ts, `"/variables/get/p/" + p + "?app=" + encodeURIComponent(APP)`) {
+		t.Fatalf("typescript wrapper does not pass app scope to variables.get:\n%s", ts)
+	}
+	if !strings.Contains(ts, `app: APP`) {
+		t.Fatalf("typescript wrapper does not reuse APP in ctx.app:\n%s", ts)
+	}
+
+	py := wrapperPy("main.py")
+	if !strings.Contains(py, `"?app=" + urllib.parse.quote(_APP, safe="")`) {
+		t.Fatalf("python wrapper does not pass app scope to variables.get:\n%s", py)
+	}
+	if !strings.Contains(py, `app=_APP`) {
+		t.Fatalf("python wrapper does not reuse _APP in ctx.app:\n%s", py)
 	}
 }
 

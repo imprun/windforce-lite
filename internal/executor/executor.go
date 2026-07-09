@@ -251,6 +251,7 @@ func wrapper(entrypointAbsPath string) string {
 
 const env = (k) => process.env[k] ?? ""
 const WS = env("WF_WORKSPACE")
+const APP = env("WF_APP")
 const BASE = env("WF_BASE_URL")
 const TOKEN = env("WF_TOKEN")
 const KIND = env("WF_TRIGGER_KIND")
@@ -278,7 +279,7 @@ const ctx = {
     headers,
     scheduledFor: env("WF_SCHEDULED_FOR") || undefined,
   },
-  app: env("WF_APP"),
+  app: APP,
   action: env("WF_ACTION"),
   job: { id: env("WF_JOB_ID"), workspace: WS, tag: env("WF_TAG"), path: env("WF_RUNNABLE_PATH") || undefined },
   actor: { email: env("WF_EMAIL"), username: env("WF_USERNAME"), permissionedAs: env("WF_PERMISSIONED_AS") },
@@ -290,7 +291,8 @@ const ctx = {
   },
   variables: {
     async get(p) {
-      const r = await api("GET", "/variables/get/p/" + p)
+      // Lite has no signed job principal; pass app scope explicitly to preserve shadowing.
+      const r = await api("GET", "/variables/get/p/" + p + "?app=" + encodeURIComponent(APP))
       if (!r.ok) throw new Error("variables.get(" + p + ") failed: " + r.status)
       return (await r.json()).value
     },
@@ -372,6 +374,7 @@ def _env(k):
 
 
 _WS = _env("WF_WORKSPACE")
+_APP = _env("WF_APP")
 _BASE = _env("WF_BASE_URL")
 _TOKEN = _env("WF_TOKEN")
 _KIND = _env("WF_TRIGGER_KIND")
@@ -416,7 +419,9 @@ def _api(method, path, body=None):
 
 class _Variables:
     async def get(self, path):
-        status, raw = await asyncio.to_thread(_api, "GET", "/variables/get/p/" + path)
+        # Lite has no signed job principal; pass app scope explicitly to preserve shadowing.
+        query = "?app=" + urllib.parse.quote(_APP, safe="")
+        status, raw = await asyncio.to_thread(_api, "GET", "/variables/get/p/" + path + query)
         if status < 200 or status >= 300:
             raise RuntimeError("variables.get(" + path + ") failed: " + str(status))
         return json.loads(raw).get("value")
@@ -505,7 +510,7 @@ _ctx = SimpleNamespace(
         headers=_headers,
         scheduled_for=_env("WF_SCHEDULED_FOR") or None,
     ),
-    app=_env("WF_APP"),
+    app=_APP,
     action=_env("WF_ACTION"),
     job=SimpleNamespace(
         id=_env("WF_JOB_ID"),
