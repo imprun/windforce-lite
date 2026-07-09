@@ -1133,12 +1133,28 @@ func (h *Handler) getCanonicalDeployment(w http.ResponseWriter, r *http.Request,
 		writeError(w, http.StatusServiceUnavailable, "catalog is not configured")
 		return contract.Deployment{}, false
 	}
-	deployment, err := h.catalog.GetDeployment(r.Context(), app)
-	if err != nil || contract.NormalizeWorkspace(deployment.SourceWorkspace()) != contract.NormalizeWorkspace(workspaceID) {
+	deployment, err := h.lookupDeployment(r.Context(), workspaceID, app)
+	if err != nil {
 		writeError(w, http.StatusNotFound, notFoundMessage)
 		return contract.Deployment{}, false
 	}
 	return deployment, true
+}
+
+func (h *Handler) lookupDeployment(ctx context.Context, workspaceID string, app string) (contract.Deployment, error) {
+	if scoped, ok := h.catalog.(interface {
+		GetDeploymentForWorkspace(context.Context, string, string) (contract.Deployment, error)
+	}); ok {
+		return scoped.GetDeploymentForWorkspace(ctx, workspaceID, app)
+	}
+	deployment, err := h.catalog.GetDeployment(ctx, app)
+	if err != nil {
+		return contract.Deployment{}, err
+	}
+	if contract.NormalizeWorkspace(deployment.SourceWorkspace()) != contract.NormalizeWorkspace(workspaceID) {
+		return contract.Deployment{}, catalogpkg.ErrDeploymentNotFound
+	}
+	return deployment, nil
 }
 
 type canonicalGitSourceView struct {
@@ -1848,8 +1864,8 @@ func (h *Handler) enqueueJob(w http.ResponseWriter, r *http.Request, workspaceID
 		return state.Job{}, false
 	}
 	workspaceID = contract.NormalizeWorkspace(workspaceID)
-	deployment, err := h.catalog.GetDeployment(r.Context(), app)
-	if err != nil || contract.NormalizeWorkspace(deployment.SourceWorkspace()) != workspaceID {
+	deployment, err := h.lookupDeployment(r.Context(), workspaceID, app)
+	if err != nil {
 		writeError(w, http.StatusNotFound, "app not found: "+app)
 		return state.Job{}, false
 	}

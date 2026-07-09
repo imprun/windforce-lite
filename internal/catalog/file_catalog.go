@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"time"
 
 	"github.com/imprun/windforce-lite/internal/contract"
@@ -56,17 +55,21 @@ func (c *FileCatalog) UpsertDeployment(ctx context.Context, deployment contract.
 		snapshot.Deployments = map[string]contract.Deployment{}
 	}
 	deployment = ensureDeploymentUpdatedAt(deployment, time.Now().UTC())
-	snapshot.Deployments[deployment.App] = deployment
+	snapshot.Deployments[deploymentKey(deployment.SourceWorkspace(), deployment.App)] = deployment
 	snapshot.History = append(snapshot.History, newDeploymentHistory(deployment))
 	return c.write(snapshot)
 }
 
 func (c *FileCatalog) GetDeployment(ctx context.Context, app string) (contract.Deployment, error) {
+	return c.GetDeploymentForWorkspace(ctx, contract.DefaultWorkspace, app)
+}
+
+func (c *FileCatalog) GetDeploymentForWorkspace(ctx context.Context, workspace string, app string) (contract.Deployment, error) {
 	snapshot, err := c.Load(ctx)
 	if err != nil {
 		return contract.Deployment{}, err
 	}
-	deployment, ok := snapshot.Deployments[app]
+	deployment, ok := snapshot.Deployments[deploymentKey(workspace, app)]
 	if !ok {
 		return contract.Deployment{}, ErrDeploymentNotFound
 	}
@@ -81,13 +84,14 @@ func (c *FileCatalog) SetAppTagOverride(ctx context.Context, workspace string, a
 	if err != nil {
 		return contract.Deployment{}, err
 	}
-	deployment, ok := snapshot.Deployments[app]
-	if !ok || deployment.SourceWorkspace() != contract.NormalizeWorkspace(workspace) {
+	key := deploymentKey(workspace, app)
+	deployment, ok := snapshot.Deployments[key]
+	if !ok {
 		return contract.Deployment{}, ErrDeploymentNotFound
 	}
 	deployment.TagOverride = cloneStringPtr(tagOverride)
 	deployment.UpdatedAt = timePtr(time.Now().UTC())
-	snapshot.Deployments[app] = deployment
+	snapshot.Deployments[key] = deployment
 	if err := c.write(snapshot); err != nil {
 		return contract.Deployment{}, err
 	}
@@ -102,8 +106,9 @@ func (c *FileCatalog) SetActionTagOverride(ctx context.Context, workspace string
 	if err != nil {
 		return contract.Action{}, err
 	}
-	deployment, ok := snapshot.Deployments[app]
-	if !ok || deployment.SourceWorkspace() != contract.NormalizeWorkspace(workspace) {
+	key := deploymentKey(workspace, app)
+	deployment, ok := snapshot.Deployments[key]
+	if !ok {
 		return contract.Action{}, ErrDeploymentNotFound
 	}
 	action, ok := deployment.Actions[actionKey]
@@ -113,7 +118,7 @@ func (c *FileCatalog) SetActionTagOverride(ctx context.Context, workspace string
 	action.TagOverride = cloneStringPtr(tagOverride)
 	action.UpdatedAt = timePtr(time.Now().UTC())
 	deployment.Actions[actionKey] = action
-	snapshot.Deployments[app] = deployment
+	snapshot.Deployments[key] = deployment
 	if err := c.write(snapshot); err != nil {
 		return contract.Action{}, err
 	}
@@ -138,6 +143,7 @@ func (c *FileCatalog) Load(ctx context.Context) (Snapshot, error) {
 	if snapshot.Deployments == nil {
 		snapshot.Deployments = map[string]contract.Deployment{}
 	}
+	snapshot.Deployments = normalizeDeploymentMap(snapshot.Deployments)
 	if snapshot.History == nil {
 		snapshot.History = []DeploymentHistory{}
 	}
@@ -174,6 +180,22 @@ func ensureDeploymentUpdatedAt(deployment contract.Deployment, updatedAt time.Ti
 	return deployment
 }
 
+func normalizeDeploymentMap(deployments map[string]contract.Deployment) map[string]contract.Deployment {
+	normalized := make(map[string]contract.Deployment, len(deployments))
+	for key, deployment := range deployments {
+		normalizedKey := deploymentKey(deployment.SourceWorkspace(), deployment.App)
+		if deployment.App == "" {
+			normalizedKey = key
+		}
+		normalized[normalizedKey] = deployment
+	}
+	return normalized
+}
+
+func deploymentKey(workspace string, app string) string {
+	return contract.NormalizeWorkspace(workspace) + "/" + app
+}
+
 func timePtr(value time.Time) *time.Time {
 	return &value
 }
@@ -188,7 +210,7 @@ func newDeploymentHistory(deployment contract.Deployment) DeploymentHistory {
 		GitSourceID: gitSourceID,
 		App:         deployment.App,
 		Commit:      deployment.Commit,
-		Entrypoint:  firstEntrypoint(deployment),
+		Entrypoint:  deployment.Entrypoint,
 		Source:      "external_sync",
 		Status:      "deployed",
 		ObjectURI:   deployment.ObjectURI,
@@ -205,20 +227,6 @@ func newAppVersionID(createdAt time.Time) string {
 		return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
 	}
 	return fmt.Sprintf("%d", createdAt.UnixNano())
-}
-
-func firstEntrypoint(deployment contract.Deployment) string {
-	keys := make([]string, 0, len(deployment.Actions))
-	for key := range deployment.Actions {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	for _, key := range keys {
-		if deployment.Actions[key].Entrypoint != "" {
-			return deployment.Actions[key].Entrypoint
-		}
-	}
-	return ""
 }
 
 func cloneStringPtr(value *string) *string {

@@ -635,6 +635,67 @@ func TestCanonicalActionExposesEmptySchemas(t *testing.T) {
 	}
 }
 
+func TestCanonicalAppLookupIsWorkspaceScoped(t *testing.T) {
+	tempDir := t.TempDir()
+	fileCatalog := catalog.NewFileCatalog(filepath.Join(tempDir, "catalog.json"))
+	for _, deployment := range []contract.Deployment{
+		{
+			Workspace:  "ws-a",
+			App:        "echo",
+			Commit:     "commit-a",
+			Entrypoint: "main.ts",
+			Actions: map[string]contract.Action{
+				"echo": {Action: "echo"},
+			},
+		},
+		{
+			Workspace:  "ws-b",
+			App:        "echo",
+			Commit:     "commit-b",
+			Entrypoint: "main.ts",
+			Actions: map[string]contract.Action{
+				"echo": {Action: "echo"},
+			},
+		},
+	} {
+		if err := fileCatalog.UpsertDeployment(context.Background(), deployment); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	server := httptest.NewServer(New(Config{Catalog: fileCatalog, EnableAPI: true}))
+	defer server.Close()
+
+	for _, tc := range []struct {
+		workspace string
+		commit    string
+	}{
+		{workspace: "ws-a", commit: "commit-a"},
+		{workspace: "ws-b", commit: "commit-b"},
+	} {
+		resp, err := http.Get(server.URL + "/api/w/" + tc.workspace + "/apps/echo")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("%s app status = %d, want %d", tc.workspace, resp.StatusCode, http.StatusOK)
+		}
+		var body struct {
+			App struct {
+				WorkspaceID string `json:"workspace_id"`
+				CommitSha   string `json:"commit_sha"`
+			} `json:"app"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		if body.App.WorkspaceID != tc.workspace || body.App.CommitSha != tc.commit {
+			t.Fatalf("%s app = %#v, want commit %s", tc.workspace, body.App, tc.commit)
+		}
+	}
+}
+
 func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 	tempDir := t.TempDir()
 	repoDir := filepath.Join(tempDir, "repo")
