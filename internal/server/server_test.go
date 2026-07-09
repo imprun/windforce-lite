@@ -930,6 +930,7 @@ func TestCanonicalControlPlaneRejectsInvalidAppAndActionKeys(t *testing.T) {
 		{http.MethodGet, "/api/w/ws-a/apps/Bad!/history", "", "invalid app key"},
 		{http.MethodGet, "/api/w/ws-a/apps/Bad!/openapi.json", "", "invalid app key"},
 		{http.MethodGet, "/api/w/ws-a/apps/echo/actions/Bad!", "", "invalid app/action key"},
+		{http.MethodGet, "/api/w/ws-a/apps/echo/actions/Bad!/schema", "", "invalid app/action key"},
 		{http.MethodPatch, "/api/w/ws-a/apps/Bad!", `{"tag_override":null}`, "invalid app key"},
 		{http.MethodPatch, "/api/w/ws-a/apps/echo/actions/Bad!", `{"tag_override":null}`, "invalid app/action key"},
 		{http.MethodPost, "/api/w/ws-a/apps/Bad!/requeue", `{}`, "invalid app key"},
@@ -998,6 +999,9 @@ func TestCanonicalControlPlaneOpenAPIExposesSchemaDiscovery(t *testing.T) {
 	if paths["/api/w/{workspace}/apps/{app}/openapi.json"] == nil {
 		t.Fatalf("app invocation openapi path missing: %#v", paths)
 	}
+	if paths["/api/w/{workspace}/apps/{app}/actions/{action}/schema"] == nil {
+		t.Fatalf("action schema path missing: %#v", paths)
+	}
 	if paths["/api/w/{workspace}/deployments/{deploymentId}"] != nil {
 		t.Fatalf("unsupported deployment status route should not be advertised: %#v", paths["/api/w/{workspace}/deployments/{deploymentId}"])
 	}
@@ -1049,6 +1053,9 @@ func TestCanonicalControlPlaneOpenAPIExposesSchemaDiscovery(t *testing.T) {
 	assertSchemaFields("Action", []string{
 		"id", "workspace_id", "app_key", "action_key", "input_schema", "output_schema", "tag",
 		"tag_override", "timeout_s", "required_capabilities", "updated_at",
+	})
+	assertSchemaFields("ActionSchema", []string{
+		"app_key", "action_key", "input_schema", "output_schema",
 	})
 	assertSchemaFields("AppHistoryItem", []string{
 		"id", "commit_sha", "entrypoint", "source", "deployment_id", "message", "created_at",
@@ -1471,6 +1478,29 @@ func TestCanonicalControlPlaneUsesMaterializedActionSchemas(t *testing.T) {
 	if !bytes.Contains(actionBody.InputSchema, []byte(`"message"`)) ||
 		!bytes.Contains(actionBody.OutputSchema, []byte(`"ok"`)) {
 		t.Fatalf("action schemas = input:%s output:%s", actionBody.InputSchema, actionBody.OutputSchema)
+	}
+
+	schemaResp, err := http.Get(server.URL + "/api/w/ws-a/apps/echo/actions/echo/schema")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer schemaResp.Body.Close()
+	if schemaResp.StatusCode != http.StatusOK {
+		t.Fatalf("schema status = %d, want %d", schemaResp.StatusCode, http.StatusOK)
+	}
+	var schemaBody struct {
+		AppKey       string          `json:"app_key"`
+		ActionKey    string          `json:"action_key"`
+		InputSchema  json.RawMessage `json:"input_schema"`
+		OutputSchema json.RawMessage `json:"output_schema"`
+	}
+	if err := json.NewDecoder(schemaResp.Body).Decode(&schemaBody); err != nil {
+		t.Fatal(err)
+	}
+	if schemaBody.AppKey != "echo" || schemaBody.ActionKey != "echo" ||
+		!bytes.Contains(schemaBody.InputSchema, []byte(`"message"`)) ||
+		!bytes.Contains(schemaBody.OutputSchema, []byte(`"ok"`)) {
+		t.Fatalf("schema body = %#v input:%s output:%s", schemaBody, schemaBody.InputSchema, schemaBody.OutputSchema)
 	}
 
 	openAPIResp, err := http.Get(server.URL + "/api/w/ws-a/apps/echo/openapi.json")
