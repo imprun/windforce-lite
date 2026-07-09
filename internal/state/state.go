@@ -551,7 +551,18 @@ func (s *LocalStore) ClaimJobForTags(ctx context.Context, workerID string, tags 
 			return left.ID < right.ID
 		})
 
-		job := snapshot.Jobs[ids[0]]
+		var job Job
+		for _, id := range ids {
+			candidate := snapshot.Jobs[id]
+			if maxConcurrentReached(snapshot, candidate) {
+				continue
+			}
+			job = candidate
+			break
+		}
+		if job.ID == "" {
+			return ErrNoQueuedJob
+		}
 		expiresAt := now.Add(leaseTTL)
 		job.State = JobRunning
 		job.Attempt++
@@ -1219,6 +1230,42 @@ func jobTag(job Job) string {
 		return strings.TrimSpace(job.Payload.Tag)
 	}
 	return contract.EffectiveRouteTagForAction(job.Payload.Deployment, job.Payload.ActionSpec)
+}
+
+func jobAppKey(job Job) string {
+	if app := strings.TrimSpace(job.Payload.App); app != "" {
+		return app
+	}
+	return strings.TrimSpace(job.Payload.Deployment.App)
+}
+
+func jobMaxConcurrent(job Job) (int, bool) {
+	if job.Payload.Deployment.MaxConcurrent == nil || *job.Payload.Deployment.MaxConcurrent <= 0 {
+		return 0, false
+	}
+	return int(*job.Payload.Deployment.MaxConcurrent), true
+}
+
+func maxConcurrentReached(snapshot *Snapshot, candidate Job) bool {
+	limit, ok := jobMaxConcurrent(candidate)
+	if !ok {
+		return false
+	}
+	workspaceID := normalizedJobWorkspace("", candidate)
+	appKey := jobAppKey(candidate)
+	if appKey == "" {
+		return false
+	}
+	running := 0
+	for _, job := range snapshot.Jobs {
+		if job.State != JobRunning {
+			continue
+		}
+		if normalizedJobWorkspace("", job) == workspaceID && jobAppKey(job) == appKey {
+			running++
+		}
+	}
+	return running >= limit
 }
 
 func normalizeClaimTags(tags []string) map[string]struct{} {

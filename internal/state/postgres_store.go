@@ -403,7 +403,7 @@ WHERE state='running' AND lease_expires_at < $1
 		if err != nil {
 			return err
 		}
-		var selected Job
+		candidates := []Job{}
 		for rows.Next() {
 			job, err := scanJob(rows)
 			if err != nil {
@@ -413,12 +413,23 @@ WHERE state='running' AND lease_expires_at < $1
 			if !claimTagAllowed(job, allowedTags) {
 				continue
 			}
-			selected = job
-			break
+			candidates = append(candidates, job)
 		}
 		rows.Close()
 		if err := rows.Err(); err != nil {
 			return err
+		}
+		var selected Job
+		for _, candidate := range candidates {
+			reached, err := postgresMaxConcurrentReached(ctx, tx, candidate)
+			if err != nil {
+				return err
+			}
+			if reached {
+				continue
+			}
+			selected = candidate
+			break
 		}
 		if selected.ID == "" {
 			return ErrNoQueuedJob
@@ -453,6 +464,48 @@ WHERE id=$3 AND state IN ($4, $5)
 		return Job{}, Lease{}, err
 	}
 	return claimed, lease, nil
+}
+
+func postgresMaxConcurrentReached(ctx context.Context, tx pgx.Tx, candidate Job) (bool, error) {
+	limit, ok := jobMaxConcurrent(candidate)
+	if !ok {
+		return false, nil
+	}
+	workspaceID := normalizedJobWorkspace("", candidate)
+	appKey := jobAppKey(candidate)
+	if appKey == "" {
+		return false, nil
+	}
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))`, workspaceID, appKey); err != nil {
+		return false, err
+	}
+	running, err := postgresRunningJobsForApp(ctx, tx, workspaceID, appKey)
+	if err != nil {
+		return false, err
+	}
+	return running >= limit, nil
+}
+
+func postgresRunningJobsForApp(ctx context.Context, tx pgx.Tx, workspaceID string, appKey string) (int, error) {
+	rows, err := tx.Query(ctx, `SELECT `+jobColumns+` FROM jobs WHERE state=$1`, string(JobRunning))
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+	count := 0
+	for rows.Next() {
+		job, err := scanJob(rows)
+		if err != nil {
+			return 0, err
+		}
+		if normalizedJobWorkspace("", job) == workspaceID && jobAppKey(job) == appKey {
+			count++
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	return count, nil
 }
 
 func (s *PostgresStore) CompleteJobSucceeded(ctx context.Context, lease Lease, result contract.JobResult) error {

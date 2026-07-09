@@ -35,6 +35,30 @@ func TestPostgresStoreClaimCompleteAndResumeLifecycle(t *testing.T) {
 	exerciseStoreLifecycle(t, store)
 }
 
+func TestLocalStoreClaimJobEnforcesMaxConcurrent(t *testing.T) {
+	store := NewLocalStore(t.TempDir() + "/state.json")
+	exerciseStoreMaxConcurrent(t, store)
+}
+
+func TestPostgresStoreClaimJobEnforcesMaxConcurrent(t *testing.T) {
+	dsn := os.Getenv("WINDFORCE_LITE_POSTGRES_TEST_DSN")
+	if dsn == "" {
+		t.Skip("WINDFORCE_LITE_POSTGRES_TEST_DSN is not set")
+	}
+	store, err := OpenPostgresStore(context.Background(), dsn)
+	if err != nil {
+		t.Fatalf("OpenPostgresStore returned error: %v", err)
+	}
+	defer store.Close()
+	if err := store.Migrate(context.Background()); err != nil {
+		t.Fatalf("Migrate returned error: %v", err)
+	}
+	if _, err := store.pool.Exec(context.Background(), `TRUNCATE job_logs, run_events, human_tasks, jobs, runs RESTART IDENTITY CASCADE`); err != nil {
+		t.Fatalf("TRUNCATE returned error: %v", err)
+	}
+	exerciseStoreMaxConcurrent(t, store)
+}
+
 func TestLocalStoreClaimJobForTags(t *testing.T) {
 	store := NewLocalStore(t.TempDir() + "/state.json")
 	redTag := "red"
@@ -66,6 +90,82 @@ func TestLocalStoreClaimJobForTags(t *testing.T) {
 	if _, _, err := store.ClaimJobForTags(context.Background(), "worker-green", []string{"green"}, time.Minute); err != ErrNoQueuedJob {
 		t.Fatalf("green claim error = %v, want %v", err, ErrNoQueuedJob)
 	}
+}
+
+func exerciseStoreMaxConcurrent(t *testing.T, store Store) {
+	t.Helper()
+	ctx := context.Background()
+	limit := int32(1)
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	echoDeployment := maxConcurrentDeployment("echo", &limit)
+	otherDeployment := maxConcurrentDeployment("other", &limit)
+	firstEcho := enqueueMaxConcurrentJob(t, store, echoDeployment, "run-echo-1", base)
+	secondEcho := enqueueMaxConcurrentJob(t, store, echoDeployment, "run-echo-2", base.Add(time.Second))
+	other := enqueueMaxConcurrentJob(t, store, otherDeployment, "run-other-1", base.Add(2*time.Second))
+
+	claimed, firstLease, err := store.ClaimJobForTags(ctx, "worker-first", []string{"default"}, time.Minute)
+	if err != nil {
+		t.Fatalf("first ClaimJobForTags returned error: %v", err)
+	}
+	if claimed.ID != firstEcho.ID {
+		t.Fatalf("first claimed job = %q, want %q", claimed.ID, firstEcho.ID)
+	}
+
+	claimed, _, err = store.ClaimJobForTags(ctx, "worker-other", []string{"default"}, time.Minute)
+	if err != nil {
+		t.Fatalf("second ClaimJobForTags returned error: %v", err)
+	}
+	if claimed.ID != other.ID {
+		t.Fatalf("second claimed job = %q, want other app job %q", claimed.ID, other.ID)
+	}
+
+	if _, _, err := store.ClaimJobForTags(ctx, "worker-blocked", []string{"default"}, time.Minute); err != ErrNoQueuedJob {
+		t.Fatalf("blocked claim error = %v, want %v", err, ErrNoQueuedJob)
+	}
+
+	if err := store.CompleteJobSucceeded(ctx, firstLease, contract.JobResult{
+		JobID:  firstEcho.ID,
+		App:    "echo",
+		Action: "echo",
+		Output: json.RawMessage(`{"ok":true}`),
+	}); err != nil {
+		t.Fatalf("CompleteJobSucceeded returned error: %v", err)
+	}
+
+	claimed, _, err = store.ClaimJobForTags(ctx, "worker-next", []string{"default"}, time.Minute)
+	if err != nil {
+		t.Fatalf("third ClaimJobForTags returned error: %v", err)
+	}
+	if claimed.ID != secondEcho.ID {
+		t.Fatalf("third claimed job = %q, want unblocked echo job %q", claimed.ID, secondEcho.ID)
+	}
+}
+
+func maxConcurrentDeployment(app string, limit *int32) contract.Deployment {
+	return contract.Deployment{
+		Workspace:     "ws-a",
+		GitSourceID:   app,
+		App:           app,
+		Commit:        "commit-a",
+		MaxConcurrent: limit,
+		Actions: map[string]contract.Action{
+			"echo": {Action: "echo", Command: []string{"helper"}},
+		},
+	}
+}
+
+func enqueueMaxConcurrentJob(t *testing.T, store Store, deployment contract.Deployment, runID string, createdAt time.Time) Job {
+	t.Helper()
+	run := NewRun("windforce", runID, deployment.App, "echo", deployment, json.RawMessage(`{}`))
+	job := NewActionJob(run, nil)
+	job.ID = runID + "-job"
+	job.CreatedAt = createdAt
+	job.UpdatedAt = createdAt
+	if err := store.CreateRunAndEnqueue(context.Background(), run, job); err != nil {
+		t.Fatalf("CreateRunAndEnqueue(%s) returned error: %v", runID, err)
+	}
+	return job
 }
 
 func exerciseStoreLifecycle(t *testing.T, store Store) {
