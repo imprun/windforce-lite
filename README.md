@@ -45,6 +45,10 @@ deployment:
 The ordering is intentional: a catalog entry must not point at a bundle that a
 worker cannot fetch.
 
+The Docker Compose control-plane runs inside a container, so the default
+`make windforce-register` path registers a remote git URL. Use the direct
+`sync` CLI for host-local source smoke tests.
+
 ## Run
 
 A queued run executes an action from the active catalog:
