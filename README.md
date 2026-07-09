@@ -229,6 +229,7 @@ Implemented control-plane endpoints:
 - `GET /api/w/{workspace}/apps/{app}/history`
 - `GET /api/w/{workspace}/apps/{app}/openapi.json` (app invocation OpenAPI generated from materialized action schemas)
 - `GET /api/w/{workspace}/apps/{app}/actions/{action}` (canonical action detail including materialized `input_schema` and `output_schema`)
+- `GET /api/w/{workspace}/apps/{app}/actions/{action}/schema` (materialized `input_schema` and `output_schema` only, for control-plane forms and adapters)
 - `PATCH /api/w/{workspace}/apps/{app}/actions/{action}`
 - `GET /api/w/{workspace}/worker-tags`
 - `POST /api/w/{workspace}/jobs/run/{app}/{action}`
@@ -275,14 +276,14 @@ python tools/windforce_control.py --api-url http://127.0.0.1:8080 --pretty schem
 python tools/windforce_control.py --api-url http://127.0.0.1:8080 --pretty control-openapi
 ```
 
-The schema command reads the canonical action detail endpoint,
-`GET /api/w/{workspace}/apps/{app}/actions/{action}`, then prints the
+The schema command reads the control-plane schema endpoint,
+`GET /api/w/{workspace}/apps/{app}/actions/{action}/schema`, then prints the
 materialized `input_schema` and `output_schema`.
 
 Action schemas are exposed through the Windforce control-plane API. Protocol
 adapters may translate trigger ingress and response envelopes, but they do not
-publish separate schema routes or own schema discovery. The workspace
-`control-openapi` command documents that control-plane contract, while the app
+own schema discovery outside the control plane. The workspace `control-openapi`
+command documents that control-plane contract, while the app
 `openapi` command returns invocation OpenAPI generated from the action schemas.
 Lite deployment/source sync history is exposed through
 `GET /api/w/{workspace}/apps/{app}/history`. The full Windforce draft
