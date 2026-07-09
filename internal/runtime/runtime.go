@@ -12,6 +12,7 @@ import (
 
 	"github.com/imprun/windforce-lite/internal/bundle"
 	"github.com/imprun/windforce-lite/internal/contract"
+	"github.com/imprun/windforce-lite/internal/executor"
 	"github.com/imprun/windforce-lite/internal/runner"
 )
 
@@ -21,10 +22,14 @@ type Runner struct {
 }
 
 type RunRequest struct {
+	JobID          string
+	WorkspaceID    string
 	Deployment     contract.Deployment
 	Action         string
 	Input          json.RawMessage
+	TriggerKind    string
 	TriggerHeaders json.RawMessage
+	Tag            string
 	InputPath      string
 	OutputPath     string
 	Timeout        time.Duration
@@ -70,9 +75,6 @@ func (r *Runner) Run(ctx context.Context, req RunRequest) (contract.JobResult, e
 		return contract.JobResult{}, fmt.Errorf("action %q not found in app %q", req.Action, req.Deployment.App)
 	}
 	adapterType := action.AdapterType()
-	if adapterType == contract.ActionAdapterJSONFile && len(action.Command) == 0 {
-		return contract.JobResult{}, fmt.Errorf("action %q has no command", req.Action)
-	}
 	if adapterType == contract.ActionAdapterCommand && (action.Adapter == nil || len(action.Adapter.Command) == 0) {
 		return contract.JobResult{}, fmt.Errorf("action %q has no adapter command", req.Action)
 	}
@@ -84,6 +86,9 @@ func (r *Runner) Run(ctx context.Context, req RunRequest) (contract.JobResult, e
 	sourceDir := filepath.Join(cacheRoot, "src", safePath(workspace), safePath(gitSourceID), safePath(req.Deployment.Commit))
 	if err := r.Store.FetchTo(ctx, sourceDir, workspace, gitSourceID, req.Deployment.Commit); err != nil {
 		return contract.JobResult{}, err
+	}
+	if adapterType == contract.ActionAdapterJSONFile && len(action.Command) == 0 {
+		return r.runEntrypoint(ctx, req, sourceDir, action)
 	}
 
 	jobDir, err := os.MkdirTemp("", "windforce-lite-job-")
@@ -114,7 +119,7 @@ func (r *Runner) Run(ctx context.Context, req RunRequest) (contract.JobResult, e
 	}
 	outputPath := req.OutputPath
 	if outputPath == "" {
-		outputPath = filepath.Join(jobDir, "output.json")
+		outputPath = filepath.Join(jobDir, "result.json")
 	} else {
 		outputPath, err = filepath.Abs(outputPath)
 		if err != nil {
@@ -125,23 +130,15 @@ func (r *Runner) Run(ctx context.Context, req RunRequest) (contract.JobResult, e
 		}
 	}
 
-	env := append([]string(nil), req.Env...)
+	env := r.jobEnv(req, action)
 	if len(req.TriggerHeaders) > 0 {
 		if !json.Valid(req.TriggerHeaders) {
 			return contract.JobResult{}, errors.New("trigger headers are not valid JSON")
 		}
-		triggerHeadersPath := filepath.Join(jobDir, "trigger.headers.json")
-		headers := append(append([]byte(nil), req.TriggerHeaders...), '\n')
-		if err := os.WriteFile(triggerHeadersPath, headers, 0o644); err != nil {
-			return contract.JobResult{}, err
-		}
-		env = append(env, "WINDFORCE_TRIGGER_HEADERS_JSON="+triggerHeadersPath)
+		env = append(env, "WF_TRIGGER_HEADERS="+string(req.TriggerHeaders))
 	}
 
-	timeout := req.Timeout
-	if timeout == 0 && action.TimeoutMs > 0 {
-		timeout = time.Duration(action.TimeoutMs) * time.Millisecond
-	}
+	timeout := actionTimeout(req, action)
 
 	var execResult runner.JSONSubprocessResult
 	var execErr error
@@ -219,6 +216,166 @@ func (r *Runner) Run(ctx context.Context, req RunRequest) (contract.JobResult, e
 	return jobResult, nil
 }
 
+func (r *Runner) runEntrypoint(ctx context.Context, req RunRequest, sourceDir string, action contract.Action) (contract.JobResult, error) {
+	entrypoint := strings.TrimSpace(req.Deployment.Entrypoint)
+	if entrypoint == "" {
+		return contract.JobResult{}, fmt.Errorf("app %q has no entrypoint", req.Deployment.App)
+	}
+	normalized, err := contract.NormalizeSourcePath(entrypoint)
+	if err != nil {
+		return contract.JobResult{}, err
+	}
+	entrypointPath := filepath.Join(sourceDir, filepath.FromSlash(normalized))
+	if rel, relErr := filepath.Rel(sourceDir, entrypointPath); relErr != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return contract.JobResult{}, fmt.Errorf("entrypoint %q escapes source root", entrypoint)
+	}
+
+	env := r.jobEnv(req, action)
+	if len(req.TriggerHeaders) > 0 {
+		if !json.Valid(req.TriggerHeaders) {
+			return contract.JobResult{}, errors.New("trigger headers are not valid JSON")
+		}
+		env = append(env, "WF_TRIGGER_HEADERS="+string(req.TriggerHeaders))
+	}
+
+	input, err := requestInput(req)
+	if err != nil {
+		return contract.JobResult{}, err
+	}
+	result, err := executor.Run(ctx, executor.RunParams{
+		ScriptLang:        firstNonEmpty(req.Deployment.ScriptLang, "typescript"),
+		EntrypointAbsPath: entrypointPath,
+		Input:             input,
+		Env:               env,
+		Timeout:           actionTimeout(req, action),
+		LogSink:           req.LogSink,
+	})
+	jobResult := contract.JobResult{
+		App:        req.Deployment.App,
+		Action:     req.Action,
+		Output:     cloneRaw(result.Result),
+		ExitCode:   result.ExitCode,
+		Stdout:     result.Logs,
+		DurationMs: result.DurationMs,
+	}
+	if err != nil {
+		jobResult.Error = err.Error()
+		return jobResult, err
+	}
+	if !result.Success() {
+		jobResult.Error = resultErrorMessage(result)
+	}
+	return jobResult, nil
+}
+
+func (r *Runner) jobEnv(req RunRequest, action contract.Action) []string {
+	workspace := contract.NormalizeWorkspace(firstNonEmpty(req.WorkspaceID, req.Deployment.SourceWorkspace()))
+	triggerKind := firstNonEmpty(req.TriggerKind, "api")
+	tag := firstNonEmpty(req.Tag, contract.EffectiveRouteTagForAction(req.Deployment, action))
+	env := append(curatedHostEnv(), req.Env...)
+	add := func(key string, value string) {
+		env = append(env, key+"="+value)
+	}
+	add("WF_JOB_ID", req.JobID)
+	add("WF_WORKSPACE", workspace)
+	add("WF_APP", req.Deployment.App)
+	add("WF_ACTION", req.Action)
+	add("WF_TAG", tag)
+	add("WF_RUNNABLE_PATH", req.Deployment.Entrypoint)
+	add("WF_STATE_PATH", req.Deployment.App+"/"+req.Action)
+	add("WF_TRIGGER_KIND", triggerKind)
+	return env
+}
+
+func actionTimeout(req RunRequest, action contract.Action) time.Duration {
+	if req.Timeout > 0 {
+		return req.Timeout
+	}
+	if action.TimeoutS != nil && *action.TimeoutS > 0 {
+		return time.Duration(*action.TimeoutS) * time.Second
+	}
+	if action.TimeoutMs > 0 {
+		return time.Duration(action.TimeoutMs) * time.Millisecond
+	}
+	if req.Deployment.TimeoutS > 0 {
+		return time.Duration(req.Deployment.TimeoutS) * time.Second
+	}
+	return 0
+}
+
+func requestInput(req RunRequest) (json.RawMessage, error) {
+	if req.InputPath == "" {
+		return cloneRaw(req.Input), nil
+	}
+	inputPath, err := filepath.Abs(req.InputPath)
+	if err != nil {
+		return nil, err
+	}
+	input, err := os.ReadFile(inputPath)
+	if err != nil {
+		return nil, err
+	}
+	if !json.Valid(input) {
+		return nil, errors.New("input file is not valid JSON")
+	}
+	return json.RawMessage(input), nil
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func resultErrorMessage(result executor.Result) string {
+	if len(result.Result) > 0 {
+		var body struct {
+			Message string `json:"message"`
+			Error   string `json:"error"`
+		}
+		if err := json.Unmarshal(result.Result, &body); err == nil {
+			if body.Message != "" {
+				return body.Message
+			}
+			if body.Error != "" {
+				return body.Error
+			}
+		}
+	}
+	if result.TimedOut {
+		return "action timed out"
+	}
+	if result.ExitCode != 0 {
+		return fmt.Sprintf("action exited with code %d", result.ExitCode)
+	}
+	return "action failed"
+}
+
+var jobHostEnvAllow = map[string]bool{
+	"PATH": true, "HOME": true, "TZ": true, "LANG": true, "LANGUAGE": true, "LC_ALL": true, "LC_CTYPE": true,
+	"TMPDIR": true, "TMP": true, "TEMP": true,
+	"SystemRoot": true, "COMSPEC": true, "PATHEXT": true,
+	"PLAYWRIGHT_BROWSERS_PATH": true, "PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD": true,
+}
+
+func curatedHostEnv() []string {
+	values := os.Environ()
+	env := make([]string, 0, len(values))
+	for _, value := range values {
+		key := value
+		if index := strings.IndexByte(value, '='); index >= 0 {
+			key = value[:index]
+		}
+		if jobHostEnvAllow[key] {
+			env = append(env, value)
+		}
+	}
+	return env
+}
+
 func safePath(value string) string {
 	var builder strings.Builder
 	for _, r := range value {
@@ -239,4 +396,11 @@ func safePath(value string) string {
 		return "_"
 	}
 	return builder.String()
+}
+
+func cloneRaw(value json.RawMessage) json.RawMessage {
+	if len(value) == 0 {
+		return nil
+	}
+	return append(json.RawMessage(nil), value...)
 }

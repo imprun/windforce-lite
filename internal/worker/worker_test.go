@@ -149,13 +149,13 @@ func TestWorkerHelperProcess(t *testing.T) {
 
 	switch mode {
 	case "echo":
-		input, err := os.ReadFile(os.Getenv("WINDFORCE_INPUT_JSON"))
+		input, err := os.ReadFile(os.Getenv("WF_INPUT_JSON"))
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(2)
 		}
 		output := []byte(`{"ok":true,"input":` + string(input) + `}`)
-		if err := os.WriteFile(os.Getenv("WINDFORCE_OUTPUT_JSON"), output, 0o644); err != nil {
+		if err := os.WriteFile(os.Getenv("WF_RESULT_JSON"), output, 0o644); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(2)
 		}
@@ -163,7 +163,7 @@ func TestWorkerHelperProcess(t *testing.T) {
 		fmt.Fprintln(os.Stderr, "worker stderr")
 	case "human":
 		output := []byte(`{"$windforce":{"type":"human_task","title":"Approve","fields":[{"name":"approved","type":"boolean","required":true}]}}`)
-		if err := os.WriteFile(os.Getenv("WINDFORCE_OUTPUT_JSON"), output, 0o644); err != nil {
+		if err := os.WriteFile(os.Getenv("WF_RESULT_JSON"), output, 0o644); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(2)
 		}

@@ -22,6 +22,7 @@ type Source struct {
 	Branch           string     `json:"branch,omitempty"`
 	Subpath          string     `json:"subpath,omitempty"`
 	TokenEnv         string     `json:"tokenEnv,omitempty"`
+	Kind             string     `json:"kind,omitempty"`
 	CreatedAt        *time.Time `json:"createdAt,omitempty"`
 	LastSyncedCommit *string    `json:"lastSyncedCommit,omitempty"`
 	LastSyncedAt     *time.Time `json:"lastSyncedAt,omitempty"`
@@ -271,6 +272,12 @@ func normalizeSource(source Source) (Source, error) {
 	}
 	if source.Branch == "" {
 		source.Branch = "main"
+	}
+	if source.Kind == "" {
+		source.Kind = "external"
+	}
+	if source.Kind != "external" && source.Kind != "managed" {
+		return Source{}, errors.New("git source kind must be external or managed")
 	}
 	subpath, err := contract.NormalizeSourcePath(source.Subpath)
 	if err != nil {

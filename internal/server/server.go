@@ -21,6 +21,7 @@ import (
 	catalogpkg "github.com/imprun/windforce-lite/internal/catalog"
 	"github.com/imprun/windforce-lite/internal/contract"
 	gitsourcepkg "github.com/imprun/windforce-lite/internal/gitsource"
+	"github.com/imprun/windforce-lite/internal/sampleapp"
 	sourcepkg "github.com/imprun/windforce-lite/internal/source"
 	"github.com/imprun/windforce-lite/internal/state"
 	"github.com/imprun/windforce-lite/internal/syncer"
@@ -60,6 +61,7 @@ type Config struct {
 	TriggerAdapters    []TriggerAdapter
 	TriggerToken       string
 	AdminToken         string
+	SampleRoot         string
 	Wait               time.Duration
 }
 
@@ -74,6 +76,7 @@ type Handler struct {
 	triggerAdapters    []TriggerAdapter
 	triggerToken       string
 	adminToken         string
+	sampleRoot         string
 	wait               time.Duration
 }
 
@@ -89,6 +92,7 @@ func New(config Config) http.Handler {
 		triggerAdapters:    append([]TriggerAdapter(nil), config.TriggerAdapters...),
 		triggerToken:       config.TriggerToken,
 		adminToken:         config.AdminToken,
+		sampleRoot:         config.SampleRoot,
 		wait:               config.Wait,
 	}
 }
@@ -221,6 +225,10 @@ func (h *Handler) handleAPI(w http.ResponseWriter, r *http.Request) bool {
 	}
 	if len(parts) == 5 && parts[0] == "api" && parts[1] == "w" && parts[3] == "git_sources" && parts[4] == "probe" && r.Method == http.MethodPost {
 		h.handleCanonicalProbeGitSource(w, r, parts[2])
+		return true
+	}
+	if len(parts) == 5 && parts[0] == "api" && parts[1] == "w" && parts[3] == "git_sources" && parts[4] == "sample" && r.Method == http.MethodPost {
+		h.handleCanonicalSampleGitSource(w, r, parts[2])
 		return true
 	}
 	if len(parts) == 5 && parts[0] == "api" && parts[1] == "w" && parts[3] == "git_sources" && r.Method == http.MethodPatch {
@@ -438,6 +446,70 @@ func (h *Handler) handleCanonicalProbeGitSource(w http.ResponseWriter, r *http.R
 	})
 }
 
+func (h *Handler) handleCanonicalSampleGitSource(w http.ResponseWriter, r *http.Request, workspaceID string) {
+	if h.syncer == nil {
+		writeError(w, http.StatusServiceUnavailable, "sync API is not configured")
+		return
+	}
+	if h.gitSources == nil {
+		writeError(w, http.StatusServiceUnavailable, "git source registry is not configured")
+		return
+	}
+	var request struct {
+		AppKey string `json:"app_key"`
+	}
+	if err := readOptionalJSON(r, &request); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	repo, err := sampleapp.EnsureRepository(r.Context(), h.sampleRoot, workspaceID, request.AppKey)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	source := gitsourcepkg.Source{
+		Workspace: workspaceID,
+		ID:        repo.SourceName,
+		RepoURL:   repo.RepoURL,
+		Branch:    repo.Branch,
+		Kind:      "managed",
+	}
+	status := http.StatusCreated
+	existing, err := h.gitSources.Get(r.Context(), workspaceID, repo.SourceName)
+	if err == nil {
+		source.CreatedAt = existing.CreatedAt
+		source.LastSyncedCommit = existing.LastSyncedCommit
+		source.LastSyncedAt = existing.LastSyncedAt
+		if err := h.gitSources.Upsert(r.Context(), source); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		source, err = h.gitSources.Get(r.Context(), workspaceID, repo.SourceName)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		status = http.StatusOK
+	} else if errors.Is(err, gitsourcepkg.ErrGitSourceNotFound) {
+		created, ok := h.createGitSource(w, r, source)
+		if !ok {
+			return
+		}
+		source = created
+	} else {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	deployment, ok := h.syncGitSource(w, r, workspaceID, source)
+	if !ok {
+		return
+	}
+	writeJSON(w, status, map[string]any{
+		"source":      newCanonicalGitSourceView(source),
+		"sync_result": newCanonicalSyncResult(deployment),
+	})
+}
+
 func (h *Handler) handleCanonicalPatchGitSource(w http.ResponseWriter, r *http.Request, workspaceID string, sourceID string) {
 	patcher, ok := h.gitSources.(interface {
 		Patch(context.Context, string, string, gitsourcepkg.Patch) (gitsourcepkg.Source, error)
@@ -509,6 +581,14 @@ func (h *Handler) handleCanonicalGitSourceSync(w http.ResponseWriter, r *http.Re
 		writeError(w, status, "git source not found")
 		return
 	}
+	deployment, ok := h.syncGitSource(w, r, workspaceID, source)
+	if !ok {
+		return
+	}
+	writeJSON(w, http.StatusOK, newCanonicalSyncResult(deployment))
+}
+
+func (h *Handler) syncGitSource(w http.ResponseWriter, r *http.Request, workspaceID string, source gitsourcepkg.Source) (contract.Deployment, bool) {
 	token := ""
 	if source.TokenEnv != "" {
 		token = os.Getenv(source.TokenEnv)
@@ -524,17 +604,17 @@ func (h *Handler) handleCanonicalGitSourceSync(w http.ResponseWriter, r *http.Re
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return contract.Deployment{}, false
 	}
 	if marker, ok := h.gitSources.(interface {
 		MarkSynced(context.Context, string, string, string, time.Time) (gitsourcepkg.Source, error)
 	}); ok {
 		if _, err := marker.MarkSynced(r.Context(), workspaceID, source.ID, deployment.Commit, time.Now().UTC()); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
-			return
+			return contract.Deployment{}, false
 		}
 	}
-	writeJSON(w, http.StatusOK, newCanonicalSyncResult(deployment))
+	return deployment, true
 }
 
 func (h *Handler) handleCanonicalApps(w http.ResponseWriter, r *http.Request, workspaceID string) {
@@ -898,7 +978,7 @@ func newCanonicalGitSourceView(source gitsourcepkg.Source) canonicalGitSourceVie
 		Branch:           firstNonEmpty(source.Branch, "main"),
 		Subpath:          source.Subpath,
 		CredsRef:         source.TokenEnv,
-		Kind:             "external",
+		Kind:             firstNonEmpty(source.Kind, "external"),
 		LastSyncedCommit: cloneStringPtr(source.LastSyncedCommit),
 		LastSyncedAt:     cloneTimePtr(source.LastSyncedAt),
 		CreatedAt:        timeValue(source.CreatedAt),

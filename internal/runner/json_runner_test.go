@@ -90,10 +90,10 @@ func TestHelperProcess(t *testing.T) {
 		return
 	case "success":
 		fmt.Printf("%s:%s:%s:%s\n",
-			os.Getenv("WINDFORCE_APP"),
-			os.Getenv("WINDFORCE_ACTION"),
-			os.Getenv("WINDFORCE_INPUT_JSON"),
-			os.Getenv("WINDFORCE_OUTPUT_JSON"),
+			os.Getenv("WF_APP"),
+			os.Getenv("WF_ACTION"),
+			os.Getenv("WF_INPUT_JSON"),
+			os.Getenv("WF_RESULT_JSON"),
 		)
 		os.Exit(0)
 	case "fail":
@@ -103,7 +103,7 @@ func TestHelperProcess(t *testing.T) {
 			Command    []string `json:"command"`
 			OutputPath string   `json:"outputPath"`
 		}
-		requestPath := os.Getenv("WINDFORCE_ADAPTER_REQUEST_JSON")
+		requestPath := os.Getenv("WF_ADAPTER_REQUEST_JSON")
 		requestBytes, err := os.ReadFile(requestPath)
 		if err != nil {
 			os.Exit(3)
@@ -121,7 +121,7 @@ func TestHelperProcess(t *testing.T) {
 		if err != nil {
 			os.Exit(6)
 		}
-		if err := os.WriteFile(os.Getenv("WINDFORCE_ADAPTER_RESULT_JSON"), resultBytes, 0o644); err != nil {
+		if err := os.WriteFile(os.Getenv("WF_ADAPTER_RESULT_JSON"), resultBytes, 0o644); err != nil {
 			os.Exit(6)
 		}
 		os.Exit(0)

@@ -226,6 +226,7 @@ Implemented control-plane endpoints:
 - `GET /api/w/{workspace}/git_sources`
 - `POST /api/w/{workspace}/git_sources`
 - `POST /api/w/{workspace}/git_sources/probe`
+- `POST /api/w/{workspace}/git_sources/sample`
 - `PATCH /api/w/{workspace}/git_sources/{gitSourceId}`
 - `DELETE /api/w/{workspace}/git_sources/{gitSourceId}`
 - `POST /api/w/{workspace}/git_sources/{gitSourceId}/sync`
@@ -258,6 +259,7 @@ the same control-plane API:
 python tools/windforce_control.py --api-url http://127.0.0.1:8080 register `
   --name echo --repo-url . --subpath examples/echo
 python tools/windforce_control.py --api-url http://127.0.0.1:8080 sync --git-source-id echo
+python tools/windforce_control.py --api-url http://127.0.0.1:8080 sample --app-key sample_hello
 python tools/windforce_control.py --api-url http://127.0.0.1:8080 --pretty schema `
   --app echo --action echo
 ```

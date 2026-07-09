@@ -682,6 +682,83 @@ func TestCanonicalActionExposesEmptySchemas(t *testing.T) {
 	}
 }
 
+func TestCanonicalSampleGitSourceRegistersAndSyncs(t *testing.T) {
+	tempDir := t.TempDir()
+	store := bundle.NewLocalStore(filepath.Join(tempDir, "store"))
+	fileCatalog := catalog.NewFileCatalog(filepath.Join(tempDir, "catalog.json"))
+	handler := New(Config{
+		Store:      state.NewLocalStore(filepath.Join(tempDir, "state.json")),
+		Catalog:    fileCatalog,
+		Syncer:     &syncer.Syncer{Store: store, Catalog: fileCatalog, CloneRoot: tempDir},
+		GitSources: gitsource.NewFileRegistry(filepath.Join(tempDir, "git-sources.json")),
+		EnableAPI:  true,
+		SampleRoot: filepath.Join(tempDir, "samples"),
+	})
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	resp, err := http.Post(server.URL+"/api/w/ws-a/git_sources/sample", "application/json", bytes.NewBufferString(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("sample status = %d, want %d", resp.StatusCode, http.StatusCreated)
+	}
+	var body struct {
+		Source struct {
+			ID          string `json:"id"`
+			WorkspaceID string `json:"workspace_id"`
+			Name        string `json:"name"`
+			Kind        string `json:"kind"`
+			RepoURL     string `json:"repo_url"`
+		} `json:"source"`
+		SyncResult struct {
+			App     string   `json:"app"`
+			Commit  string   `json:"commit"`
+			Actions []string `json:"actions"`
+		} `json:"sync_result"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Source.ID != "sample-hello" || body.Source.Name != "sample-hello" ||
+		body.Source.WorkspaceID != "ws-a" || body.Source.Kind != "managed" || body.Source.RepoURL == "" {
+		t.Fatalf("sample source = %#v", body.Source)
+	}
+	if body.SyncResult.App != "sample_hello" || body.SyncResult.Commit == "" ||
+		len(body.SyncResult.Actions) != 1 || body.SyncResult.Actions[0] != "sample_hello.echo" {
+		t.Fatalf("sample sync result = %#v", body.SyncResult)
+	}
+
+	actionResp, err := http.Get(server.URL + "/api/w/ws-a/apps/sample_hello/actions/echo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer actionResp.Body.Close()
+	if actionResp.StatusCode != http.StatusOK {
+		t.Fatalf("sample action status = %d, want %d", actionResp.StatusCode, http.StatusOK)
+	}
+	var actionBody struct {
+		InputSchema json.RawMessage `json:"input_schema"`
+	}
+	if err := json.NewDecoder(actionResp.Body).Decode(&actionBody); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(actionBody.InputSchema, []byte(`"message"`)) {
+		t.Fatalf("sample input schema = %s", actionBody.InputSchema)
+	}
+
+	againResp, err := http.Post(server.URL+"/api/w/ws-a/git_sources/sample", "application/json", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer againResp.Body.Close()
+	if againResp.StatusCode != http.StatusOK {
+		t.Fatalf("second sample status = %d, want %d", againResp.StatusCode, http.StatusOK)
+	}
+}
+
 func TestCanonicalAppLookupIsWorkspaceScoped(t *testing.T) {
 	tempDir := t.TempDir()
 	fileCatalog := catalog.NewFileCatalog(filepath.Join(tempDir, "catalog.json"))

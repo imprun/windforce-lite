@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
+	goruntime "runtime"
 	"testing"
 
 	"github.com/imprun/windforce-lite/internal/bundle"
@@ -12,40 +14,30 @@ import (
 )
 
 func TestRunnerFetchesBundleAndRunsAction(t *testing.T) {
+	requirePythonRuntime(t)
 	tempDir := t.TempDir()
 	sourceDir := filepath.Join(tempDir, "source")
 	if err := os.MkdirAll(sourceDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(sourceDir, "windforce.json"), []byte(`{"app":"echo","actions":{"echo":{"command":["helper"]}}}`), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(sourceDir, "windforce.json"), []byte(`{"app":"echo","entrypoint":"main.py","scriptLang":"python","actions":{"echo":{}}}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	actionSource := `package main
-
-import (
-	"fmt"
-	"os"
-)
-
-func main() {
-	input, err := os.ReadFile(os.Getenv("WINDFORCE_INPUT_JSON"))
-	if err != nil {
-		os.Exit(2)
-	}
-	headers := []byte("{}")
-	if path := os.Getenv("WINDFORCE_TRIGGER_HEADERS_JSON"); path != "" {
-		headers, err = os.ReadFile(path)
-		if err != nil {
-			os.Exit(2)
-		}
-	}
-	output := fmt.Sprintf("{\"app\":\"echo\",\"action\":\"echo\",\"input\":%s,\"headers\":%s}", string(input), string(headers))
-	if err := os.WriteFile(os.Getenv("WINDFORCE_OUTPUT_JSON"), []byte(output), 0o644); err != nil {
-		os.Exit(2)
-	}
-}
+	actionSource := `def main(ctx):
+    ctx.logger.info("canonical stdout", ctx.app, ctx.action)
+    return {
+        "app": ctx.app,
+        "action": ctx.action,
+        "input": ctx.input,
+        "headers": ctx.trigger.headers,
+        "job": {
+            "id": ctx.job.id,
+            "workspace": ctx.job.workspace,
+            "tag": ctx.job.tag,
+        },
+    }
 `
-	if err := os.WriteFile(filepath.Join(sourceDir, "action.go"), []byte(actionSource), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(sourceDir, "main.py"), []byte(actionSource), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	inputPath := filepath.Join(tempDir, "input.json")
@@ -65,16 +57,21 @@ func main() {
 			GitSourceID: "source-a",
 			App:         "echo",
 			Commit:      "commit-a",
+			Entrypoint:  "main.py",
+			ScriptLang:  "python",
 			Actions: map[string]contract.Action{
 				"echo": {
-					Action:  "echo",
-					Command: []string{"go", "run", "./action.go"},
+					Action: "echo",
 				},
 			},
 		},
+		JobID:          "job-a",
+		WorkspaceID:    "workspace-a",
 		Action:         "echo",
 		InputPath:      inputPath,
+		TriggerKind:    "webhook",
 		TriggerHeaders: json.RawMessage(`{"X-Hub-Signature-256":"sha256=abc"}`),
+		Tag:            "default",
 	})
 	if err != nil {
 		t.Fatalf("Run returned error: %v", err)
@@ -87,13 +84,18 @@ func main() {
 		Action  string            `json:"action"`
 		Input   map[string]string `json:"input"`
 		Headers map[string]string `json:"headers"`
+		Job     map[string]string `json:"job"`
 	}
 	if err := json.Unmarshal(result.Output, &output); err != nil {
 		t.Fatalf("output is not JSON: %v", err)
 	}
 	if output.App != "echo" || output.Action != "echo" || output.Input["message"] != "hello" ||
-		output.Headers["X-Hub-Signature-256"] != "sha256=abc" {
+		output.Headers["X-Hub-Signature-256"] != "sha256=abc" || output.Job["id"] != "job-a" ||
+		output.Job["workspace"] != "workspace-a" || output.Job["tag"] != "default" {
 		t.Fatalf("output = %#v", output)
+	}
+	if result.Stdout == "" {
+		t.Fatalf("stdout was not captured")
 	}
 }
 
@@ -160,7 +162,7 @@ func TestRunnerRunsActionThroughCommandAdapter(t *testing.T) {
 	if len(output.Command) != 2 || output.Command[0] != "legacy" || output.Command[1] != "script" {
 		t.Fatalf("command = %#v", output.Command)
 	}
-	if !containsEnv(output.Env, "SCRIPT_ENV=1") || !containsEnvPrefix(output.Env, "WINDFORCE_TRIGGER_HEADERS_JSON=") {
+	if !containsEnv(output.Env, "SCRIPT_ENV=1") || !containsEnv(output.Env, `WF_TRIGGER_HEADERS={"X-Hub-Signature-256":"sha256=abc"}`) {
 		t.Fatalf("env = %#v", output.Env)
 	}
 	if output.Input["message"] != "hello" {
@@ -184,7 +186,7 @@ func TestRuntimeActionAdapterHelperProcess(t *testing.T) {
 		Headers    map[string]string          `json:"triggerHeaders"`
 		Options    map[string]json.RawMessage `json:"options"`
 	}
-	requestBytes, err := os.ReadFile(os.Getenv("WINDFORCE_ADAPTER_REQUEST_JSON"))
+	requestBytes, err := os.ReadFile(os.Getenv("WF_ADAPTER_REQUEST_JSON"))
 	if err != nil {
 		os.Exit(2)
 	}
@@ -222,10 +224,21 @@ func TestRuntimeActionAdapterHelperProcess(t *testing.T) {
 	if err != nil {
 		os.Exit(6)
 	}
-	if err := os.WriteFile(os.Getenv("WINDFORCE_ADAPTER_RESULT_JSON"), resultBytes, 0o644); err != nil {
+	if err := os.WriteFile(os.Getenv("WF_ADAPTER_RESULT_JSON"), resultBytes, 0o644); err != nil {
 		os.Exit(6)
 	}
 	os.Exit(0)
+}
+
+func requirePythonRuntime(t *testing.T) {
+	t.Helper()
+	python := "python3"
+	if goruntime.GOOS == "windows" {
+		python = "python"
+	}
+	if _, err := exec.LookPath(python); err != nil {
+		t.Skipf("%s not found in PATH", python)
+	}
 }
 
 func containsEnv(values []string, want string) bool {

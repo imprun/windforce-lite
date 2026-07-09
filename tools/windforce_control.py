@@ -68,6 +68,10 @@ def main(argv: list[str] | None = None) -> int:
     sync.add_argument("--token-env", default=argparse.SUPPRESS)
     sync.set_defaults(func=cmd_sync)
 
+    sample = sub.add_parser("sample", help="create and sync a managed sample git source")
+    sample.add_argument("--app-key", "--app", dest="app_key", default="")
+    sample.set_defaults(func=cmd_sample)
+
     apps = sub.add_parser("apps", help="list apps")
     apps.add_argument("--summary", action="store_true", help="return summary rows")
     apps.set_defaults(func=cmd_apps)
@@ -172,6 +176,18 @@ def cmd_sync(args: argparse.Namespace) -> Any:
         args,
         "POST",
         f"/api/w/{quote_path(args.workspace)}/git_sources/{quote_path(args.git_source_id)}/sync",
+    )
+
+
+def cmd_sample(args: argparse.Namespace) -> Any:
+    body = {}
+    if args.app_key:
+        body["app_key"] = args.app_key
+    return request(
+        args,
+        "POST",
+        f"/api/w/{quote_path(args.workspace)}/git_sources/sample",
+        body,
     )
 
 

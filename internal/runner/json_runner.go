@@ -70,13 +70,13 @@ func RunJSONSubprocess(ctx context.Context, req JSONSubprocessRequest) (JSONSubp
 	if req.WorkDir != "" {
 		cmd.Dir = req.WorkDir
 	}
-	cmd.Env = append(os.Environ(),
-		"WINDFORCE_INPUT_JSON="+req.InputPath,
-		"WINDFORCE_OUTPUT_JSON="+req.OutputPath,
-		"WINDFORCE_APP="+req.App,
-		"WINDFORCE_ACTION="+req.Action,
+	cmd.Env = append([]string(nil), req.Env...)
+	cmd.Env = append(cmd.Env,
+		"WF_INPUT_JSON="+req.InputPath,
+		"WF_RESULT_JSON="+req.OutputPath,
+		"WF_APP="+req.App,
+		"WF_ACTION="+req.Action,
 	)
-	cmd.Env = append(cmd.Env, req.Env...)
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -145,13 +145,13 @@ func RunActionAdapterSubprocess(ctx context.Context, req ActionAdapterSubprocess
 	if req.WorkDir != "" {
 		cmd.Dir = req.WorkDir
 	}
-	cmd.Env = append(os.Environ(),
-		"WINDFORCE_ADAPTER_REQUEST_JSON="+req.RequestPath,
-		"WINDFORCE_ADAPTER_RESULT_JSON="+req.ResultPath,
-		"WINDFORCE_APP="+req.App,
-		"WINDFORCE_ACTION="+req.Action,
+	cmd.Env = append([]string(nil), req.Env...)
+	cmd.Env = append(cmd.Env,
+		"WF_ADAPTER_REQUEST_JSON="+req.RequestPath,
+		"WF_ADAPTER_RESULT_JSON="+req.ResultPath,
+		"WF_APP="+req.App,
+		"WF_ACTION="+req.Action,
 	)
-	cmd.Env = append(cmd.Env, req.Env...)
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
