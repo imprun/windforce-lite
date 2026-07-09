@@ -2896,6 +2896,34 @@ func TestCanonicalAppAndActionTagOverrideAPI(t *testing.T) {
 	server := httptest.NewServer(New(Config{Catalog: fileCatalog, EnableAPI: true}))
 	defer server.Close()
 
+	for _, body := range []string{
+		`{"tag_override":" app-blue"}`,
+		`{"tag_override":"app-blue "}`,
+		`{"tag_override":"Has Space"}`,
+	} {
+		req, err := http.NewRequest(http.MethodPatch, server.URL+"/api/w/ws-a/apps/echo", bytes.NewBufferString(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var errorBody struct {
+			Error string `json:"error"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&errorBody); err != nil {
+			_ = resp.Body.Close()
+			t.Fatal(err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest ||
+			errorBody.Error != "tag_override must be a valid tag (lowercase alphanumeric, _ or -, max 64) or null" {
+			t.Fatalf("patch app body %s response = %d %#v, want invalid tag", body, resp.StatusCode, errorBody)
+		}
+	}
+
 	getNestedActionRouteTag := func() string {
 		t.Helper()
 		resp, err := http.Get(server.URL + "/api/w/ws-a/apps/echo")

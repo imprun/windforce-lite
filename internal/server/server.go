@@ -1558,12 +1558,10 @@ func decodeCanonicalTagOverride(w http.ResponseWriter, r *http.Request) (*string
 		writeError(w, http.StatusBadRequest, "tag_override must be a valid tag (lowercase alphanumeric, _ or -, max 64) or null")
 		return nil, false
 	}
-	value = strings.TrimSpace(value)
 	return &value, true
 }
 
 func validRouteTag(value string) bool {
-	value = strings.TrimSpace(value)
 	if value == "" || len(value) > 64 {
 		return false
 	}
