@@ -59,10 +59,6 @@ def main(argv: list[str] | None = None) -> int:
     list_sources = sub.add_parser("git-sources", help="list registered git sources")
     list_sources.set_defaults(func=cmd_git_sources)
 
-    get_source = sub.add_parser("git-source", help="get one registered git source")
-    get_source.add_argument("--git-source-id", "--name", dest="git_source_id", required=True)
-    get_source.set_defaults(func=cmd_git_source)
-
     sync = sub.add_parser("sync", help="sync a registered git source")
     sync.add_argument("--git-source-id", "--name", dest="git_source_id", required=True)
     sync.add_argument("--app", default="")
@@ -160,14 +156,6 @@ def cmd_probe(args: argparse.Namespace) -> Any:
 
 def cmd_git_sources(args: argparse.Namespace) -> Any:
     return request(args, "GET", f"/api/w/{quote_path(args.workspace)}/git_sources")
-
-
-def cmd_git_source(args: argparse.Namespace) -> Any:
-    return request(
-        args,
-        "GET",
-        f"/api/w/{quote_path(args.workspace)}/git_sources/{quote_path(args.git_source_id)}",
-    )
 
 
 def cmd_sync(args: argparse.Namespace) -> Any:
