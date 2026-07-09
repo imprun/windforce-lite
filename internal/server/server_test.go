@@ -407,6 +407,197 @@ func TestCanonicalJobCancelAPI(t *testing.T) {
 	}
 }
 
+func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
+	tempDir := t.TempDir()
+	repoDir := filepath.Join(tempDir, "repo")
+	if err := os.MkdirAll(repoDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repoDir, "windforce.json"), []byte(`{
+		"app": "echo",
+		"actions": {
+			"echo": {
+				"command": ["helper"],
+				"inputSchema": "input.schema.json",
+				"outputSchema": "output.schema.json"
+			}
+		}
+	}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repoDir, "input.schema.json"), []byte(`{"type":"object","properties":{"message":{"type":"string"}}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repoDir, "output.schema.json"), []byte(`{"type":"object","properties":{"ok":{"type":"boolean"}}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runTestGit(t, repoDir, "init")
+	runTestGit(t, repoDir, "checkout", "-b", "main")
+	runTestGit(t, repoDir, "config", "user.email", "test@example.com")
+	runTestGit(t, repoDir, "config", "user.name", "Test User")
+	runTestGit(t, repoDir, "add", ".")
+	runTestGit(t, repoDir, "commit", "-m", "initial")
+
+	fileCatalog := catalog.NewFileCatalog(filepath.Join(tempDir, "catalog.json"))
+	handler := New(Config{
+		Store:      state.NewLocalStore(filepath.Join(tempDir, "state.json")),
+		Catalog:    fileCatalog,
+		Syncer:     &syncer.Syncer{Store: bundle.NewLocalStore(filepath.Join(tempDir, "store")), Catalog: fileCatalog, CloneRoot: tempDir},
+		GitSources: gitsource.NewFileRegistry(filepath.Join(tempDir, "git-sources.json")),
+		EnableAPI:  true,
+	})
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	registerBody, err := json.Marshal(map[string]string{
+		"name":      "source-a",
+		"repo_url":  filepath.ToSlash(repoDir),
+		"branch":    "main",
+		"creds_ref": "WINDFORCE_LITE_GIT_TOKEN",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	registerResp, err := http.Post(server.URL+"/api/w/ws-a/git_sources", "application/json", bytes.NewReader(registerBody))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer registerResp.Body.Close()
+	if registerResp.StatusCode != http.StatusCreated {
+		t.Fatalf("register status = %d, want %d", registerResp.StatusCode, http.StatusCreated)
+	}
+	var registered struct {
+		ID          string `json:"id"`
+		WorkspaceID string `json:"workspace_id"`
+		Name        string `json:"name"`
+		RepoURL     string `json:"repo_url"`
+		CredsRef    string `json:"creds_ref"`
+	}
+	if err := json.NewDecoder(registerResp.Body).Decode(&registered); err != nil {
+		t.Fatal(err)
+	}
+	if registered.ID != "source-a" || registered.Name != "source-a" || registered.WorkspaceID != "ws-a" ||
+		registered.RepoURL != filepath.ToSlash(repoDir) || registered.CredsRef != "WINDFORCE_LITE_GIT_TOKEN" {
+		t.Fatalf("registered source = %#v", registered)
+	}
+
+	listResp, err := http.Get(server.URL + "/api/w/ws-a/git_sources")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listResp.Body.Close()
+	if listResp.StatusCode != http.StatusOK {
+		t.Fatalf("list status = %d, want %d", listResp.StatusCode, http.StatusOK)
+	}
+	var sources []struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(listResp.Body).Decode(&sources); err != nil {
+		t.Fatal(err)
+	}
+	if len(sources) != 1 || sources[0].Name != "source-a" {
+		t.Fatalf("sources = %#v", sources)
+	}
+
+	syncResp, err := http.Post(server.URL+"/api/w/ws-a/git_sources/source-a/sync", "application/json", bytes.NewBufferString(`{"app":"echo"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer syncResp.Body.Close()
+	if syncResp.StatusCode != http.StatusOK {
+		t.Fatalf("sync status = %d, want %d", syncResp.StatusCode, http.StatusOK)
+	}
+	var syncBody struct {
+		Commit  string   `json:"commit"`
+		App     string   `json:"app"`
+		Actions []string `json:"actions"`
+	}
+	if err := json.NewDecoder(syncResp.Body).Decode(&syncBody); err != nil {
+		t.Fatal(err)
+	}
+	if syncBody.Commit == "" || syncBody.App != "echo" || len(syncBody.Actions) != 1 || syncBody.Actions[0] != "echo.echo" {
+		t.Fatalf("sync body = %#v", syncBody)
+	}
+
+	appsResp, err := http.Get(server.URL + "/api/w/ws-a/apps")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer appsResp.Body.Close()
+	var apps []string
+	if err := json.NewDecoder(appsResp.Body).Decode(&apps); err != nil {
+		t.Fatal(err)
+	}
+	if len(apps) != 1 || apps[0] != "echo" {
+		t.Fatalf("apps = %#v", apps)
+	}
+
+	summaryResp, err := http.Get(server.URL + "/api/w/ws-a/apps?view=summary")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer summaryResp.Body.Close()
+	var summary struct {
+		Apps []struct {
+			AppKey       string `json:"app_key"`
+			ActionsCount int64  `json:"actions_count"`
+		} `json:"apps"`
+	}
+	if err := json.NewDecoder(summaryResp.Body).Decode(&summary); err != nil {
+		t.Fatal(err)
+	}
+	if len(summary.Apps) != 1 || summary.Apps[0].AppKey != "echo" || summary.Apps[0].ActionsCount != 1 {
+		t.Fatalf("summary = %#v", summary)
+	}
+
+	actionResp, err := http.Get(server.URL + "/api/w/ws-a/apps/echo/actions/echo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer actionResp.Body.Close()
+	if actionResp.StatusCode != http.StatusOK {
+		t.Fatalf("action status = %d, want %d", actionResp.StatusCode, http.StatusOK)
+	}
+	var actionBody struct {
+		AppKey       string          `json:"app_key"`
+		ActionKey    string          `json:"action_key"`
+		InputSchema  json.RawMessage `json:"input_schema"`
+		OutputSchema json.RawMessage `json:"output_schema"`
+	}
+	if err := json.NewDecoder(actionResp.Body).Decode(&actionBody); err != nil {
+		t.Fatal(err)
+	}
+	if actionBody.AppKey != "echo" || actionBody.ActionKey != "echo" ||
+		!bytes.Contains(actionBody.InputSchema, []byte(`"message"`)) || !bytes.Contains(actionBody.OutputSchema, []byte(`"ok"`)) {
+		t.Fatalf("action body = %#v input=%s output=%s", actionBody, actionBody.InputSchema, actionBody.OutputSchema)
+	}
+
+	appResp, err := http.Get(server.URL + "/api/w/ws-a/apps/echo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer appResp.Body.Close()
+	if appResp.StatusCode != http.StatusOK {
+		t.Fatalf("app status = %d, want %d", appResp.StatusCode, http.StatusOK)
+	}
+	var appBody struct {
+		App struct {
+			AppKey string `json:"app_key"`
+		} `json:"app"`
+		Actions []struct {
+			ActionKey   string          `json:"action_key"`
+			InputSchema json.RawMessage `json:"input_schema"`
+		} `json:"actions"`
+	}
+	if err := json.NewDecoder(appResp.Body).Decode(&appBody); err != nil {
+		t.Fatal(err)
+	}
+	if appBody.App.AppKey != "echo" || len(appBody.Actions) != 1 || appBody.Actions[0].ActionKey != "echo" ||
+		!bytes.Contains(appBody.Actions[0].InputSchema, []byte(`"message"`)) {
+		t.Fatalf("app body = %#v", appBody)
+	}
+}
+
 type fakeTriggerAdapter struct{}
 
 func (fakeTriggerAdapter) Name() string {

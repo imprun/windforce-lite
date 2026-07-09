@@ -11,6 +11,8 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -201,6 +203,34 @@ func (h *Handler) handleAPI(w http.ResponseWriter, r *http.Request) bool {
 	}
 	if len(parts) == 5 && parts[0] == "api" && parts[1] == "w" && parts[3] == "jobs" && parts[4] == "summary" && r.Method == http.MethodGet {
 		h.handleJobSummary(w, r, parts[2])
+		return true
+	}
+	if len(parts) == 4 && parts[0] == "api" && parts[1] == "w" && parts[3] == "git_sources" && r.Method == http.MethodGet {
+		h.handleCanonicalGitSources(w, r, parts[2])
+		return true
+	}
+	if len(parts) == 4 && parts[0] == "api" && parts[1] == "w" && parts[3] == "git_sources" && r.Method == http.MethodPost {
+		h.handleCanonicalRegisterGitSource(w, r, parts[2])
+		return true
+	}
+	if len(parts) == 6 && parts[0] == "api" && parts[1] == "w" && parts[3] == "git_sources" && parts[5] == "sync" && r.Method == http.MethodPost {
+		h.handleCanonicalGitSourceSync(w, r, parts[2], parts[4])
+		return true
+	}
+	if len(parts) == 4 && parts[0] == "api" && parts[1] == "w" && parts[3] == "apps" && r.Method == http.MethodGet {
+		h.handleCanonicalApps(w, r, parts[2])
+		return true
+	}
+	if len(parts) == 5 && parts[0] == "api" && parts[1] == "w" && parts[3] == "apps" && r.Method == http.MethodGet {
+		h.handleCanonicalApp(w, r, parts[2], parts[4])
+		return true
+	}
+	if len(parts) == 7 && parts[0] == "api" && parts[1] == "w" && parts[3] == "apps" && parts[5] == "actions" && r.Method == http.MethodGet {
+		h.handleCanonicalAction(w, r, parts[2], parts[4], parts[6])
+		return true
+	}
+	if len(parts) == 5 && parts[0] == "api" && parts[1] == "w" && parts[3] == "deployments" && r.Method == http.MethodGet {
+		h.handleCanonicalDeployment(w, r, parts[2], parts[4])
 		return true
 	}
 	if len(parts) == 5 && parts[0] == "api" && parts[1] == "w" && parts[3] == "jobs" && r.Method == http.MethodGet {
@@ -502,6 +532,523 @@ func (h *Handler) handleCatalog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, snapshot)
+}
+
+func (h *Handler) handleCanonicalGitSources(w http.ResponseWriter, r *http.Request, workspaceID string) {
+	snapshot, ok := h.loadGitSourceSnapshot(w, r)
+	if !ok {
+		return
+	}
+	workspaceID = contract.NormalizeWorkspace(workspaceID)
+	items := make([]canonicalGitSourceView, 0, len(snapshot.Sources))
+	for _, source := range snapshot.Sources {
+		if contract.NormalizeWorkspace(source.Workspace) != workspaceID {
+			continue
+		}
+		items = append(items, newCanonicalGitSourceView(source))
+	}
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].Name < items[j].Name
+	})
+	writeJSON(w, http.StatusOK, items)
+}
+
+func (h *Handler) handleCanonicalRegisterGitSource(w http.ResponseWriter, r *http.Request, workspaceID string) {
+	if h.gitSources == nil {
+		writeError(w, http.StatusServiceUnavailable, "git source registry is not configured")
+		return
+	}
+	var request struct {
+		Name     string `json:"name"`
+		RepoURL  string `json:"repo_url"`
+		Branch   string `json:"branch"`
+		Subpath  string `json:"subpath"`
+		CredsRef string `json:"creds_ref"`
+
+		NameCamel     string `json:"Name"`
+		RepoURLCamel  string `json:"RepoURL"`
+		BranchCamel   string `json:"Branch"`
+		SubpathCamel  string `json:"Subpath"`
+		CredsRefCamel string `json:"CredsRef"`
+
+		ID        string `json:"id"`
+		RepoURLV1 string `json:"repoUrl"`
+		TokenEnv  string `json:"tokenEnv"`
+	}
+	if err := readOptionalJSON(r, &request); err != nil {
+		writeError(w, http.StatusBadRequest, "name and repo_url required")
+		return
+	}
+	name := strings.TrimSpace(firstNonEmpty(request.Name, request.NameCamel, request.ID))
+	repoURL := strings.TrimSpace(firstNonEmpty(request.RepoURL, request.RepoURLCamel, request.RepoURLV1))
+	branch := strings.TrimSpace(firstNonEmpty(request.Branch, request.BranchCamel))
+	subpath := strings.TrimSpace(firstNonEmpty(request.Subpath, request.SubpathCamel))
+	credsRef := strings.TrimSpace(firstNonEmpty(request.CredsRef, request.CredsRefCamel, request.TokenEnv))
+	if name == "" || repoURL == "" {
+		writeError(w, http.StatusBadRequest, "name and repo_url required")
+		return
+	}
+	source := gitsourcepkg.Source{
+		Workspace: workspaceID,
+		ID:        name,
+		RepoURL:   repoURL,
+		Branch:    branch,
+		Subpath:   subpath,
+		TokenEnv:  credsRef,
+	}
+	if err := h.gitSources.Upsert(r.Context(), source); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	source, err := h.gitSources.Get(r.Context(), workspaceID, name)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusCreated, newCanonicalGitSourceView(source))
+}
+
+func (h *Handler) handleCanonicalGitSourceSync(w http.ResponseWriter, r *http.Request, workspaceID string, sourceID string) {
+	if h.syncer == nil {
+		writeError(w, http.StatusServiceUnavailable, "sync API is not configured")
+		return
+	}
+	if h.gitSources == nil {
+		writeError(w, http.StatusServiceUnavailable, "git source registry is not configured")
+		return
+	}
+	var request struct {
+		App            string `json:"app"`
+		Commit         string `json:"commit"`
+		CloneRoot      string `json:"cloneRoot"`
+		CloneRootSnake string `json:"clone_root"`
+	}
+	if err := readOptionalJSON(r, &request); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	source, err := h.gitSources.Get(r.Context(), workspaceID, sourceID)
+	if err != nil {
+		status := http.StatusInternalServerError
+		if errors.Is(err, gitsourcepkg.ErrGitSourceNotFound) {
+			status = http.StatusNotFound
+		}
+		writeError(w, status, "git source not found")
+		return
+	}
+	token := ""
+	if source.TokenEnv != "" {
+		token = os.Getenv(source.TokenEnv)
+	}
+	s := *h.syncer
+	if cloneRoot := firstNonEmpty(request.CloneRoot, request.CloneRootSnake); cloneRoot != "" {
+		s.CloneRoot = cloneRoot
+	}
+	deployment, err := s.Sync(r.Context(), syncer.Source{
+		Workspace:   workspaceID,
+		GitSourceID: source.ID,
+		App:         request.App,
+		RepoURL:     source.RepoURL,
+		Branch:      source.Branch,
+		Commit:      request.Commit,
+		Subpath:     source.Subpath,
+		Token:       token,
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, newCanonicalSyncResult(deployment))
+}
+
+func (h *Handler) handleCanonicalApps(w http.ResponseWriter, r *http.Request, workspaceID string) {
+	snapshot, ok := h.loadCatalogSnapshot(w, r)
+	if !ok {
+		return
+	}
+	deployments := canonicalDeployments(snapshot, workspaceID)
+	if r.URL.Query().Get("view") == "summary" {
+		apps := make([]canonicalAppSummaryView, 0, len(deployments))
+		for _, deployment := range deployments {
+			apps = append(apps, newCanonicalAppSummaryView(deployment))
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"apps": apps})
+		return
+	}
+	apps := make([]string, 0, len(deployments))
+	for _, deployment := range deployments {
+		apps = append(apps, deployment.App)
+	}
+	writeJSON(w, http.StatusOK, apps)
+}
+
+func (h *Handler) handleCanonicalApp(w http.ResponseWriter, r *http.Request, workspaceID string, app string) {
+	deployment, ok := h.getCanonicalDeployment(w, r, workspaceID, app, "app not found: "+app)
+	if !ok {
+		return
+	}
+	schemaReader := h.newCanonicalSchemaReader(r.Context(), deployment)
+	defer schemaReader.Close()
+	actions, err := h.newCanonicalActionViews(schemaReader, deployment)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"app":     newCanonicalAppView(deployment),
+		"actions": actions,
+	})
+}
+
+func (h *Handler) handleCanonicalAction(w http.ResponseWriter, r *http.Request, workspaceID string, app string, actionKey string) {
+	deployment, ok := h.getCanonicalDeployment(w, r, workspaceID, app, "app not found: "+app)
+	if !ok {
+		return
+	}
+	action, exists := deployment.Actions[actionKey]
+	if !exists {
+		writeError(w, http.StatusNotFound, "action not found: "+app+"/"+actionKey)
+		return
+	}
+	schemaReader := h.newCanonicalSchemaReader(r.Context(), deployment)
+	defer schemaReader.Close()
+	view, err := h.newCanonicalActionView(schemaReader, deployment, actionKey, action)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, view)
+}
+
+func (h *Handler) handleCanonicalDeployment(w http.ResponseWriter, r *http.Request, workspaceID string, id string) {
+	deployment, ok := h.getCanonicalDeployment(w, r, workspaceID, id, "deployment not found")
+	if !ok {
+		return
+	}
+	writeJSON(w, http.StatusOK, deployment)
+}
+
+func (h *Handler) loadGitSourceSnapshot(w http.ResponseWriter, r *http.Request) (gitsourcepkg.Snapshot, bool) {
+	loader, ok := h.gitSources.(interface {
+		Load(context.Context) (gitsourcepkg.Snapshot, error)
+	})
+	if !ok {
+		writeError(w, http.StatusNotImplemented, "git source snapshot is not supported")
+		return gitsourcepkg.Snapshot{}, false
+	}
+	snapshot, err := loader.Load(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return gitsourcepkg.Snapshot{}, false
+	}
+	return snapshot, true
+}
+
+func (h *Handler) loadCatalogSnapshot(w http.ResponseWriter, r *http.Request) (catalogpkg.Snapshot, bool) {
+	loader, ok := h.catalog.(interface {
+		Load(context.Context) (catalogpkg.Snapshot, error)
+	})
+	if !ok {
+		writeError(w, http.StatusNotImplemented, "catalog snapshot is not supported")
+		return catalogpkg.Snapshot{}, false
+	}
+	snapshot, err := loader.Load(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return catalogpkg.Snapshot{}, false
+	}
+	return snapshot, true
+}
+
+func (h *Handler) getCanonicalDeployment(w http.ResponseWriter, r *http.Request, workspaceID string, app string, notFoundMessage string) (contract.Deployment, bool) {
+	if h.catalog == nil {
+		writeError(w, http.StatusServiceUnavailable, "catalog is not configured")
+		return contract.Deployment{}, false
+	}
+	deployment, err := h.catalog.GetDeployment(r.Context(), app)
+	if err != nil || contract.NormalizeWorkspace(deployment.SourceWorkspace()) != contract.NormalizeWorkspace(workspaceID) {
+		writeError(w, http.StatusNotFound, notFoundMessage)
+		return contract.Deployment{}, false
+	}
+	return deployment, true
+}
+
+type canonicalGitSourceView struct {
+	ID               string     `json:"id"`
+	WorkspaceID      string     `json:"workspace_id"`
+	Name             string     `json:"name"`
+	RepoURL          string     `json:"repo_url"`
+	Branch           string     `json:"branch"`
+	Subpath          string     `json:"subpath"`
+	CredsRef         string     `json:"creds_ref"`
+	Kind             string     `json:"kind"`
+	LastSyncedCommit *string    `json:"last_synced_commit"`
+	LastSyncedAt     *time.Time `json:"last_synced_at"`
+}
+
+func newCanonicalGitSourceView(source gitsourcepkg.Source) canonicalGitSourceView {
+	return canonicalGitSourceView{
+		ID:          source.ID,
+		WorkspaceID: contract.NormalizeWorkspace(source.Workspace),
+		Name:        source.ID,
+		RepoURL:     source.RepoURL,
+		Branch:      firstNonEmpty(source.Branch, "main"),
+		Subpath:     source.Subpath,
+		CredsRef:    source.TokenEnv,
+		Kind:        "external",
+	}
+}
+
+type canonicalSyncResult struct {
+	Commit  string   `json:"commit"`
+	App     string   `json:"app"`
+	Actions []string `json:"actions"`
+}
+
+func newCanonicalSyncResult(deployment contract.Deployment) canonicalSyncResult {
+	actions := make([]string, 0, len(deployment.Actions))
+	for key := range deployment.Actions {
+		actions = append(actions, deployment.App+"."+key)
+	}
+	sort.Strings(actions)
+	return canonicalSyncResult{
+		Commit:  deployment.Commit,
+		App:     deployment.App,
+		Actions: actions,
+	}
+}
+
+type canonicalAppView struct {
+	ID                   string   `json:"id"`
+	WorkspaceID          string   `json:"workspace_id"`
+	AppKey               string   `json:"app_key"`
+	GitSourceID          *int64   `json:"git_source_id"`
+	CommitSha            string   `json:"commit_sha"`
+	Entrypoint           string   `json:"entrypoint"`
+	Tag                  string   `json:"tag"`
+	TimeoutS             int32    `json:"timeout_s"`
+	ScriptLang           string   `json:"script_lang"`
+	RequiredCapabilities []string `json:"required_capabilities"`
+	EffectiveRouteTag    string   `json:"effective_route_tag"`
+}
+
+type canonicalAppSummaryView struct {
+	canonicalAppView
+	ActionsCount   int64 `json:"actions_count"`
+	SchedulesCount int64 `json:"schedules_count"`
+	FlowsCount     int64 `json:"flows_count"`
+}
+
+type canonicalActionView struct {
+	ID                    string          `json:"id"`
+	WorkspaceID           string          `json:"workspace_id"`
+	AppKey                string          `json:"app_key"`
+	ActionKey             string          `json:"action_key"`
+	InputSchema           json.RawMessage `json:"input_schema,omitempty"`
+	OutputSchema          json.RawMessage `json:"output_schema,omitempty"`
+	Tag                   *string         `json:"tag,omitempty"`
+	TimeoutS              *int32          `json:"timeout_s,omitempty"`
+	RequiredCapabilities  []string        `json:"required_capabilities,omitempty"`
+	EffectiveCapabilities []string        `json:"effective_capabilities"`
+	EffectiveRouteTag     string          `json:"effective_route_tag"`
+}
+
+func canonicalDeployments(snapshot catalogpkg.Snapshot, workspaceID string) []contract.Deployment {
+	workspaceID = contract.NormalizeWorkspace(workspaceID)
+	deployments := make([]contract.Deployment, 0, len(snapshot.Deployments))
+	for _, deployment := range snapshot.Deployments {
+		if contract.NormalizeWorkspace(deployment.SourceWorkspace()) != workspaceID {
+			continue
+		}
+		deployments = append(deployments, deployment)
+	}
+	sort.Slice(deployments, func(i, j int) bool {
+		return deployments[i].App < deployments[j].App
+	})
+	return deployments
+}
+
+func newCanonicalAppSummaryView(deployment contract.Deployment) canonicalAppSummaryView {
+	return canonicalAppSummaryView{
+		canonicalAppView: newCanonicalAppView(deployment),
+		ActionsCount:     int64(len(deployment.Actions)),
+	}
+}
+
+func newCanonicalAppView(deployment contract.Deployment) canonicalAppView {
+	return canonicalAppView{
+		ID:                   canonicalAppID(deployment),
+		WorkspaceID:          contract.NormalizeWorkspace(deployment.SourceWorkspace()),
+		AppKey:               deployment.App,
+		GitSourceID:          nil,
+		CommitSha:            deployment.Commit,
+		Entrypoint:           canonicalDeploymentEntrypoint(deployment),
+		Tag:                  defaultRouteTag(),
+		ScriptLang:           canonicalDeploymentScriptLang(deployment),
+		RequiredCapabilities: []string{},
+		EffectiveRouteTag:    defaultRouteTag(),
+	}
+}
+
+func (h *Handler) newCanonicalActionViews(schemaReader *canonicalSchemaReader, deployment contract.Deployment) ([]canonicalActionView, error) {
+	keys := make([]string, 0, len(deployment.Actions))
+	for key := range deployment.Actions {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	actions := make([]canonicalActionView, 0, len(keys))
+	for _, key := range keys {
+		action, err := h.newCanonicalActionView(schemaReader, deployment, key, deployment.Actions[key])
+		if err != nil {
+			return nil, err
+		}
+		actions = append(actions, action)
+	}
+	return actions, nil
+}
+
+func (h *Handler) newCanonicalActionView(schemaReader *canonicalSchemaReader, deployment contract.Deployment, actionKey string, action contract.Action) (canonicalActionView, error) {
+	inputSchema, err := schemaReader.Read(action.InputSchema)
+	if err != nil {
+		return canonicalActionView{}, fmt.Errorf("action %s.%s input schema: %w", deployment.App, actionKey, err)
+	}
+	outputSchema, err := schemaReader.Read(action.OutputSchema)
+	if err != nil {
+		return canonicalActionView{}, fmt.Errorf("action %s.%s output schema: %w", deployment.App, actionKey, err)
+	}
+	return canonicalActionView{
+		ID:                    canonicalAppID(deployment) + "/" + actionKey,
+		WorkspaceID:           contract.NormalizeWorkspace(deployment.SourceWorkspace()),
+		AppKey:                deployment.App,
+		ActionKey:             actionKey,
+		InputSchema:           inputSchema,
+		OutputSchema:          outputSchema,
+		TimeoutS:              canonicalTimeoutSeconds(action.TimeoutMs),
+		RequiredCapabilities:  []string{},
+		EffectiveCapabilities: []string{},
+		EffectiveRouteTag:     defaultRouteTag(),
+	}, nil
+}
+
+type canonicalSchemaReader struct {
+	ctx   context.Context
+	store interface {
+		FetchTo(context.Context, string, string, string, string) error
+	}
+	deployment contract.Deployment
+	sourceDir  string
+	err        error
+}
+
+func (h *Handler) newCanonicalSchemaReader(ctx context.Context, deployment contract.Deployment) *canonicalSchemaReader {
+	reader := &canonicalSchemaReader{ctx: ctx, deployment: deployment}
+	if h.syncer != nil && h.syncer.Store != nil {
+		reader.store = h.syncer.Store
+	}
+	return reader
+}
+
+func (r *canonicalSchemaReader) Close() {
+	if r.sourceDir != "" {
+		_ = os.RemoveAll(r.sourceDir)
+	}
+}
+
+func (r *canonicalSchemaReader) Read(schemaPath string) (json.RawMessage, error) {
+	schemaPath = strings.TrimSpace(schemaPath)
+	if schemaPath == "" {
+		return nil, nil
+	}
+	if r.store == nil {
+		return nil, nil
+	}
+	sourceDir, err := r.ensureSourceDir()
+	if err != nil {
+		return nil, err
+	}
+	normalized, err := contract.NormalizeSourcePath(schemaPath)
+	if err != nil {
+		return nil, err
+	}
+	if normalized == "" {
+		return nil, nil
+	}
+	data, err := os.ReadFile(filepath.Join(sourceDir, filepath.FromSlash(normalized)))
+	if err != nil {
+		return nil, err
+	}
+	if !json.Valid(data) {
+		return nil, fmt.Errorf("%q is not valid JSON", schemaPath)
+	}
+	return json.RawMessage(append([]byte(nil), data...)), nil
+}
+
+func (r *canonicalSchemaReader) ensureSourceDir() (string, error) {
+	if r.err != nil {
+		return "", r.err
+	}
+	if r.sourceDir != "" {
+		return r.sourceDir, nil
+	}
+	if r.store == nil {
+		return "", nil
+	}
+	sourceDir, err := os.MkdirTemp("", "windforce-lite-schema-")
+	if err != nil {
+		r.err = err
+		return "", err
+	}
+	if err := r.store.FetchTo(r.ctx, sourceDir, r.deployment.SourceWorkspace(), r.deployment.SourceGitSourceID(), r.deployment.Commit); err != nil {
+		_ = os.RemoveAll(sourceDir)
+		r.err = err
+		return "", err
+	}
+	r.sourceDir = sourceDir
+	return sourceDir, nil
+}
+
+func canonicalAppID(deployment contract.Deployment) string {
+	return contract.NormalizeWorkspace(deployment.SourceWorkspace()) + "/" + deployment.App
+}
+
+func canonicalDeploymentEntrypoint(deployment contract.Deployment) string {
+	keys := make([]string, 0, len(deployment.Actions))
+	for key := range deployment.Actions {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		if deployment.Actions[key].Entrypoint != "" {
+			return deployment.Actions[key].Entrypoint
+		}
+	}
+	return ""
+}
+
+func canonicalDeploymentScriptLang(deployment contract.Deployment) string {
+	keys := make([]string, 0, len(deployment.Actions))
+	for key := range deployment.Actions {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		if deployment.Actions[key].Runtime != "" {
+			return deployment.Actions[key].Runtime
+		}
+	}
+	return ""
+}
+
+func canonicalTimeoutSeconds(timeoutMs int64) *int32 {
+	if timeoutMs <= 0 {
+		return nil
+	}
+	value := int32((timeoutMs + 999) / 1000)
+	return &value
+}
+
+func defaultRouteTag() string {
+	return "default"
 }
 
 func (h *Handler) handleJobList(w http.ResponseWriter, r *http.Request, workspaceID string) {

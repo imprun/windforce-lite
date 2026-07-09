@@ -215,6 +215,14 @@ Implemented control-plane endpoints:
 - `GET /v1/deployments/{app}`
 - `GET /v1/apps/{app}/actions/{action}/schema`
 - `GET /v1/runs/{runID}`
+- `GET /api/w/{workspace}/git_sources`
+- `POST /api/w/{workspace}/git_sources`
+- `POST /api/w/{workspace}/git_sources/{gitSourceId}/sync`
+- `GET /api/w/{workspace}/apps`
+- `GET /api/w/{workspace}/apps?view=summary`
+- `GET /api/w/{workspace}/apps/{app}`
+- `GET /api/w/{workspace}/apps/{app}/actions/{action}` (`input_schema` and `output_schema` expose materialized schema JSON when the bundle store is configured)
+- `GET /api/w/{workspace}/deployments/{app}`
 - `POST /api/w/{workspace}/jobs/run/{app}/{action}`
 - `POST /api/w/{workspace}/jobs/run/{app}/{action}/wait?timeout_ms={ms}`
 - `GET /api/w/{workspace}/jobs?status={status}&limit={limit}`
