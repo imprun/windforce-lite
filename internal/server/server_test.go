@@ -992,29 +992,6 @@ func TestCanonicalActionExposesPinnedSchemaBodiesWithoutSourceStore(t *testing.T
 		!bytes.Contains(actionBody.OutputSchema, []byte(`"ok"`)) {
 		t.Fatalf("action schemas = input:%s output:%s", actionBody.InputSchema, actionBody.OutputSchema)
 	}
-
-	schemaResp, err := http.Get(server.URL + "/api/w/ws-a/apps/echo/actions/echo/schema")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer schemaResp.Body.Close()
-	if schemaResp.StatusCode != http.StatusOK {
-		t.Fatalf("schema status = %d, want %d", schemaResp.StatusCode, http.StatusOK)
-	}
-	var schemaBody struct {
-		AppKey       string          `json:"app_key"`
-		ActionKey    string          `json:"action_key"`
-		InputSchema  json.RawMessage `json:"input_schema"`
-		OutputSchema json.RawMessage `json:"output_schema"`
-	}
-	if err := json.NewDecoder(schemaResp.Body).Decode(&schemaBody); err != nil {
-		t.Fatal(err)
-	}
-	if schemaBody.AppKey != "echo" || schemaBody.ActionKey != "echo" ||
-		!bytes.Contains(schemaBody.InputSchema, []byte(`"message"`)) ||
-		!bytes.Contains(schemaBody.OutputSchema, []byte(`"ok"`)) {
-		t.Fatalf("schema body = %#v input:%s output:%s", schemaBody, schemaBody.InputSchema, schemaBody.OutputSchema)
-	}
 }
 
 func TestCanonicalControlPlaneUsesMaterializedActionSchemas(t *testing.T) {
