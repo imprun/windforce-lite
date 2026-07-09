@@ -317,9 +317,6 @@ func normalizeSource(source Source) (Source, error) {
 	if source.Kind != "external" && source.Kind != "managed" {
 		return Source{}, errors.New("git source kind must be external or managed")
 	}
-	if err := contract.ValidateSourceSubpath(source.Subpath); err != nil {
-		return Source{}, err
-	}
 	return source, nil
 }
 

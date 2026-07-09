@@ -1859,6 +1859,40 @@ func TestCanonicalSampleGitSourceRegistersAndSyncs(t *testing.T) {
 	}
 }
 
+func TestCanonicalRegisterGitSourcePreservesRawSubpath(t *testing.T) {
+	tempDir := t.TempDir()
+	handler := New(Config{
+		GitSources: gitsource.NewFileRegistry(filepath.Join(tempDir, "git-sources.json")),
+		EnableAPI:  true,
+	})
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	registerResp, err := http.Post(server.URL+"/api/w/ws-a/git_sources", "application/json", bytes.NewBufferString(`{
+		"name": "source-a",
+		"repo_url": "file:///tmp/source-a",
+		"branch": "main",
+		"subpath": "/apps/echo"
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer registerResp.Body.Close()
+	if registerResp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(registerResp.Body)
+		t.Fatalf("register status = %d, want %d: %s", registerResp.StatusCode, http.StatusCreated, body)
+	}
+	var registered struct {
+		Subpath string `json:"subpath"`
+	}
+	if err := json.NewDecoder(registerResp.Body).Decode(&registered); err != nil {
+		t.Fatal(err)
+	}
+	if registered.Subpath != "/apps/echo" {
+		t.Fatalf("subpath = %q, want raw value", registered.Subpath)
+	}
+}
+
 func TestCanonicalAppLookupIsWorkspaceScoped(t *testing.T) {
 	tempDir := t.TempDir()
 	fileCatalog := catalog.NewFileCatalog(filepath.Join(tempDir, "catalog.json"))
