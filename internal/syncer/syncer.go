@@ -2,6 +2,7 @@ package syncer
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -70,6 +71,9 @@ func (s *Syncer) Sync(ctx context.Context, src Source) (contract.Deployment, err
 	}
 	if src.App != "" && src.App != app.App {
 		return contract.Deployment{}, fmt.Errorf("source app %q does not match manifest app %q", src.App, app.App)
+	}
+	if err := validateActionSchemas(sourceDir, app); err != nil {
+		return contract.Deployment{}, err
 	}
 
 	workspace := contract.NormalizeWorkspace(src.Workspace)
@@ -152,6 +156,43 @@ func (s *Syncer) prepareSource(ctx context.Context, src Source, commit string) (
 		return "", nil, err
 	}
 	return sourceDir, cleanup, nil
+}
+
+func validateActionSchemas(root string, app contract.App) error {
+	for key, action := range app.Actions {
+		if err := validateSchemaFile(root, action.InputSchema); err != nil {
+			return fmt.Errorf("action %s.%s input schema: %w", app.App, key, err)
+		}
+		if err := validateSchemaFile(root, action.OutputSchema); err != nil {
+			return fmt.Errorf("action %s.%s output schema: %w", app.App, key, err)
+		}
+	}
+	return nil
+}
+
+func validateSchemaFile(root string, rel string) error {
+	rel = strings.TrimSpace(strings.ReplaceAll(rel, "\\", "/"))
+	if rel == "" {
+		return nil
+	}
+	if strings.Contains(rel, "..") {
+		return fmt.Errorf("schema path %q must be a relative path inside the app", rel)
+	}
+	normalized, err := contract.NormalizeSourcePath(rel)
+	if err != nil {
+		return fmt.Errorf("schema path %q must be a relative path inside the app", rel)
+	}
+	data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(normalized)))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("manifest references schema %q but the file is missing", rel)
+		}
+		return err
+	}
+	if !json.Valid(data) {
+		return fmt.Errorf("schema %q is not valid JSON", rel)
+	}
+	return nil
 }
 
 func sourceDirForSubpath(root string, subpath string) (string, error) {

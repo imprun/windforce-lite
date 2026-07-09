@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path"
 	"strings"
+	"unicode/utf8"
 )
 
 const (
@@ -131,6 +132,70 @@ func NormalizeGitSourceID(value string, app string) string {
 		return app
 	}
 	return DefaultGitSourceID
+}
+
+func ValidAppKey(value string) bool {
+	value = strings.TrimSpace(value)
+	if len(value) < 2 || len(value) > 64 || !utf8.ValidString(value) {
+		return false
+	}
+	for index, item := range value {
+		if index == 0 {
+			if item < 'a' || item > 'z' {
+				return false
+			}
+			continue
+		}
+		if item >= 'a' && item <= 'z' {
+			continue
+		}
+		if item >= '0' && item <= '9' {
+			continue
+		}
+		if item == '_' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func ValidActionKey(value string) bool {
+	value = strings.TrimSpace(value)
+	if value == "" || len(value) > 128 || !utf8.ValidString(value) {
+		return false
+	}
+	if strings.ContainsAny(value, `/\`) {
+		return false
+	}
+	segments := strings.Split(value, ".")
+	if len(segments) > 8 {
+		return false
+	}
+	for _, segment := range segments {
+		if segment == "" {
+			return false
+		}
+		for index, item := range segment {
+			if index == 0 {
+				if item < 'a' || item > 'z' {
+					return false
+				}
+				continue
+			}
+			if item >= 'a' && item <= 'z' {
+				continue
+			}
+			if item >= '0' && item <= '9' {
+				continue
+			}
+			if item == '_' {
+				continue
+			}
+			return false
+		}
+	}
+	return true
 }
 
 func NormalizeSourcePath(value string) (string, error) {
