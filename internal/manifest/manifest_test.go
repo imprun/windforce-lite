@@ -1,6 +1,8 @@
 package manifest
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -20,6 +22,24 @@ func TestParseFillsActionName(t *testing.T) {
 	}
 	if app.Actions["run"].Action != "run" {
 		t.Fatalf("action name = %q", app.Actions["run"].Action)
+	}
+}
+
+func TestLoadMissingManifestUsesCanonicalMessage(t *testing.T) {
+	_, err := Load(t.TempDir())
+	if err == nil || err.Error() != "no windforce.json manifest at source root (subpath)" {
+		t.Fatalf("Load error = %v", err)
+	}
+}
+
+func TestLoadWrapsParseErrorWithManifestName(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, FileName), []byte(`{not json`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Load(root)
+	if err == nil || !strings.Contains(err.Error(), "parse windforce.json:") {
+		t.Fatalf("Load error = %v, want parse windforce.json prefix", err)
 	}
 }
 

@@ -55,8 +55,9 @@ func TestCheckLockfileRequiresCommittedLockfileWhenDependenciesAreDeclared(t *te
 	if err == nil {
 		t.Fatal("dependencies without lockfile unexpectedly passed")
 	}
-	if !strings.Contains(err.Error(), "no bun.lock") {
-		t.Fatalf("error = %v, want lockfile guidance", err)
+	want := "package.json declares dependencies but no bun.lock (or bun.lockb) is committed at the source root — commit a lockfile so installs are reproducible (bun install --frozen-lockfile)"
+	if err.Error() != want {
+		t.Fatalf("error = %v, want %q", err, want)
 	}
 
 	if err := os.WriteFile(filepath.Join(root, "bun.lock"), nil, 0o644); err != nil {
