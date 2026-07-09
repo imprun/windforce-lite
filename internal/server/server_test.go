@@ -1866,14 +1866,14 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 		ActionKey    string          `json:"action_key"`
 		InputSchema  json.RawMessage `json:"input_schema"`
 		OutputSchema json.RawMessage `json:"output_schema"`
-		TimeoutS     int32           `json:"timeout_s"`
+		TimeoutS     *int32          `json:"timeout_s"`
 		UpdatedAt    time.Time       `json:"updated_at"`
 	}
 	if err := json.NewDecoder(actionResp.Body).Decode(&actionBody); err != nil {
 		t.Fatal(err)
 	}
 	if actionBody.AppKey != "echo" || actionBody.ActionKey != "echo" ||
-		actionBody.TimeoutS != 120 || actionBody.UpdatedAt.IsZero() ||
+		actionBody.TimeoutS != nil || actionBody.UpdatedAt.IsZero() ||
 		!bytes.Contains(actionBody.InputSchema, []byte(`"message"`)) || !bytes.Contains(actionBody.OutputSchema, []byte(`"ok"`)) {
 		t.Fatalf("action body = %#v input=%s output=%s", actionBody, actionBody.InputSchema, actionBody.OutputSchema)
 	}

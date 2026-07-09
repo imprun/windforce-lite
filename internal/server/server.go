@@ -1328,7 +1328,7 @@ func (h *Handler) newCanonicalActionModel(schemaReader *canonicalSchemaReader, d
 		OutputSchema:         schemaView.OutputSchema,
 		Tag:                  cloneStringPtr(action.Tag),
 		TagOverride:          cloneStringPtr(action.TagOverride),
-		TimeoutS:             canonicalTimeoutSeconds(action.TimeoutMs),
+		TimeoutS:             cloneInt32Ptr(action.TimeoutS),
 		RequiredCapabilities: cloneStringSlicePtr(action.Capabilities),
 		UpdatedAt:            canonicalActionUpdatedAt(deployment, action),
 	}, nil
@@ -1491,14 +1491,6 @@ func canonicalActionUpdatedAt(deployment contract.Deployment, action contract.Ac
 		return *action.UpdatedAt
 	}
 	return canonicalDeploymentUpdatedAt(deployment)
-}
-
-func canonicalTimeoutSeconds(timeoutMs int64) *int32 {
-	if timeoutMs <= 0 {
-		return nil
-	}
-	value := int32((timeoutMs + 999) / 1000)
-	return &value
 }
 
 func defaultRouteTag() string {
