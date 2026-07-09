@@ -664,6 +664,9 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(repoDir, "output.schema.json"), []byte(`{"type":"object","properties":{"ok":{"type":"boolean"}}}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(repoDir, "logo.bin"), []byte{0xff, 0xfe, 0x00, 0x01}, 0o644); err != nil {
+		t.Fatal(err)
+	}
 	runTestGit(t, repoDir, "init")
 	runTestGit(t, repoDir, "checkout", "-b", "main")
 	runTestGit(t, repoDir, "config", "user.email", "test@example.com")
@@ -1069,8 +1072,11 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 	if sourceBody.AppKey != "echo" || sourceBody.GitSourceID != "source-a" || sourceBody.CommitSha == "" ||
 		!bytes.Contains([]byte(sourceBody.Files["windforce.json"]), []byte(`"app": "echo"`)) ||
 		!bytes.Contains([]byte(sourceBody.Files["input.schema.json"]), []byte(`"message"`)) ||
-		len(sourceBody.Skipped) != 0 {
+		len(sourceBody.Skipped) != 1 || sourceBody.Skipped[0] != "logo.bin" {
 		t.Fatalf("source body = %#v", sourceBody)
+	}
+	if _, ok := sourceBody.Files[".windforce_clone_complete"]; ok {
+		t.Fatalf("source body leaked materialization marker: %#v", sourceBody)
 	}
 
 	historyResp, err := http.Get(server.URL + "/api/w/ws-a/apps/echo/history")

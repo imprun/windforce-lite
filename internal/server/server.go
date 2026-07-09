@@ -882,7 +882,7 @@ func (h *Handler) handleCanonicalAppSource(w http.ResponseWriter, r *http.Reques
 	}
 	defer os.RemoveAll(sourceDir)
 	if err := h.syncer.Store.FetchTo(r.Context(), sourceDir, deployment.SourceWorkspace(), deployment.SourceGitSourceID(), deployment.Commit); err != nil {
-		writeError(w, http.StatusNotFound, "source commit is not materialized - re-sync the app")
+		writeError(w, http.StatusNotFound, "source commit is not materialized — re-sync the app")
 		return
 	}
 	files, skipped, err := readCanonicalSourceFiles(sourceDir)
