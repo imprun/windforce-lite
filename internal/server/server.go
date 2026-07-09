@@ -300,6 +300,10 @@ func (h *Handler) handleAPI(w http.ResponseWriter, r *http.Request) bool {
 		h.handleCanonicalAction(w, r, parts[2], parts[4], parts[6])
 		return true
 	}
+	if len(parts) == 8 && parts[0] == "api" && parts[1] == "w" && parts[3] == "apps" && parts[5] == "actions" && parts[7] == "schema" && r.Method == http.MethodGet {
+		h.handleCanonicalActionSchema(w, r, parts[2], parts[4], parts[6])
+		return true
+	}
 	if len(parts) == 7 && parts[0] == "api" && parts[1] == "w" && parts[3] == "apps" && parts[5] == "actions" && r.Method == http.MethodPatch {
 		h.handleCanonicalPatchAction(w, r, parts[2], parts[4], parts[6])
 		return true
@@ -776,6 +780,30 @@ func (h *Handler) handleCanonicalAction(w http.ResponseWriter, r *http.Request, 
 	writeJSON(w, http.StatusOK, view)
 }
 
+func (h *Handler) handleCanonicalActionSchema(w http.ResponseWriter, r *http.Request, workspaceID string, app string, actionKey string) {
+	if !validAppKey(app) || !validActionKey(actionKey) {
+		writeError(w, http.StatusBadRequest, "invalid app/action key")
+		return
+	}
+	deployment, ok := h.getCanonicalDeployment(w, r, workspaceID, app, "app not found: "+app)
+	if !ok {
+		return
+	}
+	action, exists := deployment.Actions[actionKey]
+	if !exists {
+		writeError(w, http.StatusNotFound, "action not found: "+app+"/"+actionKey)
+		return
+	}
+	schemaReader := h.newCanonicalSchemaReader(r.Context(), deployment)
+	defer schemaReader.Close()
+	view, err := h.newCanonicalActionSchemaView(schemaReader, deployment, actionKey, action)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, view)
+}
+
 func (h *Handler) handleCanonicalPatchApp(w http.ResponseWriter, r *http.Request, workspaceID string, app string) {
 	if !validAppKey(app) {
 		writeError(w, http.StatusBadRequest, "invalid app key")
@@ -1171,6 +1199,13 @@ type canonicalActionModel struct {
 	UpdatedAt            time.Time       `json:"updated_at"`
 }
 
+type canonicalActionSchemaView struct {
+	AppKey       string          `json:"app_key"`
+	ActionKey    string          `json:"action_key"`
+	InputSchema  json.RawMessage `json:"input_schema"`
+	OutputSchema json.RawMessage `json:"output_schema"`
+}
+
 type canonicalActionView struct {
 	canonicalActionModel
 	EffectiveCapabilities []string `json:"effective_capabilities"`
@@ -1265,26 +1300,39 @@ func (h *Handler) newCanonicalActionViews(schemaReader *canonicalSchemaReader, d
 }
 
 func (h *Handler) newCanonicalActionModel(schemaReader *canonicalSchemaReader, deployment contract.Deployment, actionKey string, action contract.Action) (canonicalActionModel, error) {
-	inputSchema, err := schemaReader.Read(action.InputSchema, action.InputSchemaBody)
+	schemaView, err := h.newCanonicalActionSchemaView(schemaReader, deployment, actionKey, action)
 	if err != nil {
-		return canonicalActionModel{}, fmt.Errorf("action %s.%s input schema: %w", deployment.App, actionKey, err)
-	}
-	outputSchema, err := schemaReader.Read(action.OutputSchema, action.OutputSchemaBody)
-	if err != nil {
-		return canonicalActionModel{}, fmt.Errorf("action %s.%s output schema: %w", deployment.App, actionKey, err)
+		return canonicalActionModel{}, err
 	}
 	return canonicalActionModel{
 		ID:                   canonicalAppID(deployment) + "/" + actionKey,
 		WorkspaceID:          contract.NormalizeWorkspace(deployment.SourceWorkspace()),
 		AppKey:               deployment.App,
 		ActionKey:            actionKey,
-		InputSchema:          inputSchema,
-		OutputSchema:         outputSchema,
+		InputSchema:          schemaView.InputSchema,
+		OutputSchema:         schemaView.OutputSchema,
 		Tag:                  cloneStringPtr(action.Tag),
 		TagOverride:          cloneStringPtr(action.TagOverride),
 		TimeoutS:             canonicalTimeoutSeconds(action.TimeoutMs),
 		RequiredCapabilities: cloneStringSlicePtr(action.Capabilities),
 		UpdatedAt:            canonicalActionUpdatedAt(deployment, action),
+	}, nil
+}
+
+func (h *Handler) newCanonicalActionSchemaView(schemaReader *canonicalSchemaReader, deployment contract.Deployment, actionKey string, action contract.Action) (canonicalActionSchemaView, error) {
+	inputSchema, err := schemaReader.Read(action.InputSchema, action.InputSchemaBody)
+	if err != nil {
+		return canonicalActionSchemaView{}, fmt.Errorf("action %s.%s input schema: %w", deployment.App, actionKey, err)
+	}
+	outputSchema, err := schemaReader.Read(action.OutputSchema, action.OutputSchemaBody)
+	if err != nil {
+		return canonicalActionSchemaView{}, fmt.Errorf("action %s.%s output schema: %w", deployment.App, actionKey, err)
+	}
+	return canonicalActionSchemaView{
+		AppKey:       deployment.App,
+		ActionKey:    actionKey,
+		InputSchema:  inputSchema,
+		OutputSchema: outputSchema,
 	}, nil
 }
 

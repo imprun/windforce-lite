@@ -227,7 +227,8 @@ Implemented control-plane endpoints:
 - `GET /api/w/{workspace}/apps/{app}/source`
 - `GET /api/w/{workspace}/apps/{app}/history`
 - `GET /api/w/{workspace}/apps/{app}/openapi.json` (app invocation OpenAPI generated from materialized action schemas)
-- `GET /api/w/{workspace}/apps/{app}/actions/{action}` (`input_schema` and `output_schema` are the canonical control-plane schema surface)
+- `GET /api/w/{workspace}/apps/{app}/actions/{action}` (action detail including materialized schemas)
+- `GET /api/w/{workspace}/apps/{app}/actions/{action}/schema` (canonical control-plane schema surface: `input_schema` and `output_schema`)
 - `PATCH /api/w/{workspace}/apps/{app}/actions/{action}`
 - `GET /api/w/{workspace}/deployments/{deploymentID}` (canonical deployment status lookup; app metadata is under `/apps/{app}`)
 - `GET /api/w/{workspace}/worker-tags`
@@ -265,8 +266,8 @@ python tools/windforce_control.py --api-url http://127.0.0.1:8080 --pretty schem
   --app echo --action echo
 ```
 
-The schema command intentionally reads the canonical action detail endpoint,
-`GET /api/w/{workspace}/apps/{app}/actions/{action}`.
+The schema command reads the canonical schema endpoint,
+`GET /api/w/{workspace}/apps/{app}/actions/{action}/schema`.
 
 PostgreSQL is the production state backend. All runtime modes accept
 `--state-backend postgres`, `--database-url`, and `--migrate`:
