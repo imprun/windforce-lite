@@ -1186,6 +1186,12 @@ func TestControlPlaneSyncCatalogDeploymentAndSchema(t *testing.T) {
 	}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(sourceDir, "input.schema.json"), []byte(`{"type":"object","properties":{"message":{"type":"string"}}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sourceDir, "output.schema.json"), []byte(`{"type":"object","properties":{"ok":{"type":"boolean"}}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	fileCatalog := catalog.NewFileCatalog(filepath.Join(tempDir, "catalog.json"))
 	handler := New(Config{
@@ -1215,6 +1221,25 @@ func TestControlPlaneSyncCatalogDeploymentAndSchema(t *testing.T) {
 			t.Fatalf("GET %s status = %d, want %d", path, resp.StatusCode, http.StatusOK)
 		}
 		_ = resp.Body.Close()
+	}
+
+	schemaResp, err := http.Get(server.URL + "/v1/apps/echo/actions/echo/schema")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer schemaResp.Body.Close()
+	var schemaBody struct {
+		InputSchema     json.RawMessage `json:"inputSchema"`
+		OutputSchema    json.RawMessage `json:"outputSchema"`
+		InputSchemaPath string          `json:"inputSchemaPath"`
+	}
+	if err := json.NewDecoder(schemaResp.Body).Decode(&schemaBody); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(schemaBody.InputSchema, []byte(`"message"`)) ||
+		!bytes.Contains(schemaBody.OutputSchema, []byte(`"ok"`)) ||
+		schemaBody.InputSchemaPath != "input.schema.json" {
+		t.Fatalf("schema body = %#v input=%s output=%s", schemaBody, schemaBody.InputSchema, schemaBody.OutputSchema)
 	}
 }
 

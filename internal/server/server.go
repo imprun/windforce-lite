@@ -1832,12 +1832,21 @@ func (h *Handler) handleSchema(w http.ResponseWriter, r *http.Request, route tri
 		writeError(w, http.StatusNotFound, fmt.Sprintf("action %q not found in app %q", route.action, route.app))
 		return
 	}
+	schemaReader := h.newCanonicalSchemaReader(r.Context(), deployment)
+	defer schemaReader.Close()
+	view, err := h.newCanonicalActionView(schemaReader, deployment, route.action, action)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"app":          route.app,
-		"action":       route.action,
-		"inputSchema":  action.InputSchema,
-		"outputSchema": action.OutputSchema,
-		"metadata":     action,
+		"app":              route.app,
+		"action":           route.action,
+		"inputSchema":      view.InputSchema,
+		"outputSchema":     view.OutputSchema,
+		"inputSchemaPath":  action.InputSchema,
+		"outputSchemaPath": action.OutputSchema,
+		"metadata":         action,
 	})
 }
 

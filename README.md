@@ -213,7 +213,7 @@ Implemented control-plane endpoints:
 - `POST /v1/sync`
 - `GET /v1/catalog`
 - `GET /v1/deployments/{app}`
-- `GET /v1/apps/{app}/actions/{action}/schema`
+- `GET /v1/apps/{app}/actions/{action}/schema` (compatibility alias; returns materialized `inputSchema` and `outputSchema`)
 - `GET /v1/runs/{runID}`
 - `GET /api/w/{workspace}/git_sources`
 - `POST /api/w/{workspace}/git_sources`
@@ -227,7 +227,7 @@ Implemented control-plane endpoints:
 - `PATCH /api/w/{workspace}/apps/{app}`
 - `GET /api/w/{workspace}/apps/{app}/source`
 - `GET /api/w/{workspace}/apps/{app}/history`
-- `GET /api/w/{workspace}/apps/{app}/openapi.json`
+- `GET /api/w/{workspace}/apps/{app}/openapi.json` (app invocation OpenAPI generated from action schemas)
 - `GET /api/w/{workspace}/apps/{app}/actions/{action}` (`input_schema` and `output_schema` expose materialized schema JSON when the bundle store is configured)
 - `PATCH /api/w/{workspace}/apps/{app}/actions/{action}`
 - `GET /api/w/{workspace}/deployments/{app}`
