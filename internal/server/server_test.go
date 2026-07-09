@@ -950,6 +950,155 @@ func TestCanonicalActionExposesEmptySchemas(t *testing.T) {
 	}
 }
 
+func TestCanonicalActionExposesPinnedSchemaBodiesWithoutSourceStore(t *testing.T) {
+	tempDir := t.TempDir()
+	fileCatalog := catalog.NewFileCatalog(filepath.Join(tempDir, "catalog.json"))
+	if err := fileCatalog.UpsertDeployment(context.Background(), contract.Deployment{
+		Workspace: "ws-a",
+		App:       "echo",
+		Commit:    "commit-a",
+		Actions: map[string]contract.Action{
+			"echo": {
+				Action:           "echo",
+				InputSchema:      "input.schema.json",
+				OutputSchema:     "output.schema.json",
+				InputSchemaBody:  json.RawMessage(`{"type":"object","properties":{"message":{"type":"string"}}}`),
+				OutputSchemaBody: json.RawMessage(`{"type":"object","properties":{"ok":{"type":"boolean"}}}`),
+			},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	server := httptest.NewServer(New(Config{Catalog: fileCatalog, EnableAPI: true}))
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/api/w/ws-a/apps/echo/actions/echo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("action status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	var actionBody struct {
+		InputSchema  json.RawMessage `json:"input_schema"`
+		OutputSchema json.RawMessage `json:"output_schema"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&actionBody); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(actionBody.InputSchema, []byte(`"message"`)) ||
+		!bytes.Contains(actionBody.OutputSchema, []byte(`"ok"`)) {
+		t.Fatalf("action schemas = input:%s output:%s", actionBody.InputSchema, actionBody.OutputSchema)
+	}
+}
+
+func TestCanonicalControlPlaneUsesMaterializedActionSchemas(t *testing.T) {
+	tempDir := t.TempDir()
+	fileCatalog := catalog.NewFileCatalog(filepath.Join(tempDir, "catalog.json"))
+	inputSchema := json.RawMessage(`{"type":"object","properties":{"message":{"type":"string"}}}`)
+	outputSchema := json.RawMessage(`{"type":"object","properties":{"ok":{"type":"boolean"}}}`)
+	if err := fileCatalog.UpsertDeployment(context.Background(), contract.Deployment{
+		Workspace:   "ws-a",
+		GitSourceID: "1",
+		App:         "echo",
+		Commit:      "commit-a",
+		Entrypoint:  "main.ts",
+		Actions: map[string]contract.Action{
+			"echo": {
+				Action:           "echo",
+				InputSchema:      "input.schema.json",
+				OutputSchema:     "output.schema.json",
+				InputSchemaBody:  inputSchema,
+				OutputSchemaBody: outputSchema,
+			},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	server := httptest.NewServer(New(Config{
+		Store:     state.NewLocalStore(filepath.Join(tempDir, "state.json")),
+		Catalog:   fileCatalog,
+		EnableAPI: true,
+	}))
+	defer server.Close()
+
+	actionResp, err := http.Get(server.URL + "/api/w/ws-a/apps/echo/actions/echo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer actionResp.Body.Close()
+	if actionResp.StatusCode != http.StatusOK {
+		t.Fatalf("action status = %d, want %d", actionResp.StatusCode, http.StatusOK)
+	}
+	var actionBody struct {
+		InputSchema  json.RawMessage `json:"input_schema"`
+		OutputSchema json.RawMessage `json:"output_schema"`
+	}
+	if err := json.NewDecoder(actionResp.Body).Decode(&actionBody); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(actionBody.InputSchema, []byte(`"message"`)) ||
+		!bytes.Contains(actionBody.OutputSchema, []byte(`"ok"`)) {
+		t.Fatalf("action schemas = input:%s output:%s", actionBody.InputSchema, actionBody.OutputSchema)
+	}
+
+	openAPIResp, err := http.Get(server.URL + "/api/w/ws-a/apps/echo/openapi.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer openAPIResp.Body.Close()
+	if openAPIResp.StatusCode != http.StatusOK {
+		t.Fatalf("openapi status = %d, want %d", openAPIResp.StatusCode, http.StatusOK)
+	}
+	var openAPIBody map[string]any
+	if err := json.NewDecoder(openAPIResp.Body).Decode(&openAPIBody); err != nil {
+		t.Fatal(err)
+	}
+	paths := openAPIBody["paths"].(map[string]any)
+	runWait := paths["/api/w/ws-a/jobs/run/echo/echo/wait"].(map[string]any)["post"].(map[string]any)
+	requestSchema := runWait["requestBody"].(map[string]any)["content"].(map[string]any)["application/json"].(map[string]any)["schema"].(map[string]any)
+	if requestSchema["properties"].(map[string]any)["message"] == nil {
+		t.Fatalf("openapi request schema = %#v", requestSchema)
+	}
+
+	runResp, err := http.Post(server.URL+"/api/w/ws-a/jobs/run/echo/echo", "application/json", bytes.NewBufferString(`{"message":"hello"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runResp.Body.Close()
+	if runResp.StatusCode != http.StatusCreated {
+		t.Fatalf("run status = %d, want %d", runResp.StatusCode, http.StatusCreated)
+	}
+	var runBody struct {
+		JobID string `json:"job_id"`
+	}
+	if err := json.NewDecoder(runResp.Body).Decode(&runBody); err != nil {
+		t.Fatal(err)
+	}
+	statusResp, err := http.Get(server.URL + "/api/w/ws-a/jobs/" + runBody.JobID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer statusResp.Body.Close()
+	if statusResp.StatusCode != http.StatusOK {
+		t.Fatalf("status status = %d, want %d", statusResp.StatusCode, http.StatusOK)
+	}
+	var statusBody struct {
+		InputSchema  json.RawMessage `json:"input_schema"`
+		OutputSchema json.RawMessage `json:"output_schema"`
+	}
+	if err := json.NewDecoder(statusResp.Body).Decode(&statusBody); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(statusBody.InputSchema, []byte(`"message"`)) ||
+		!bytes.Contains(statusBody.OutputSchema, []byte(`"ok"`)) {
+		t.Fatalf("job schemas = input:%s output:%s", statusBody.InputSchema, statusBody.OutputSchema)
+	}
+}
+
 func TestCanonicalSampleGitSourceRegistersAndSyncs(t *testing.T) {
 	tempDir := t.TempDir()
 	store := bundle.NewLocalStore(filepath.Join(tempDir, "store"))

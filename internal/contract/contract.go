@@ -51,10 +51,13 @@ type Action struct {
 	Adapter      *ActionAdapter `json:"adapter,omitempty"`
 	InputSchema  string         `json:"inputSchema,omitempty"`
 	OutputSchema string         `json:"outputSchema,omitempty"`
-	TimeoutS     *int32         `json:"timeout,omitempty"`
-	TimeoutMs    int64          `json:"timeoutMs,omitempty"`
-	Capabilities *[]string      `json:"capabilities,omitempty"`
-	UpdatedAt    *time.Time     `json:"updatedAt,omitempty"`
+	// Materialized schema bodies are pinned during sync for control-plane reads.
+	InputSchemaBody  json.RawMessage `json:"inputSchemaBody,omitempty"`
+	OutputSchemaBody json.RawMessage `json:"outputSchemaBody,omitempty"`
+	TimeoutS         *int32          `json:"timeout,omitempty"`
+	TimeoutMs        int64           `json:"timeoutMs,omitempty"`
+	Capabilities     *[]string       `json:"capabilities,omitempty"`
+	UpdatedAt        *time.Time      `json:"updatedAt,omitempty"`
 }
 
 // ActionAdapter selects the contract between windforce-lite and integration

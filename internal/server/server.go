@@ -1265,11 +1265,11 @@ func (h *Handler) newCanonicalActionViews(schemaReader *canonicalSchemaReader, d
 }
 
 func (h *Handler) newCanonicalActionModel(schemaReader *canonicalSchemaReader, deployment contract.Deployment, actionKey string, action contract.Action) (canonicalActionModel, error) {
-	inputSchema, err := schemaReader.Read(action.InputSchema)
+	inputSchema, err := schemaReader.Read(action.InputSchema, action.InputSchemaBody)
 	if err != nil {
 		return canonicalActionModel{}, fmt.Errorf("action %s.%s input schema: %w", deployment.App, actionKey, err)
 	}
-	outputSchema, err := schemaReader.Read(action.OutputSchema)
+	outputSchema, err := schemaReader.Read(action.OutputSchema, action.OutputSchemaBody)
 	if err != nil {
 		return canonicalActionModel{}, fmt.Errorf("action %s.%s output schema: %w", deployment.App, actionKey, err)
 	}
@@ -1325,7 +1325,10 @@ func (r *canonicalSchemaReader) Close() {
 	}
 }
 
-func (r *canonicalSchemaReader) Read(schemaPath string) (json.RawMessage, error) {
+func (r *canonicalSchemaReader) Read(schemaPath string, schemaBody json.RawMessage) (json.RawMessage, error) {
+	if body, ok, err := materializedSchemaBody(schemaBody); ok || err != nil {
+		return body, err
+	}
 	schemaPath = strings.TrimSpace(schemaPath)
 	if schemaPath == "" {
 		return emptyJSONSchema(), nil
@@ -1352,6 +1355,17 @@ func (r *canonicalSchemaReader) Read(schemaPath string) (json.RawMessage, error)
 		return nil, fmt.Errorf("%q is not valid JSON", schemaPath)
 	}
 	return json.RawMessage(append([]byte(nil), data...)), nil
+}
+
+func materializedSchemaBody(schemaBody json.RawMessage) (json.RawMessage, bool, error) {
+	trimmed := bytes.TrimSpace(schemaBody)
+	if len(trimmed) == 0 || string(trimmed) == "null" {
+		return nil, false, nil
+	}
+	if !json.Valid(trimmed) {
+		return nil, true, errors.New("materialized schema is not valid JSON")
+	}
+	return json.RawMessage(append([]byte(nil), trimmed...)), true, nil
 }
 
 func emptyJSONSchema() json.RawMessage {
@@ -1727,12 +1741,12 @@ func (h *Handler) enqueueJob(w http.ResponseWriter, r *http.Request, workspaceID
 	job.Payload.TriggerHeaders = cloneRawMessage(triggerHeaders)
 	schemaReader := h.newCanonicalSchemaReader(r.Context(), deployment)
 	defer schemaReader.Close()
-	inputSchema, err := schemaReader.Read(actionSpec.InputSchema)
+	inputSchema, err := schemaReader.Read(actionSpec.InputSchema, actionSpec.InputSchemaBody)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return state.Job{}, false
 	}
-	outputSchema, err := schemaReader.Read(actionSpec.OutputSchema)
+	outputSchema, err := schemaReader.Read(actionSpec.OutputSchema, actionSpec.OutputSchemaBody)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return state.Job{}, false

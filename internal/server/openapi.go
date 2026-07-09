@@ -38,12 +38,12 @@ func (h *Handler) handleCanonicalAppOpenAPI(w http.ResponseWriter, r *http.Reque
 	actions := make([]openAPIAction, 0, len(keys))
 	for _, key := range keys {
 		action := deployment.Actions[key]
-		inputSchema, err := schemaReader.Read(action.InputSchema)
+		inputSchema, err := schemaReader.Read(action.InputSchema, action.InputSchemaBody)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, fmt.Sprintf("action %s.%s input schema: %v", deployment.App, key, err))
 			return
 		}
-		outputSchema, err := schemaReader.Read(action.OutputSchema)
+		outputSchema, err := schemaReader.Read(action.OutputSchema, action.OutputSchemaBody)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, fmt.Sprintf("action %s.%s output schema: %v", deployment.App, key, err))
 			return

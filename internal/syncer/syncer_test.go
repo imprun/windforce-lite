@@ -46,10 +46,18 @@ func TestSyncMaterializesBeforeCatalogUpdate(t *testing.T) {
 		"maxConcurrent": 2,
 		"actions": {
 			"echo": {
-				"tag": "action-fast"
+				"tag": "action-fast",
+				"inputSchema": "input.schema.json",
+				"outputSchema": "output.schema.json"
 			}
 		}
 	}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sourceDir, "input.schema.json"), []byte(`{"type":"object","properties":{"message":{"type":"string"}}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sourceDir, "output.schema.json"), []byte(`{"type":"object","properties":{"ok":{"type":"boolean"}}}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -87,6 +95,10 @@ func TestSyncMaterializesBeforeCatalogUpdate(t *testing.T) {
 	}
 	if deployment.Actions["echo"].Entrypoint != "main.ts" || deployment.Actions["echo"].TimeoutMs != 120000 {
 		t.Fatalf("canonical app defaults were not pinned: %#v", deployment.Actions["echo"])
+	}
+	if !strings.Contains(string(deployment.Actions["echo"].InputSchemaBody), `"message"`) ||
+		!strings.Contains(string(deployment.Actions["echo"].OutputSchemaBody), `"ok"`) {
+		t.Fatalf("action schemas were not materialized: input=%s output=%s", deployment.Actions["echo"].InputSchemaBody, deployment.Actions["echo"].OutputSchemaBody)
 	}
 	if deployment.UpdatedAt == nil || deployment.Actions["echo"].UpdatedAt == nil ||
 		!deployment.Actions["echo"].UpdatedAt.Equal(*deployment.UpdatedAt) {
