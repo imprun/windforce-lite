@@ -2447,10 +2447,6 @@ func (fakeTriggerAdapter) MatchTrigger(path string) (AdapterRoute, bool) {
 	}, true
 }
 
-func (fakeTriggerAdapter) MatchSchema(string) (AdapterRoute, bool) {
-	return AdapterRoute{}, false
-}
-
 func (fakeTriggerAdapter) TriggerResponse(run state.Run, route AdapterRoute) (int, any) {
 	return http.StatusOK, map[string]any{
 		"externalApp":    route.Values["externalApp"],

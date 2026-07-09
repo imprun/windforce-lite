@@ -278,6 +278,10 @@ The schema command reads the canonical action detail endpoint,
 `GET /api/w/{workspace}/apps/{app}/actions/{action}`, then prints the
 materialized `input_schema` and `output_schema`.
 
+Action schemas are exposed through the Windforce control-plane API. Protocol
+adapters may translate trigger ingress and response envelopes, but they do not
+publish separate schema routes or own schema discovery.
+
 PostgreSQL is the production state backend. All runtime modes accept
 `--state-backend postgres`, `--database-url`, and `--migrate`:
 
