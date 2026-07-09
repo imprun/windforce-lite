@@ -1195,15 +1195,11 @@ type canonicalGitSourcePatchRequest struct {
 	BranchCamel   *string `json:"Branch"`
 	SubpathCamel  *string `json:"Subpath"`
 	CredsRefCamel *string `json:"CredsRef"`
-
-	ID        *string `json:"id"`
-	RepoURLV1 *string `json:"repoUrl"`
-	TokenEnv  *string `json:"tokenEnv"`
 }
 
 func canonicalGitSourcePatchFromRequest(w http.ResponseWriter, request canonicalGitSourcePatchRequest) (gitsourcepkg.Patch, bool) {
 	var patch gitsourcepkg.Patch
-	if value, ok := firstPresentString(request.Name, request.NameCamel, request.ID); ok {
+	if value, ok := firstPresentString(request.Name, request.NameCamel); ok {
 		value = strings.TrimSpace(value)
 		if value == "" {
 			writeError(w, http.StatusBadRequest, "name cannot be empty")
@@ -1211,7 +1207,7 @@ func canonicalGitSourcePatchFromRequest(w http.ResponseWriter, request canonical
 		}
 		patch.ID = &value
 	}
-	if value, ok := firstPresentString(request.RepoURL, request.RepoURLCamel, request.RepoURLV1); ok {
+	if value, ok := firstPresentString(request.RepoURL, request.RepoURLCamel); ok {
 		value = strings.TrimSpace(value)
 		if value == "" {
 			writeError(w, http.StatusBadRequest, "repo_url cannot be empty")
@@ -1230,7 +1226,7 @@ func canonicalGitSourcePatchFromRequest(w http.ResponseWriter, request canonical
 		value = strings.TrimSpace(value)
 		patch.Subpath = &value
 	}
-	if value, ok := firstPresentString(request.CredsRef, request.CredsRefCamel, request.TokenEnv); ok {
+	if value, ok := firstPresentString(request.CredsRef, request.CredsRefCamel); ok {
 		value = strings.TrimSpace(value)
 		patch.TokenEnv = &value
 	}
@@ -2352,7 +2348,7 @@ func newJobStatus(workspaceID string, job state.Job, run state.Run) jobStatusRes
 		startedAt = &job.UpdatedAt
 	case state.JobSucceeded, state.JobFailed:
 		stateValue = "completed"
-		status := terminalJobStatus(job, run)
+		status := jobDetailStatus(job, run)
 		statusValue = &status
 		completedAt = &run.UpdatedAt
 	}
@@ -2434,6 +2430,17 @@ func terminalJobStatus(job state.Job, run state.Run) string {
 		return "completed"
 	}
 	return "failed"
+}
+
+func jobDetailStatus(job state.Job, run state.Run) string {
+	switch terminalJobStatus(job, run) {
+	case "completed":
+		return "success"
+	case "canceled":
+		return "canceled"
+	default:
+		return "failure"
+	}
 }
 
 func runErrorMessage(run state.Run) string {

@@ -282,6 +282,25 @@ func TestCanonicalJobRunStatusAndResultAPI(t *testing.T) {
 		t.Fatalf("done result = %#v result=%s", doneBody, doneBody.Result)
 	}
 
+	doneStatusResp, err := http.Get(server.URL + "/api/w/ws-a/jobs/" + runResponse.JobID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer doneStatusResp.Body.Close()
+	if doneStatusResp.StatusCode != http.StatusOK {
+		t.Fatalf("done job status = %d, want %d", doneStatusResp.StatusCode, http.StatusOK)
+	}
+	var doneStatusBody struct {
+		State  string `json:"state"`
+		Status string `json:"status"`
+	}
+	if err := json.NewDecoder(doneStatusResp.Body).Decode(&doneStatusBody); err != nil {
+		t.Fatal(err)
+	}
+	if doneStatusBody.State != "completed" || doneStatusBody.Status != "success" {
+		t.Fatalf("done job status = %#v", doneStatusBody)
+	}
+
 	listResp, err := http.Get(server.URL + "/api/w/ws-a/jobs?status=completed&app=echo&limit=1")
 	if err != nil {
 		t.Fatal(err)
@@ -500,6 +519,22 @@ func TestCanonicalJobCancelAPI(t *testing.T) {
 		t.Fatalf("result body = %#v result=%s", resultBody, resultBody.Result)
 	}
 
+	statusResp, err := http.Get(server.URL + "/api/w/ws-a/jobs/" + runBody.JobID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer statusResp.Body.Close()
+	var statusBody struct {
+		State  string `json:"state"`
+		Status string `json:"status"`
+	}
+	if err := json.NewDecoder(statusResp.Body).Decode(&statusBody); err != nil {
+		t.Fatal(err)
+	}
+	if statusBody.State != "completed" || statusBody.Status != "canceled" {
+		t.Fatalf("job status = %#v", statusBody)
+	}
+
 	secondCancelResp, err := http.Post(server.URL+"/api/w/ws-a/jobs/"+runBody.JobID+"/cancel", "application/json", bytes.NewBufferString(`{}`))
 	if err != nil {
 		t.Fatal(err)
@@ -612,6 +647,15 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 	defer invalidRunResp.Body.Close()
 	if invalidRunResp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("invalid run status = %d, want %d", invalidRunResp.StatusCode, http.StatusBadRequest)
+	}
+
+	legacyRegisterResp, err := http.Post(server.URL+"/api/w/ws-a/git_sources", "application/json", bytes.NewBufferString(`{"id":"source-a","repoUrl":"`+filepath.ToSlash(repoDir)+`"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer legacyRegisterResp.Body.Close()
+	if legacyRegisterResp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("legacy canonical register status = %d, want %d", legacyRegisterResp.StatusCode, http.StatusBadRequest)
 	}
 
 	registerBody, err := json.Marshal(map[string]string{
@@ -912,6 +956,15 @@ func TestCanonicalGitSourceProbePatchAndDelete(t *testing.T) {
 	registry := gitsource.NewFileRegistry(filepath.Join(tempDir, "git-sources.json"))
 	server := httptest.NewServer(New(Config{GitSources: registry, EnableAPI: true}))
 	defer server.Close()
+
+	legacyProbeResp, err := http.Post(server.URL+"/api/w/ws-a/git_sources/probe", "application/json", bytes.NewBufferString(`{"repoUrl":"`+filepath.ToSlash(repoDir)+`","branch":"main"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer legacyProbeResp.Body.Close()
+	if legacyProbeResp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("legacy canonical probe status = %d, want %d", legacyProbeResp.StatusCode, http.StatusBadRequest)
+	}
 
 	probeBody, err := json.Marshal(map[string]string{
 		"repo_url": filepath.ToSlash(repoDir),
