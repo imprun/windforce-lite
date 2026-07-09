@@ -65,6 +65,9 @@ func runSync(args []string) int {
 	repoURL := flags.String("repo", "", "git repository URL")
 	branch := flags.String("branch", "main", "git branch")
 	commit := flags.String("commit", "", "commit or local bundle id")
+	var sourceSubpath string
+	flags.StringVar(&sourceSubpath, "subpath", "", "source subpath inside the git repository or local source")
+	flags.StringVar(&sourceSubpath, "path", "", "alias for --subpath")
 	app := flags.String("app", "", "optional app name assertion")
 	workspace := flags.String("workspace", "default", "source workspace")
 	gitSourceID := flags.String("git-source-id", "", "registered git source id")
@@ -91,6 +94,7 @@ func runSync(args []string) int {
 		RepoURL:     *repoURL,
 		Branch:      *branch,
 		Commit:      *commit,
+		Subpath:     sourceSubpath,
 		Token:       token,
 		LocalDir:    *sourceDir,
 	})
@@ -372,8 +376,8 @@ func defaultStatePath() string {
 func printUsage(file *os.File) {
 	fmt.Fprintln(file, "usage:")
 	fmt.Fprintln(file, "  windforce-lite version")
-	fmt.Fprintln(file, "  windforce-lite sync --source <dir> [--store <dir>] [--catalog <path>]")
-	fmt.Fprintln(file, "  windforce-lite sync --repo <url> [--branch main] [--store <dir>] [--catalog <path>]")
+	fmt.Fprintln(file, "  windforce-lite sync --source <dir> [--subpath <subdir>] [--store <dir>] [--catalog <path>]")
+	fmt.Fprintln(file, "  windforce-lite sync --repo <url> [--branch main] [--subpath <subdir>] [--store <dir>] [--catalog <path>]")
 	fmt.Fprintln(file, "  windforce-lite run --app <app> --action <action> [--input <path>] [--output <path>]")
 	fmt.Fprintln(file, "  windforce-lite trigger [--addr :8080] [--state-backend local|postgres] [--wait 30s] [--git-sources <path>]")
 	fmt.Fprintln(file, "  windforce-lite api [--addr :8080] [--state-backend local|postgres] [--git-sources <path>]")

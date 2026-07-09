@@ -35,10 +35,12 @@ deployment:
 2. Resolve the source version.
    - local source: compute a source tree digest
    - git source: resolve the branch or commit
-3. Load `windforce.json`.
-4. Materialize the source tree into the bundle store under
+3. If the git source has a `subpath`, use that repo directory as the app root
+   and try sparse checkout before falling back to a full clone.
+4. Load `windforce.json`.
+5. Materialize the source tree into the bundle store under
    `{workspace}/{gitSourceId}/{commit}`.
-5. Write the catalog entry after the bundle is complete.
+6. Write the catalog entry after the bundle is complete.
 
 The ordering is intentional: a catalog entry must not point at a bundle that a
 worker cannot fetch.
@@ -157,6 +159,7 @@ The same flow works with a git source:
 go run ./cmd/windforce-lite sync `
   --repo https://github.com/imprun/example-windforce-app.git `
   --branch main `
+  --subpath apps/echo `
   --store .tmp/store `
   --catalog .tmp/catalog.json
 ```

@@ -18,6 +18,7 @@ type Source struct {
 	ID        string `json:"id"`
 	RepoURL   string `json:"repoUrl"`
 	Branch    string `json:"branch,omitempty"`
+	Subpath   string `json:"subpath,omitempty"`
 	TokenEnv  string `json:"tokenEnv,omitempty"`
 }
 
@@ -48,6 +49,11 @@ func (r *FileRegistry) Upsert(ctx context.Context, source Source) error {
 	if source.Branch == "" {
 		source.Branch = "main"
 	}
+	subpath, err := contract.NormalizeSourcePath(source.Subpath)
+	if err != nil {
+		return err
+	}
+	source.Subpath = subpath
 
 	snapshot, err := r.Load(ctx)
 	if err != nil {

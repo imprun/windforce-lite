@@ -354,6 +354,94 @@ func TestControlPlaneRegistersGitSourceAndSyncsIt(t *testing.T) {
 	}
 }
 
+func TestControlPlaneRegistersGitSourcePathAndSyncsIt(t *testing.T) {
+	tempDir := t.TempDir()
+	repoDir := filepath.Join(tempDir, "repo")
+	appDir := filepath.Join(repoDir, "apps", "echo")
+	if err := os.MkdirAll(appDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repoDir, "root.txt"), []byte("root"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(appDir, "windforce.json"), []byte(`{
+		"app": "echo",
+		"actions": {
+			"echo": {
+				"command": ["helper"]
+			}
+		}
+	}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(appDir, "action.txt"), []byte("action"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runTestGit(t, repoDir, "init")
+	runTestGit(t, repoDir, "checkout", "-b", "main")
+	runTestGit(t, repoDir, "config", "user.email", "test@example.com")
+	runTestGit(t, repoDir, "config", "user.name", "Test User")
+	runTestGit(t, repoDir, "add", ".")
+	runTestGit(t, repoDir, "commit", "-m", "initial")
+
+	store := bundle.NewLocalStore(filepath.Join(tempDir, "store"))
+	fileCatalog := catalog.NewFileCatalog(filepath.Join(tempDir, "catalog.json"))
+	handler := New(Config{
+		Store:      state.NewLocalStore(filepath.Join(tempDir, "state.json")),
+		Catalog:    fileCatalog,
+		Syncer:     &syncer.Syncer{Store: store, Catalog: fileCatalog, CloneRoot: tempDir},
+		GitSources: gitsource.NewFileRegistry(filepath.Join(tempDir, "git-sources.json")),
+		EnableAPI:  true,
+	})
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	registerBody, err := json.Marshal(map[string]string{
+		"id":      "source-a",
+		"repoUrl": filepath.ToSlash(repoDir),
+		"branch":  "main",
+		"subpath": "apps/echo",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	registerResp, err := http.Post(server.URL+"/v1/git-sources", "application/json", bytes.NewReader(registerBody))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer registerResp.Body.Close()
+	if registerResp.StatusCode != http.StatusOK {
+		t.Fatalf("register status = %d, want %d", registerResp.StatusCode, http.StatusOK)
+	}
+
+	syncResp, err := http.Post(server.URL+"/v1/sync", "application/json", bytes.NewBufferString(`{"app":"echo","gitSourceId":"source-a"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer syncResp.Body.Close()
+	if syncResp.StatusCode != http.StatusOK {
+		t.Fatalf("sync status = %d, want %d", syncResp.StatusCode, http.StatusOK)
+	}
+	var deployment contract.Deployment
+	if err := json.NewDecoder(syncResp.Body).Decode(&deployment); err != nil {
+		t.Fatal(err)
+	}
+
+	fetchDir := filepath.Join(tempDir, "fetch")
+	if err := store.FetchTo(context.Background(), fetchDir, deployment.SourceWorkspace(), deployment.SourceGitSourceID(), deployment.Commit); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(fetchDir, "windforce.json")); err != nil {
+		t.Fatalf("materialized app root missing windforce.json: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(fetchDir, "action.txt")); err != nil {
+		t.Fatalf("materialized app root missing action.txt: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(fetchDir, "root.txt")); !os.IsNotExist(err) {
+		t.Fatalf("materialized app root should not contain repo root file, stat err = %v", err)
+	}
+}
+
 func runTestGit(t *testing.T, dir string, args ...string) {
 	t.Helper()
 	cmd := exec.Command("git", args...)

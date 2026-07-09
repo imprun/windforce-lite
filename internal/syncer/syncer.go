@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/imprun/windforce-lite/internal/bundle"
 	"github.com/imprun/windforce-lite/internal/contract"
@@ -24,6 +26,7 @@ type Source struct {
 	RepoURL     string
 	Branch      string
 	Commit      string
+	Subpath     string
 	Token       string
 	LocalDir    string
 }
@@ -101,7 +104,11 @@ func (s *Syncer) Sync(ctx context.Context, src Source) (contract.Deployment, err
 
 func (s *Syncer) prepareSource(ctx context.Context, src Source, commit string) (string, func(), error) {
 	if src.LocalDir != "" {
-		return src.LocalDir, func() {}, nil
+		sourceDir, err := sourceDirForSubpath(src.LocalDir, src.Subpath)
+		if err != nil {
+			return "", nil, err
+		}
+		return sourceDir, func() {}, nil
 	}
 	if src.RepoURL == "" {
 		return "", nil, errors.New("repo URL is required")
@@ -122,10 +129,53 @@ func (s *Syncer) prepareSource(ctx context.Context, src Source, commit string) (
 		_ = os.RemoveAll(cloneDir)
 	}
 
-	sourceDir := filepath.Join(cloneDir, "source")
-	if err := source.CloneCommit(ctx, src.RepoURL, src.Branch, commit, sourceDir, src.Token); err != nil {
+	repoDir := filepath.Join(cloneDir, "source")
+	cloned := false
+	if src.Subpath != "" {
+		if err := source.CloneCommitSparse(ctx, src.RepoURL, src.Branch, commit, repoDir, src.Subpath, src.Token); err != nil {
+			log.Printf("syncer: sparse clone %s@%s fell back to full clone: %v", src.GitSourceID, commit, err)
+			_ = os.RemoveAll(repoDir)
+		} else {
+			cloned = true
+		}
+	}
+	if !cloned {
+		if err := source.CloneCommit(ctx, src.RepoURL, src.Branch, commit, repoDir, src.Token); err != nil {
+			cleanup()
+			return "", nil, err
+		}
+	}
+	sourceDir, err := sourceDirForSubpath(repoDir, src.Subpath)
+	if err != nil {
 		cleanup()
 		return "", nil, err
 	}
 	return sourceDir, cleanup, nil
+}
+
+func sourceDirForSubpath(root string, subpath string) (string, error) {
+	normalized, err := contract.NormalizeSourcePath(subpath)
+	if err != nil {
+		return "", err
+	}
+	if normalized == "" {
+		return root, nil
+	}
+	sourceDir := filepath.Join(root, filepath.FromSlash(normalized))
+	rootAbs, err := filepath.Abs(root)
+	if err != nil {
+		return "", err
+	}
+	sourceAbs, err := filepath.Abs(sourceDir)
+	if err != nil {
+		return "", err
+	}
+	rel, err := filepath.Rel(rootAbs, sourceAbs)
+	if err != nil {
+		return "", err
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
+		return "", fmt.Errorf("source subpath %q escapes git source root", subpath)
+	}
+	return sourceDir, nil
 }

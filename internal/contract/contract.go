@@ -3,6 +3,7 @@ package contract
 import (
 	"encoding/json"
 	"fmt"
+	"path"
 	"strings"
 )
 
@@ -108,6 +109,22 @@ func NormalizeGitSourceID(value string, app string) string {
 		return app
 	}
 	return DefaultGitSourceID
+}
+
+func NormalizeSourcePath(value string) (string, error) {
+	value = strings.TrimSpace(strings.ReplaceAll(value, "\\", "/"))
+	value = strings.Trim(value, "/")
+	if value == "" || value == "." {
+		return "", nil
+	}
+	clean := path.Clean(value)
+	if clean == "." {
+		return "", nil
+	}
+	if clean == ".." || strings.HasPrefix(clean, "../") || strings.HasPrefix(clean, "/") {
+		return "", fmt.Errorf("source path %q must be a relative path inside the git source", value)
+	}
+	return clean, nil
 }
 
 func (d Deployment) SourceWorkspace() string {

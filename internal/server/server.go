@@ -308,6 +308,10 @@ func (h *Handler) handleSync(w http.ResponseWriter, r *http.Request) {
 		RepoURL          string `json:"repoUrl"`
 		Branch           string `json:"branch"`
 		Commit           string `json:"commit"`
+		Subpath          string `json:"subpath"`
+		Path             string `json:"path"`
+		GitPath          string `json:"gitPath"`
+		SourcePath       string `json:"sourcePath"`
 		CloneRoot        string `json:"cloneRoot"`
 		TokenEnv         string `json:"tokenEnv"`
 	}
@@ -319,6 +323,7 @@ func (h *Handler) handleSync(w http.ResponseWriter, r *http.Request) {
 	repoURL := firstNonEmpty(request.RepoURL, request.Repo)
 	workspace := contract.NormalizeWorkspace(request.Workspace)
 	gitSourceID := firstNonEmpty(request.GitSourceID, request.GitSourceIDSnake)
+	subpath := firstNonEmpty(request.Subpath, request.Path, request.GitPath, request.SourcePath)
 	branch := request.Branch
 	if repoURL == "" && sourceDir == "" && gitSourceID != "" && h.gitSources != nil {
 		registered, err := h.gitSources.Get(r.Context(), workspace, gitSourceID)
@@ -336,6 +341,9 @@ func (h *Handler) handleSync(w http.ResponseWriter, r *http.Request) {
 		}
 		if request.TokenEnv == "" {
 			request.TokenEnv = registered.TokenEnv
+		}
+		if subpath == "" {
+			subpath = registered.Subpath
 		}
 		gitSourceID = registered.ID
 	}
@@ -357,6 +365,7 @@ func (h *Handler) handleSync(w http.ResponseWriter, r *http.Request) {
 		RepoURL:     repoURL,
 		Branch:      branch,
 		Commit:      request.Commit,
+		Subpath:     subpath,
 		Token:       token,
 		LocalDir:    sourceDir,
 	})
@@ -380,6 +389,10 @@ func (h *Handler) handleRegisterGitSource(w http.ResponseWriter, r *http.Request
 		Repo             string `json:"repo"`
 		RepoURL          string `json:"repoUrl"`
 		Branch           string `json:"branch"`
+		Subpath          string `json:"subpath"`
+		Path             string `json:"path"`
+		GitPath          string `json:"gitPath"`
+		SourcePath       string `json:"sourcePath"`
 		TokenEnv         string `json:"tokenEnv"`
 	}
 	if err := readOptionalJSON(r, &request); err != nil {
@@ -391,6 +404,7 @@ func (h *Handler) handleRegisterGitSource(w http.ResponseWriter, r *http.Request
 		ID:        firstNonEmpty(request.ID, request.GitSourceID, request.GitSourceIDSnake),
 		RepoURL:   firstNonEmpty(request.RepoURL, request.Repo),
 		Branch:    request.Branch,
+		Subpath:   firstNonEmpty(request.Subpath, request.Path, request.GitPath, request.SourcePath),
 		TokenEnv:  request.TokenEnv,
 	}
 	if err := h.gitSources.Upsert(r.Context(), source); err != nil {
@@ -402,6 +416,7 @@ func (h *Handler) handleRegisterGitSource(w http.ResponseWriter, r *http.Request
 	if source.Branch == "" {
 		source.Branch = "main"
 	}
+	source.Subpath, _ = contract.NormalizeSourcePath(source.Subpath)
 	writeJSON(w, http.StatusOK, source)
 }
 

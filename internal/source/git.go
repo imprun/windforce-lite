@@ -5,8 +5,11 @@ import (
 	"fmt"
 	"net/url"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/imprun/windforce-lite/internal/contract"
 )
 
 var credentialPattern = regexp.MustCompile(`(https?://)[^@/\s]+@`)
@@ -42,7 +45,6 @@ func CloneCommit(ctx context.Context, repoURL string, branch string, commit stri
 		args = append(args, "--branch", branch)
 	}
 	args = append(args, cloneURL, destinationDir)
-
 	if _, err := runGit(ctx, "", args...); err != nil {
 		if _, retryErr := runGit(ctx, "", "clone", "--no-tags", cloneURL, destinationDir); retryErr != nil {
 			return fmt.Errorf("git clone: %w", retryErr)
@@ -52,6 +54,36 @@ func CloneCommit(ctx context.Context, repoURL string, branch string, commit stri
 		if _, err := runGit(ctx, destinationDir, "checkout", "--detach", commit); err != nil {
 			return fmt.Errorf("git checkout %s: %w", commit, err)
 		}
+	}
+	return nil
+}
+
+func CloneCommitSparse(ctx context.Context, repoURL string, branch string, commit string, destinationDir string, subpath string, token string) error {
+	normalizedSubpath, err := contract.NormalizeSourcePath(subpath)
+	if err != nil {
+		return err
+	}
+	if normalizedSubpath == "" {
+		return fmt.Errorf("sparse clone requires a subpath")
+	}
+	cloneURL := authURL(repoURL, token)
+	args := []string{"clone", "--depth", "1", "--filter=blob:none", "--no-tags", "--no-checkout", "--sparse"}
+	if branch != "" {
+		args = append(args, "--branch", branch)
+	}
+	args = append(args, cloneURL, destinationDir)
+	if _, err := runGit(ctx, "", args...); err != nil {
+		return fmt.Errorf("git clone (sparse): %w", err)
+	}
+	if _, err := runGit(ctx, destinationDir, "sparse-checkout", "set", filepath.ToSlash(normalizedSubpath)); err != nil {
+		return fmt.Errorf("git sparse-checkout set %s: %w", normalizedSubpath, err)
+	}
+	ref := commit
+	if ref == "" {
+		ref = "HEAD"
+	}
+	if _, err := runGit(ctx, destinationDir, "checkout", "--detach", ref); err != nil {
+		return fmt.Errorf("git checkout %s (sparse): %w", ref, err)
 	}
 	return nil
 }
