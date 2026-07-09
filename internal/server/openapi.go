@@ -218,6 +218,17 @@ func buildControlPlaneOpenAPI(baseURL string, workspaceID string) map[string]any
 				}, "400", "401", "403", "404"),
 			},
 		},
+		"/api/w/{workspace}/apps/{app}/actions/{action}/schema": map[string]any{
+			"get": map[string]any{
+				"operationId": "getActionSchema",
+				"summary":     "Get action input/output schemas",
+				"description": "Returns only the materialized input_schema and output_schema JSON Schema documents for an action. Protocol adapters can use this without fetching route metadata.",
+				"parameters":  []any{oapiWorkspaceParam(workspaceID), oapiPathParam("app", "App key."), oapiPathParam("action", "Action key.")},
+				"responses": withErrors(map[string]any{
+					"200": oapiResponse("Action materialized schemas.", oapiSchemaRef("ActionSchema")),
+				}, "400", "401", "403", "404"),
+			},
+		},
 		"/api/w/{workspace}/apps/{app}/actions/{action}": map[string]any{
 			"get": map[string]any{
 				"operationId": "getAction",
@@ -909,6 +920,17 @@ func controlPlaneSchemas() map[string]any {
 			"description": "Canonical action detail. input_schema and output_schema expose the materialized action contract.",
 			"properties":  actionProperties,
 			"required":    []any{"id", "workspace_id", "app_key", "action_key", "input_schema", "output_schema", "updated_at"},
+		},
+		"ActionSchema": map[string]any{
+			"type":        "object",
+			"description": "Materialized action input/output JSON Schema documents.",
+			"properties": map[string]any{
+				"app_key":       oapiStringSchema(),
+				"action_key":    oapiStringSchema(),
+				"input_schema":  jsonSchema,
+				"output_schema": jsonSchema,
+			},
+			"required": []any{"app_key", "action_key", "input_schema", "output_schema"},
 		},
 		"AppAction": map[string]any{
 			"type":        "object",

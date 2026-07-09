@@ -86,7 +86,7 @@ def main(argv: list[str] | None = None) -> int:
     action.add_argument("--action", required=True)
     action.set_defaults(func=cmd_action)
 
-    schema = sub.add_parser("schema", help="get action input/output schemas from action detail")
+    schema = sub.add_parser("schema", help="get action input/output schemas")
     schema.add_argument("--app", required=True)
     schema.add_argument("--action", required=True)
     schema.add_argument(
@@ -316,13 +316,14 @@ def get_action(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def get_schema(args: argparse.Namespace) -> dict[str, Any]:
-    action = get_action(args)
-    return {
-        "app_key": action.get("app_key"),
-        "action_key": action.get("action_key"),
-        "input_schema": action.get("input_schema") or {},
-        "output_schema": action.get("output_schema") or {},
-    }
+    payload = request(
+        args,
+        "GET",
+        f"/api/w/{quote_path(args.workspace)}/apps/{quote_path(args.app)}/actions/{quote_path(args.action)}/schema",
+    )
+    if not isinstance(payload, dict):
+        raise APIError({"error": "schema response was not a JSON object"})
+    return payload
 
 
 def request(args: argparse.Namespace, method: str, path: str, body: dict[str, Any] | None = None) -> Any:
