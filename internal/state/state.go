@@ -112,6 +112,7 @@ type Job struct {
 	Attempt        int        `json:"attempt"`
 	LeaseOwner     string     `json:"leaseOwner,omitempty"`
 	LeaseExpiresAt *time.Time `json:"leaseExpiresAt,omitempty"`
+	StartedAt      *time.Time `json:"startedAt,omitempty"`
 	CanceledBy     *string    `json:"canceledBy,omitempty"`
 	CanceledReason *string    `json:"canceledReason,omitempty"`
 	CreatedAt      time.Time  `json:"createdAt"`
@@ -788,6 +789,7 @@ func (s *LocalStore) ClaimJobForTags(ctx context.Context, workerID string, tags 
 		job.Attempt++
 		job.LeaseOwner = workerID
 		job.LeaseExpiresAt = &expiresAt
+		job.StartedAt = &now
 		job.UpdatedAt = now
 		snapshot.Jobs[job.ID] = job
 
@@ -1204,6 +1206,7 @@ func requeueExpiredJobs(snapshot *Snapshot, now time.Time) {
 		job.State = JobQueued
 		job.LeaseOwner = ""
 		job.LeaseExpiresAt = nil
+		job.StartedAt = nil
 		job.UpdatedAt = now
 		snapshot.Jobs[id] = job
 		appendEvent(snapshot, job.RunID, "job_lease_expired", eventPayload(job.Payload.CorrelationID, map[string]any{"jobId": job.ID}), now)
@@ -1411,8 +1414,11 @@ func newJobListItem(workspaceID string, job Job, run Run) JobListItem {
 	var startedAt *time.Time
 	var completedAt *time.Time
 	var worker *string
+	startedAt = job.StartedAt
 	if job.State == JobRunning {
-		startedAt = &job.UpdatedAt
+		if startedAt == nil {
+			startedAt = &job.UpdatedAt
+		}
 		worker = stringPtr(job.LeaseOwner)
 	}
 	if job.State == JobSucceeded || job.State == JobFailed || IsTerminal(run) {

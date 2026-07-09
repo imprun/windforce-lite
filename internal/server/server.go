@@ -2460,13 +2460,15 @@ func newJobStatus(workspaceID string, job state.Job, run state.Run) jobStatusRes
 	stateValue := "queued"
 	var statusValue *string
 	var worker *string
-	var startedAt *time.Time
+	startedAt := job.StartedAt
 	var completedAt *time.Time
 	switch job.State {
 	case state.JobRunning:
 		stateValue = "running"
 		worker = stringPtr(job.LeaseOwner)
-		startedAt = &job.UpdatedAt
+		if startedAt == nil {
+			startedAt = &job.UpdatedAt
+		}
 	case state.JobSucceeded, state.JobFailed:
 		stateValue = "completed"
 		status := jobDetailStatus(job, run)

@@ -22,7 +22,7 @@ const runColumns = `
 
 const jobColumns = `
 	id, run_id, state, kind, payload, priority, attempt, lease_owner,
-	lease_expires_at, canceled_by, canceled_reason, created_at, updated_at
+	lease_expires_at, started_at, canceled_by, canceled_reason, created_at, updated_at
 `
 
 const humanTaskColumns = `
@@ -86,6 +86,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     attempt INTEGER NOT NULL DEFAULT 0,
     lease_owner TEXT,
     lease_expires_at TIMESTAMPTZ,
+    started_at TIMESTAMPTZ,
     canceled_by TEXT,
     canceled_reason TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -151,6 +152,7 @@ CREATE TABLE IF NOT EXISTS resource (
 ALTER TABLE runs ADD COLUMN IF NOT EXISTS result JSONB;
 ALTER TABLE runs ADD COLUMN IF NOT EXISTS correlation_id TEXT;
 ALTER TABLE runs ADD COLUMN IF NOT EXISTS env JSONB;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS canceled_by TEXT;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS canceled_reason TEXT;
 ALTER TABLE job_logs ADD COLUMN IF NOT EXISTS workspace_id TEXT NOT NULL DEFAULT 'default';
@@ -601,7 +603,7 @@ func (s *PostgresStore) ClaimJobForTags(ctx context.Context, workerID string, ta
 		}
 		if _, err := tx.Exec(ctx, `
 UPDATE jobs
-SET state='queued', lease_owner=NULL, lease_expires_at=NULL, updated_at=$1
+SET state='queued', lease_owner=NULL, lease_expires_at=NULL, started_at=NULL, updated_at=$1
 WHERE state='running' AND lease_expires_at < $1 AND canceled_by IS NULL
 `, now); err != nil {
 			return err
@@ -647,6 +649,7 @@ UPDATE jobs
 SET state='running',
     lease_owner=$1,
     lease_expires_at=$2,
+    started_at=$3,
     attempt=attempt + 1,
     updated_at=$3
 WHERE id=$4
@@ -1100,11 +1103,12 @@ func scanJob(row rowScanner) (Job, error) {
 	var payload json.RawMessage
 	var leaseOwner sql.NullString
 	var leaseExpiresAt sql.NullTime
+	var startedAt sql.NullTime
 	var canceledBy sql.NullString
 	var canceledReason sql.NullString
 	if err := row.Scan(
 		&job.ID, &job.RunID, &stateValue, &job.Kind, &payload, &job.Priority, &job.Attempt,
-		&leaseOwner, &leaseExpiresAt, &canceledBy, &canceledReason, &job.CreatedAt, &job.UpdatedAt,
+		&leaseOwner, &leaseExpiresAt, &startedAt, &canceledBy, &canceledReason, &job.CreatedAt, &job.UpdatedAt,
 	); err != nil {
 		return Job{}, err
 	}
@@ -1117,6 +1121,9 @@ func scanJob(row rowScanner) (Job, error) {
 	}
 	if leaseExpiresAt.Valid {
 		job.LeaseExpiresAt = &leaseExpiresAt.Time
+	}
+	if startedAt.Valid {
+		job.StartedAt = &startedAt.Time
 	}
 	if canceledBy.Valid {
 		job.CanceledBy = &canceledBy.String

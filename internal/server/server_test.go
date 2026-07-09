@@ -583,14 +583,19 @@ func TestCanonicalJobRunStatusAndResultAPI(t *testing.T) {
 		t.Fatalf("done job status = %d, want %d", doneStatusResp.StatusCode, http.StatusOK)
 	}
 	var doneStatusBody struct {
-		State  string `json:"state"`
-		Status string `json:"status"`
+		State       string     `json:"state"`
+		Status      string     `json:"status"`
+		StartedAt   *time.Time `json:"started_at"`
+		CompletedAt *time.Time `json:"completed_at"`
 	}
 	if err := json.NewDecoder(doneStatusResp.Body).Decode(&doneStatusBody); err != nil {
 		t.Fatal(err)
 	}
 	if doneStatusBody.State != "completed" || doneStatusBody.Status != "success" {
 		t.Fatalf("done job status = %#v", doneStatusBody)
+	}
+	if doneStatusBody.StartedAt == nil || doneStatusBody.CompletedAt == nil {
+		t.Fatalf("done job timestamps = %#v", doneStatusBody)
 	}
 
 	listResp, err := http.Get(server.URL + "/api/w/ws-a/jobs?status=completed&app=echo&limit=1")
@@ -603,12 +608,14 @@ func TestCanonicalJobRunStatusAndResultAPI(t *testing.T) {
 	}
 	var listBody struct {
 		Items []struct {
-			ID          string `json:"id"`
-			AppKey      string `json:"app_key"`
-			ActionKey   string `json:"action_key"`
-			GitSourceID int64  `json:"git_source_id"`
-			Status      string `json:"status"`
-			Completed   bool   `json:"completed"`
+			ID          string     `json:"id"`
+			AppKey      string     `json:"app_key"`
+			ActionKey   string     `json:"action_key"`
+			GitSourceID int64      `json:"git_source_id"`
+			Status      string     `json:"status"`
+			Completed   bool       `json:"completed"`
+			StartedAt   *time.Time `json:"started_at"`
+			CompletedAt *time.Time `json:"completed_at"`
 		} `json:"items"`
 		Pagination struct {
 			Limit   int  `json:"limit"`
@@ -623,6 +630,9 @@ func TestCanonicalJobRunStatusAndResultAPI(t *testing.T) {
 		listBody.Items[0].GitSourceID != 1 ||
 		listBody.Items[0].Status != "success" || !listBody.Items[0].Completed {
 		t.Fatalf("list body = %#v", listBody)
+	}
+	if listBody.Items[0].StartedAt == nil || listBody.Items[0].CompletedAt == nil {
+		t.Fatalf("list timestamps = %#v", listBody.Items[0])
 	}
 	if listBody.Pagination.Limit != 1 || listBody.Pagination.Count != 1 {
 		t.Fatalf("pagination = %#v", listBody.Pagination)
