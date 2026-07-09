@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/imprun/windforce-lite/internal/bundle"
@@ -179,6 +180,7 @@ func runServer(args []string, mode string) int {
 	poll := flags.Duration("poll", 500*time.Millisecond, "standalone worker poll interval")
 	leaseTTL := flags.Duration("lease", 30*time.Second, "worker job lease TTL")
 	workerID := flags.String("worker-id", "", "worker identity for standalone processing")
+	workerTags := flags.String("tags", "", "comma-separated route tags this worker claims")
 	if err := flags.Parse(args); err != nil {
 		return 2
 	}
@@ -211,6 +213,7 @@ func runServer(args []string, mode string) int {
 				CacheRoot: *cacheRoot,
 			},
 			WorkerID: *workerID,
+			Tags:     parseTags(*workerTags),
 			LeaseTTL: *leaseTTL,
 		}
 		go func() {
@@ -240,6 +243,7 @@ func runWorker(args []string) int {
 	poll := flags.Duration("poll", 500*time.Millisecond, "job poll interval")
 	leaseTTL := flags.Duration("lease", 30*time.Second, "job lease TTL")
 	workerID := flags.String("worker-id", "", "worker identity")
+	workerTags := flags.String("tags", "", "comma-separated route tags this worker claims")
 	once := flags.Bool("once", false, "process at most one queued job and exit")
 	if err := flags.Parse(args); err != nil {
 		return 2
@@ -258,6 +262,7 @@ func runWorker(args []string) int {
 			CacheRoot: *cacheRoot,
 		},
 		WorkerID: *workerID,
+		Tags:     parseTags(*workerTags),
 		LeaseTTL: *leaseTTL,
 	}
 	if *once {
@@ -303,6 +308,24 @@ func tokenFromEnv(name string) string {
 		return ""
 	}
 	return os.Getenv(name)
+}
+
+func parseTags(value string) []string {
+	parts := strings.Split(value, ",")
+	tags := make([]string, 0, len(parts))
+	seen := map[string]struct{}{}
+	for _, part := range parts {
+		tag := strings.TrimSpace(part)
+		if tag == "" {
+			continue
+		}
+		if _, ok := seen[tag]; ok {
+			continue
+		}
+		seen[tag] = struct{}{}
+		tags = append(tags, tag)
+	}
+	return tags
 }
 
 func runJSON(args []string) int {

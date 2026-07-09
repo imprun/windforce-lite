@@ -376,12 +376,17 @@ func (s *PostgresStore) GetHumanTask(ctx context.Context, taskID string) (HumanT
 }
 
 func (s *PostgresStore) ClaimJob(ctx context.Context, workerID string, leaseTTL time.Duration) (Job, Lease, error) {
+	return s.ClaimJobForTags(ctx, workerID, nil, leaseTTL)
+}
+
+func (s *PostgresStore) ClaimJobForTags(ctx context.Context, workerID string, tags []string, leaseTTL time.Duration) (Job, Lease, error) {
 	if workerID == "" {
 		workerID = NewID("worker")
 	}
 	if leaseTTL <= 0 {
 		leaseTTL = defaultLeaseTime
 	}
+	allowedTags := normalizeClaimTags(tags)
 	var claimed Job
 	var lease Lease
 	err := s.withTx(ctx, func(tx pgx.Tx) error {
@@ -394,26 +399,39 @@ WHERE state='running' AND lease_expires_at < $1
 			return err
 		}
 		expiresAt := now.Add(leaseTTL)
+		rows, err := tx.Query(ctx, `SELECT `+jobColumns+` FROM jobs WHERE state=$1 ORDER BY priority ASC, created_at ASC FOR UPDATE SKIP LOCKED`, string(JobQueued))
+		if err != nil {
+			return err
+		}
+		var selected Job
+		for rows.Next() {
+			job, err := scanJob(rows)
+			if err != nil {
+				rows.Close()
+				return err
+			}
+			if !claimTagAllowed(job, allowedTags) {
+				continue
+			}
+			selected = job
+			break
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return err
+		}
+		if selected.ID == "" {
+			return ErrNoQueuedJob
+		}
 		job, err := scanJob(tx.QueryRow(ctx, `
-WITH claimed AS (
-    SELECT id
-    FROM jobs
-    WHERE state = 'queued'
-    ORDER BY priority ASC, created_at ASC
-    FOR UPDATE SKIP LOCKED
-    LIMIT 1
-)
 UPDATE jobs
 SET state='running',
     lease_owner=$1,
     lease_expires_at=$2,
     attempt=attempt + 1,
     updated_at=$3
-WHERE id IN (SELECT id FROM claimed)
-RETURNING `+jobColumns, workerID, expiresAt, now))
-		if errors.Is(err, pgx.ErrNoRows) {
-			return ErrNoQueuedJob
-		}
+WHERE id=$4
+RETURNING `+jobColumns, workerID, expiresAt, now, selected.ID))
 		if err != nil {
 			return err
 		}

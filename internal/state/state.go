@@ -238,6 +238,7 @@ type Store interface {
 	AppendLogs(ctx context.Context, jobID string, workspaceID string, chunk string) error
 	GetLogs(ctx context.Context, workspaceID string, jobID string) (string, bool, error)
 	ClaimJob(ctx context.Context, workerID string, leaseTTL time.Duration) (Job, Lease, error)
+	ClaimJobForTags(ctx context.Context, workerID string, tags []string, leaseTTL time.Duration) (Job, Lease, error)
 	CompleteJobSucceeded(ctx context.Context, lease Lease, result contract.JobResult) error
 	CompleteJobFailed(ctx context.Context, lease Lease, result contract.JobResult) error
 	CompleteJobWaitingHuman(ctx context.Context, lease Lease, result contract.JobResult, task HumanTask) error
@@ -510,12 +511,17 @@ func (s *LocalStore) GetLogs(ctx context.Context, workspaceID string, jobID stri
 }
 
 func (s *LocalStore) ClaimJob(ctx context.Context, workerID string, leaseTTL time.Duration) (Job, Lease, error) {
+	return s.ClaimJobForTags(ctx, workerID, nil, leaseTTL)
+}
+
+func (s *LocalStore) ClaimJobForTags(ctx context.Context, workerID string, tags []string, leaseTTL time.Duration) (Job, Lease, error) {
 	if workerID == "" {
 		workerID = NewID("worker")
 	}
 	if leaseTTL <= 0 {
 		leaseTTL = defaultLeaseTime
 	}
+	allowedTags := normalizeClaimTags(tags)
 	var claimed Job
 	var lease Lease
 	err := s.update(ctx, func(snapshot *Snapshot, now time.Time) error {
@@ -523,7 +529,7 @@ func (s *LocalStore) ClaimJob(ctx context.Context, workerID string, leaseTTL tim
 
 		ids := make([]string, 0, len(snapshot.Jobs))
 		for id, job := range snapshot.Jobs {
-			if job.State == JobQueued {
+			if job.State == JobQueued && claimTagAllowed(job, allowedTags) {
 				ids = append(ids, id)
 			}
 		}
@@ -1205,6 +1211,29 @@ func jobTag(job Job) string {
 		return strings.TrimSpace(job.Payload.Tag)
 	}
 	return contract.EffectiveRouteTag(job.Payload.Deployment.Tag, job.Payload.Deployment.TagOverride, job.Payload.ActionSpec.Tag, job.Payload.ActionSpec.TagOverride)
+}
+
+func normalizeClaimTags(tags []string) map[string]struct{} {
+	normalized := map[string]struct{}{}
+	for _, tag := range tags {
+		tag = strings.TrimSpace(tag)
+		if tag == "" {
+			continue
+		}
+		normalized[tag] = struct{}{}
+	}
+	if len(normalized) == 0 {
+		return nil
+	}
+	return normalized
+}
+
+func claimTagAllowed(job Job, tags map[string]struct{}) bool {
+	if len(tags) == 0 {
+		return true
+	}
+	_, ok := tags[jobTag(job)]
+	return ok
 }
 
 func canceledReason(run Run) *string {

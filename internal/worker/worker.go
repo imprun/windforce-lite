@@ -16,6 +16,7 @@ type Processor struct {
 	Store    state.Store
 	Runner   actionruntime.Runner
 	WorkerID string
+	Tags     []string
 	LeaseTTL time.Duration
 }
 
@@ -27,7 +28,7 @@ func (p *Processor) ProcessOne(ctx context.Context) (bool, error) {
 	if workerID == "" {
 		workerID = state.NewID("worker")
 	}
-	job, lease, err := p.Store.ClaimJob(ctx, workerID, p.LeaseTTL)
+	job, lease, err := p.Store.ClaimJobForTags(ctx, workerID, p.Tags, p.LeaseTTL)
 	if errors.Is(err, state.ErrNoQueuedJob) {
 		return false, nil
 	}

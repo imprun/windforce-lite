@@ -203,6 +203,8 @@ go run ./cmd/windforce-lite worker --state .tmp/state.json --store .tmp/store
 
 `worker --once` claims at most one queued job and exits, which is useful in
 tests and scripted smoke checks.
+`worker --tags default,app-blue` restricts claims to those pinned route tags;
+when omitted, the worker claims every queued tag for simple local development.
 
 Implemented control-plane endpoints:
 

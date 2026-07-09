@@ -35,6 +35,39 @@ func TestPostgresStoreClaimCompleteAndResumeLifecycle(t *testing.T) {
 	exerciseStoreLifecycle(t, store)
 }
 
+func TestLocalStoreClaimJobForTags(t *testing.T) {
+	store := NewLocalStore(t.TempDir() + "/state.json")
+	redTag := "red"
+	blueTag := "blue"
+	deployment := contract.Deployment{
+		Workspace: "ws-a",
+		App:       "echo",
+		Commit:    "commit-a",
+		Actions: map[string]contract.Action{
+			"red":  {Action: "red", Tag: &redTag, Command: []string{"helper"}},
+			"blue": {Action: "blue", Tag: &blueTag, Command: []string{"helper"}},
+		},
+	}
+	for _, action := range []string{"red", "blue"} {
+		run := NewRun("windforce", "run-"+action, "echo", action, deployment, json.RawMessage(`{}`))
+		job := NewActionJob(run, nil)
+		if err := store.CreateRunAndEnqueue(context.Background(), run, job); err != nil {
+			t.Fatalf("CreateRunAndEnqueue(%s) returned error: %v", action, err)
+		}
+	}
+
+	claimed, _, err := store.ClaimJobForTags(context.Background(), "worker-blue", []string{"blue"}, time.Minute)
+	if err != nil {
+		t.Fatalf("ClaimJobForTags returned error: %v", err)
+	}
+	if claimed.Payload.Action != "blue" || claimed.Payload.Tag != "blue" {
+		t.Fatalf("claimed job = %#v", claimed.Payload)
+	}
+	if _, _, err := store.ClaimJobForTags(context.Background(), "worker-green", []string{"green"}, time.Minute); err != ErrNoQueuedJob {
+		t.Fatalf("green claim error = %v, want %v", err, ErrNoQueuedJob)
+	}
+}
+
 func exerciseStoreLifecycle(t *testing.T, store Store) {
 	t.Helper()
 	deployment := contract.Deployment{
