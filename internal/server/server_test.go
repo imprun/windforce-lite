@@ -2334,6 +2334,9 @@ func TestCanonicalGitSourceProbePatchAndDelete(t *testing.T) {
 		t.Fatalf("registered = %#v", registered)
 	}
 	registeredID := fmt.Sprint(registered.ID)
+	if _, err := registry.MarkSynced(context.Background(), "ws-a", registeredID, "commit-a", time.Now().UTC()); err != nil {
+		t.Fatalf("mark synced: %v", err)
+	}
 
 	emptyPatchReq, err := http.NewRequest(http.MethodPatch, server.URL+"/api/w/ws-a/git_sources/"+registeredID, nil)
 	if err != nil {
@@ -2370,16 +2373,21 @@ func TestCanonicalGitSourceProbePatchAndDelete(t *testing.T) {
 		t.Fatalf("patch status = %d, want %d", patchResp.StatusCode, http.StatusOK)
 	}
 	var patched struct {
-		ID       int64  `json:"id"`
-		Name     string `json:"name"`
-		Branch   string `json:"branch"`
-		CredsRef string `json:"creds_ref"`
+		ID               int64      `json:"id"`
+		Name             string     `json:"name"`
+		Branch           string     `json:"branch"`
+		CredsRef         string     `json:"creds_ref"`
+		LastSyncedCommit *string    `json:"last_synced_commit"`
+		LastSyncedAt     *time.Time `json:"last_synced_at"`
 	}
 	if err := json.NewDecoder(patchResp.Body).Decode(&patched); err != nil {
 		t.Fatal(err)
 	}
 	if patched.ID != registered.ID || patched.Name != "source-b" || patched.Branch != "feature" || patched.CredsRef != "secrets/git/token" {
 		t.Fatalf("patched = %#v", patched)
+	}
+	if patched.LastSyncedCommit != nil || patched.LastSyncedAt != nil {
+		t.Fatalf("patch should clear sync metadata after repo/ref change: %#v", patched)
 	}
 	if _, err := registry.Get(context.Background(), "ws-a", "source-a"); !errors.Is(err, gitsource.ErrGitSourceNotFound) {
 		t.Fatalf("old source lookup err = %v, want not found", err)

@@ -145,6 +145,9 @@ func (r *FileRegistry) Patch(ctx context.Context, workspace string, id string, p
 	if !ok {
 		return Source{}, ErrGitSourceNotFound
 	}
+	previousRepoURL := source.RepoURL
+	previousBranch := source.Branch
+	previousSubpath := source.Subpath
 	namePatch := patch.Name
 	if namePatch == nil {
 		namePatch = patch.ID
@@ -168,6 +171,10 @@ func (r *FileRegistry) Patch(ctx context.Context, workspace string, id string, p
 	source, err = normalizeSource(source)
 	if err != nil {
 		return Source{}, err
+	}
+	if source.RepoURL != previousRepoURL || source.Branch != previousBranch || source.Subpath != previousSubpath {
+		source.LastSyncedCommit = nil
+		source.LastSyncedAt = nil
 	}
 	if hasSourceName(snapshot, source.Workspace, source.Name, oldKey) {
 		return Source{}, ErrGitSourceConflict
