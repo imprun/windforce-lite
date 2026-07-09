@@ -314,6 +314,13 @@ func TestReadSchemaFileUsesManifestPathVerbatim(t *testing.T) {
 	}
 }
 
+func TestSourceDirForSubpathRejectsAbsolutePath(t *testing.T) {
+	_, err := sourceDirForSubpath(t.TempDir(), "/apps/echo")
+	if err == nil || !strings.Contains(err.Error(), `source path "/apps/echo" must be a relative path inside the git source`) {
+		t.Fatalf("sourceDirForSubpath error = %v, want absolute subpath validation", err)
+	}
+}
+
 func runSyncerTestGit(t *testing.T, dir string, args ...string) {
 	t.Helper()
 	cmd := exec.Command("git", args...)

@@ -89,11 +89,10 @@ func CloneCommit(ctx context.Context, repoURL string, branch string, commit stri
 }
 
 func CloneCommitSparse(ctx context.Context, repoURL string, branch string, commit string, destinationDir string, subpath string, token string) error {
-	normalizedSubpath, err := contract.NormalizeSourcePath(subpath)
-	if err != nil {
+	if err := contract.ValidateSourceSubpath(subpath); err != nil {
 		return err
 	}
-	if normalizedSubpath == "" {
+	if subpath == "" {
 		return fmt.Errorf("sparse clone requires a subpath")
 	}
 	cloneURL := authURL(repoURL, token)
@@ -105,8 +104,8 @@ func CloneCommitSparse(ctx context.Context, repoURL string, branch string, commi
 	if _, err := runGit(ctx, "", args...); err != nil {
 		return fmt.Errorf("git clone (sparse): %w", err)
 	}
-	if _, err := runGit(ctx, destinationDir, "sparse-checkout", "set", filepath.ToSlash(normalizedSubpath)); err != nil {
-		return fmt.Errorf("git sparse-checkout set %s: %w", normalizedSubpath, err)
+	if _, err := runGit(ctx, destinationDir, "sparse-checkout", "set", filepath.ToSlash(subpath)); err != nil {
+		return fmt.Errorf("git sparse-checkout set %s: %w", subpath, err)
 	}
 	ref := commit
 	if ref == "" {

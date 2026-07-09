@@ -57,6 +57,13 @@ func TestListRemoteBranches(t *testing.T) {
 	}
 }
 
+func TestCloneCommitSparseRejectsAbsoluteSubpathBeforeGit(t *testing.T) {
+	err := CloneCommitSparse(context.Background(), "https://example.test/repo.git", "main", "commit-a", t.TempDir(), "/apps/echo", "")
+	if err == nil {
+		t.Fatal("CloneCommitSparse unexpectedly accepted absolute subpath")
+	}
+}
+
 func runTestGit(t *testing.T, dir string, args ...string) {
 	t.Helper()
 	cmd := exec.Command("git", args...)

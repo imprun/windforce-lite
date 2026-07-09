@@ -251,14 +251,13 @@ func checkLockfile(root string) error {
 }
 
 func sourceDirForSubpath(root string, subpath string) (string, error) {
-	normalized, err := contract.NormalizeSourcePath(subpath)
-	if err != nil {
+	if err := contract.ValidateSourceSubpath(subpath); err != nil {
 		return "", err
 	}
-	if normalized == "" {
+	if subpath == "" {
 		return root, nil
 	}
-	sourceDir := filepath.Join(root, filepath.FromSlash(normalized))
+	sourceDir := filepath.Join(root, filepath.FromSlash(subpath))
 	rootAbs, err := filepath.Abs(root)
 	if err != nil {
 		return "", err

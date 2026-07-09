@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -316,6 +317,16 @@ func NormalizeSourcePath(value string) (string, error) {
 		return "", fmt.Errorf("source path %q must be a relative path inside the git source", value)
 	}
 	return clean, nil
+}
+
+func ValidateSourceSubpath(value string) error {
+	if value == "" {
+		return nil
+	}
+	if filepath.IsAbs(value) || path.IsAbs(value) || strings.Contains(value, "..") {
+		return fmt.Errorf("source path %q must be a relative path inside the git source", value)
+	}
+	return nil
 }
 
 func (d Deployment) SourceWorkspace() string {

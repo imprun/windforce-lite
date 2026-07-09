@@ -54,3 +54,17 @@ func TestNormalizeCapabilitiesRejectsUnsupported(t *testing.T) {
 		t.Fatalf("expected unsupported capability error")
 	}
 }
+
+func TestValidateSourceSubpathPreservesCanonicalRawPath(t *testing.T) {
+	if err := ValidateSourceSubpath("apps/echo"); err != nil {
+		t.Fatalf("ValidateSourceSubpath returned error: %v", err)
+	}
+}
+
+func TestValidateSourceSubpathRejectsEscapingPaths(t *testing.T) {
+	for _, subpath := range []string{"/apps/echo", "../apps/echo", "apps/../echo"} {
+		if err := ValidateSourceSubpath(subpath); err == nil {
+			t.Fatalf("ValidateSourceSubpath(%q) unexpectedly passed", subpath)
+		}
+	}
+}
