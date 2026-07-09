@@ -111,6 +111,9 @@ func (s *Syncer) prepareSource(ctx context.Context, src Source, commit string) (
 	if cloneRoot == "" {
 		cloneRoot = os.TempDir()
 	}
+	if err := os.MkdirAll(cloneRoot, 0o755); err != nil {
+		return "", nil, err
+	}
 	cloneDir, err := os.MkdirTemp(cloneRoot, "windforce-lite-clone-")
 	if err != nil {
 		return "", nil, err

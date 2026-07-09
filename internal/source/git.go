@@ -57,14 +57,18 @@ func CloneCommit(ctx context.Context, repoURL string, branch string, commit stri
 }
 
 func authURL(repoURL string, token string) string {
-	if token == "" || !strings.HasPrefix(repoURL, "https://") {
+	if token == "" || (!strings.HasPrefix(repoURL, "https://") && !strings.HasPrefix(repoURL, "http://")) {
 		return repoURL
 	}
 	parsed, err := url.Parse(repoURL)
 	if err != nil {
 		return repoURL
 	}
-	parsed.User = url.UserPassword("x-access-token", token)
+	username := "x-access-token"
+	if strings.Contains(parsed.Hostname(), "gitlab") {
+		username = "oauth2"
+	}
+	parsed.User = url.UserPassword(username, token)
 	return parsed.String()
 }
 
