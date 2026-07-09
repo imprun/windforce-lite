@@ -36,8 +36,10 @@ func TestSyncMaterializesBeforeCatalogUpdate(t *testing.T) {
 	}
 	if err := os.WriteFile(filepath.Join(sourceDir, "windforce.json"), []byte(`{
 		"app": "echo",
+		"tag": "app-main",
 		"actions": {
 			"echo": {
+				"tag": "action-fast",
 				"runtime": "go",
 				"command": ["go", "run", "./action.go"]
 			}
@@ -68,5 +70,8 @@ func TestSyncMaterializesBeforeCatalogUpdate(t *testing.T) {
 	}
 	if deployment.Actions["echo"].Action != "echo" {
 		t.Fatalf("action metadata was not loaded from manifest")
+	}
+	if deployment.Tag != "app-main" || deployment.Actions["echo"].Tag == nil || *deployment.Actions["echo"].Tag != "action-fast" {
+		t.Fatalf("route tags were not loaded from manifest: %#v", deployment)
 	}
 }

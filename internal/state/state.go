@@ -81,6 +81,7 @@ type JobPayload struct {
 	Commit        string              `json:"commit,omitempty"`
 	App           string              `json:"app"`
 	Action        string              `json:"action"`
+	Tag           string              `json:"tag,omitempty"`
 	TriggerKind   string              `json:"triggerKind,omitempty"`
 	ActionSpec    contract.Action     `json:"actionSpec,omitempty"`
 	Input         json.RawMessage     `json:"input,omitempty"`
@@ -142,6 +143,13 @@ type JobListQuery struct {
 	CursorID        string
 	Since           *time.Time
 	Until           *time.Time
+}
+
+type RequeueAppSpec struct {
+	WorkspaceID string
+	AppKey      string
+	ActionKey   *string
+	ActionTags  map[string]string
 }
 
 type JobListItem struct {
@@ -225,6 +233,7 @@ type Store interface {
 	GetJob(ctx context.Context, workspaceID string, jobID string) (Job, Run, bool, error)
 	ListJobs(ctx context.Context, query JobListQuery) ([]JobListItem, error)
 	JobSummary(ctx context.Context, workspaceID string, recent time.Duration) (JobSummary, error)
+	RequeueQueuedJobsForApp(ctx context.Context, spec RequeueAppSpec) (int64, error)
 	GetHumanTask(ctx context.Context, taskID string) (HumanTask, error)
 	AppendLogs(ctx context.Context, jobID string, workspaceID string, chunk string) error
 	GetLogs(ctx context.Context, workspaceID string, jobID string) (string, bool, error)
@@ -296,6 +305,7 @@ func NewActionJob(run Run, input json.RawMessage) Job {
 			Commit:        run.Deployment.Commit,
 			App:           run.App,
 			Action:        run.Action,
+			Tag:           contract.EffectiveRouteTag(run.Deployment.Tag, run.Deployment.TagOverride, actionSpec.Tag, actionSpec.TagOverride),
 			TriggerKind:   run.Adapter,
 			ActionSpec:    actionSpec,
 			Input:         cloneRaw(input),
@@ -415,6 +425,35 @@ func (s *LocalStore) JobSummary(ctx context.Context, workspaceID string, recent 
 		records = append(records, jobRunRecord{Job: job, Run: run})
 	}
 	return summarizeJobs(records, workspaceID, recent), nil
+}
+
+func (s *LocalStore) RequeueQueuedJobsForApp(ctx context.Context, spec RequeueAppSpec) (int64, error) {
+	workspaceID := contract.NormalizeWorkspace(spec.WorkspaceID)
+	var moved int64
+	err := s.update(ctx, func(snapshot *Snapshot, now time.Time) error {
+		for id, job := range snapshot.Jobs {
+			if job.State != JobQueued || normalizedJobWorkspace("", job) != workspaceID || job.Payload.App != spec.AppKey {
+				continue
+			}
+			if spec.ActionKey != nil && job.Payload.Action != *spec.ActionKey {
+				continue
+			}
+			tag, ok := spec.ActionTags[job.Payload.Action]
+			if !ok || strings.TrimSpace(tag) == "" {
+				continue
+			}
+			tag = strings.TrimSpace(tag)
+			if job.Payload.Tag == tag {
+				continue
+			}
+			job.Payload.Tag = tag
+			job.UpdatedAt = now
+			snapshot.Jobs[id] = job
+			moved++
+		}
+		return nil
+	})
+	return moved, err
 }
 
 func (s *LocalStore) GetHumanTask(ctx context.Context, taskID string) (HumanTask, error) {
@@ -1161,8 +1200,11 @@ func jobTriggerKind(job Job) string {
 	return "api"
 }
 
-func jobTag(Job) string {
-	return "default"
+func jobTag(job Job) string {
+	if strings.TrimSpace(job.Payload.Tag) != "" {
+		return strings.TrimSpace(job.Payload.Tag)
+	}
+	return contract.EffectiveRouteTag(job.Payload.Deployment.Tag, job.Payload.Deployment.TagOverride, job.Payload.ActionSpec.Tag, job.Payload.ActionSpec.TagOverride)
 }
 
 func canceledReason(run Run) *string {

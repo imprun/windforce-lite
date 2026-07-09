@@ -1051,6 +1051,150 @@ func TestCanonicalAppAndActionTagOverrideAPI(t *testing.T) {
 	}
 }
 
+func TestCanonicalJobRunPinsTagAndRequeueUsesCurrentEffectiveTag(t *testing.T) {
+	tempDir := t.TempDir()
+	fileCatalog := catalog.NewFileCatalog(filepath.Join(tempDir, "catalog.json"))
+	if err := fileCatalog.UpsertDeployment(context.Background(), contract.Deployment{
+		Workspace: "ws-a",
+		App:       "echo",
+		Tag:       "app-main",
+		Commit:    "commit-a",
+		Actions: map[string]contract.Action{
+			"echo": {Action: "echo", Command: []string{"helper"}},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	store := state.NewLocalStore(filepath.Join(tempDir, "state.json"))
+	server := httptest.NewServer(New(Config{
+		Store:     store,
+		Catalog:   fileCatalog,
+		EnableAPI: true,
+	}))
+	defer server.Close()
+
+	runResp, err := http.Post(server.URL+"/api/w/ws-a/jobs/run/echo/echo", "application/json", bytes.NewBufferString(`{"message":"hello"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runResp.Body.Close()
+	if runResp.StatusCode != http.StatusCreated {
+		t.Fatalf("run status = %d, want %d", runResp.StatusCode, http.StatusCreated)
+	}
+	var runBody struct {
+		JobID string `json:"job_id"`
+	}
+	if err := json.NewDecoder(runResp.Body).Decode(&runBody); err != nil {
+		t.Fatal(err)
+	}
+
+	statusResp, err := http.Get(server.URL + "/api/w/ws-a/jobs/" + runBody.JobID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer statusResp.Body.Close()
+	var statusBody struct {
+		Tag string `json:"tag"`
+	}
+	if err := json.NewDecoder(statusResp.Body).Decode(&statusBody); err != nil {
+		t.Fatal(err)
+	}
+	if statusBody.Tag != "app-main" {
+		t.Fatalf("initial job tag = %#v, want app-main", statusBody.Tag)
+	}
+
+	patchAppReq, err := http.NewRequest(http.MethodPatch, server.URL+"/api/w/ws-a/apps/echo", bytes.NewBufferString(`{"tag_override":"app-blue"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	patchAppReq.Header.Set("Content-Type", "application/json")
+	patchAppResp, err := http.DefaultClient.Do(patchAppReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = patchAppResp.Body.Close()
+	if patchAppResp.StatusCode != http.StatusOK {
+		t.Fatalf("patch app status = %d, want %d", patchAppResp.StatusCode, http.StatusOK)
+	}
+
+	requeueResp, err := http.Post(server.URL+"/api/w/ws-a/apps/echo/requeue", "application/json", bytes.NewBufferString(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer requeueResp.Body.Close()
+	if requeueResp.StatusCode != http.StatusOK {
+		t.Fatalf("requeue status = %d, want %d", requeueResp.StatusCode, http.StatusOK)
+	}
+	var requeueBody struct {
+		Requeued int64 `json:"requeued"`
+	}
+	if err := json.NewDecoder(requeueResp.Body).Decode(&requeueBody); err != nil {
+		t.Fatal(err)
+	}
+	if requeueBody.Requeued != 1 {
+		t.Fatalf("requeued = %d, want 1", requeueBody.Requeued)
+	}
+
+	statusResp, err = http.Get(server.URL + "/api/w/ws-a/jobs/" + runBody.JobID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer statusResp.Body.Close()
+	statusBody = struct {
+		Tag string `json:"tag"`
+	}{}
+	if err := json.NewDecoder(statusResp.Body).Decode(&statusBody); err != nil {
+		t.Fatal(err)
+	}
+	if statusBody.Tag != "app-blue" {
+		t.Fatalf("requeued app tag = %#v, want app-blue", statusBody.Tag)
+	}
+
+	patchActionReq, err := http.NewRequest(http.MethodPatch, server.URL+"/api/w/ws-a/apps/echo/actions/echo", bytes.NewBufferString(`{"tag_override":"action-fast"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	patchActionReq.Header.Set("Content-Type", "application/json")
+	patchActionResp, err := http.DefaultClient.Do(patchActionReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = patchActionResp.Body.Close()
+	if patchActionResp.StatusCode != http.StatusOK {
+		t.Fatalf("patch action status = %d, want %d", patchActionResp.StatusCode, http.StatusOK)
+	}
+
+	requeueResp, err = http.Post(server.URL+"/api/w/ws-a/apps/echo/requeue", "application/json", bytes.NewBufferString(`{"action":"echo"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer requeueResp.Body.Close()
+	requeueBody = struct {
+		Requeued int64 `json:"requeued"`
+	}{}
+	if err := json.NewDecoder(requeueResp.Body).Decode(&requeueBody); err != nil {
+		t.Fatal(err)
+	}
+	if requeueBody.Requeued != 1 {
+		t.Fatalf("action requeued = %d, want 1", requeueBody.Requeued)
+	}
+
+	statusResp, err = http.Get(server.URL + "/api/w/ws-a/jobs/" + runBody.JobID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer statusResp.Body.Close()
+	statusBody = struct {
+		Tag string `json:"tag"`
+	}{}
+	if err := json.NewDecoder(statusResp.Body).Decode(&statusBody); err != nil {
+		t.Fatal(err)
+	}
+	if statusBody.Tag != "action-fast" {
+		t.Fatalf("requeued action tag = %#v, want action-fast", statusBody.Tag)
+	}
+}
+
 type fakeTriggerAdapter struct{}
 
 func (fakeTriggerAdapter) Name() string {

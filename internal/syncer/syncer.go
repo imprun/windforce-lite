@@ -88,6 +88,7 @@ func (s *Syncer) Sync(ctx context.Context, src Source) (contract.Deployment, err
 		Workspace:   workspace,
 		GitSourceID: gitSourceID,
 		App:         app.App,
+		Tag:         app.Tag,
 		Commit:      commit,
 		Actions:     app.Actions,
 	}

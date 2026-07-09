@@ -225,6 +225,7 @@ Implemented control-plane endpoints:
 - `GET /api/w/{workspace}/apps?view=summary`
 - `GET /api/w/{workspace}/apps/{app}`
 - `PATCH /api/w/{workspace}/apps/{app}`
+- `POST /api/w/{workspace}/apps/{app}/requeue`
 - `GET /api/w/{workspace}/apps/{app}/source`
 - `GET /api/w/{workspace}/apps/{app}/history`
 - `GET /api/w/{workspace}/apps/{app}/openapi.json` (app invocation OpenAPI generated from action schemas)

@@ -267,6 +267,10 @@ func (h *Handler) handleAPI(w http.ResponseWriter, r *http.Request) bool {
 		h.handleCanonicalPatchAction(w, r, parts[2], parts[4], parts[6])
 		return true
 	}
+	if len(parts) == 6 && parts[0] == "api" && parts[1] == "w" && parts[3] == "apps" && parts[5] == "requeue" && r.Method == http.MethodPost {
+		h.handleCanonicalRequeueApp(w, r, parts[2], parts[4])
+		return true
+	}
 	if len(parts) == 5 && parts[0] == "api" && parts[1] == "w" && parts[3] == "deployments" && r.Method == http.MethodGet {
 		h.handleCanonicalDeployment(w, r, parts[2], parts[4])
 		return true
@@ -975,6 +979,55 @@ func (h *Handler) handleCanonicalPatchAction(w http.ResponseWriter, r *http.Requ
 	writeJSON(w, http.StatusOK, view)
 }
 
+func (h *Handler) handleCanonicalRequeueApp(w http.ResponseWriter, r *http.Request, workspaceID string, app string) {
+	if h.store == nil {
+		writeError(w, http.StatusServiceUnavailable, "state store is not configured")
+		return
+	}
+	deployment, ok := h.getCanonicalDeployment(w, r, workspaceID, app, "app not found: "+app)
+	if !ok {
+		return
+	}
+	var request struct {
+		Action string `json:"action"`
+	}
+	body, err := readJSONBody(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if len(bytes.TrimSpace(body)) > 0 {
+		if err := json.Unmarshal(body, &request); err != nil {
+			writeError(w, http.StatusBadRequest, "request body must be a JSON object")
+			return
+		}
+	}
+	action := strings.TrimSpace(request.Action)
+	var actionFilter *string
+	if action != "" {
+		if !validActionKey(action) {
+			writeError(w, http.StatusBadRequest, "invalid action key")
+			return
+		}
+		actionFilter = &action
+	}
+	actionTags := map[string]string{}
+	for actionKey, actionSpec := range deployment.Actions {
+		actionTags[actionKey] = effectiveRouteTag(deployment.Tag, deployment.TagOverride, actionSpec.Tag, actionSpec.TagOverride)
+	}
+	requeued, err := h.store.RequeueQueuedJobsForApp(r.Context(), state.RequeueAppSpec{
+		WorkspaceID: workspaceID,
+		AppKey:      app,
+		ActionKey:   actionFilter,
+		ActionTags:  actionTags,
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"requeued": requeued})
+}
+
 func (h *Handler) handleCanonicalDeployment(w http.ResponseWriter, r *http.Request, workspaceID string, id string) {
 	deployment, ok := h.getCanonicalDeployment(w, r, workspaceID, id, "deployment not found")
 	if !ok {
@@ -991,9 +1044,9 @@ func (h *Handler) handleCanonicalWorkerTags(w http.ResponseWriter, r *http.Reque
 	tags := map[string]struct{}{}
 	for _, deployment := range canonicalDeployments(snapshot, workspaceID) {
 		tags[defaultRouteTag()] = struct{}{}
-		tags[effectiveRouteTag(deployment.TagOverride, nil)] = struct{}{}
+		tags[effectiveRouteTag(deployment.Tag, deployment.TagOverride, nil, nil)] = struct{}{}
 		for _, action := range deployment.Actions {
-			tags[effectiveRouteTag(deployment.TagOverride, action.TagOverride)] = struct{}{}
+			tags[effectiveRouteTag(deployment.Tag, deployment.TagOverride, action.Tag, action.TagOverride)] = struct{}{}
 		}
 	}
 	writeJSON(w, http.StatusOK, newCanonicalWorkerTagsView(tags))
@@ -1266,11 +1319,11 @@ func newCanonicalAppView(deployment contract.Deployment) canonicalAppView {
 		GitSourceID:          nil,
 		CommitSha:            deployment.Commit,
 		Entrypoint:           canonicalDeploymentEntrypoint(deployment),
-		Tag:                  defaultRouteTag(),
+		Tag:                  effectiveRouteTag(deployment.Tag, nil, nil, nil),
 		TagOverride:          cloneStringPtr(deployment.TagOverride),
 		ScriptLang:           canonicalDeploymentScriptLang(deployment),
 		RequiredCapabilities: []string{},
-		EffectiveRouteTag:    effectiveRouteTag(deployment.TagOverride, nil),
+		EffectiveRouteTag:    effectiveRouteTag(deployment.Tag, deployment.TagOverride, nil, nil),
 	}
 }
 
@@ -1307,11 +1360,12 @@ func (h *Handler) newCanonicalActionView(schemaReader *canonicalSchemaReader, de
 		ActionKey:             actionKey,
 		InputSchema:           inputSchema,
 		OutputSchema:          outputSchema,
+		Tag:                   cloneStringPtr(action.Tag),
 		TagOverride:           cloneStringPtr(action.TagOverride),
 		TimeoutS:              canonicalTimeoutSeconds(action.TimeoutMs),
 		RequiredCapabilities:  []string{},
 		EffectiveCapabilities: []string{},
-		EffectiveRouteTag:     effectiveRouteTag(deployment.TagOverride, action.TagOverride),
+		EffectiveRouteTag:     effectiveRouteTag(deployment.Tag, deployment.TagOverride, action.Tag, action.TagOverride),
 	}, nil
 }
 
@@ -1433,17 +1487,11 @@ func canonicalTimeoutSeconds(timeoutMs int64) *int32 {
 }
 
 func defaultRouteTag() string {
-	return "default"
+	return contract.DefaultRouteTag
 }
 
-func effectiveRouteTag(appTagOverride *string, actionTagOverride *string) string {
-	if actionTagOverride != nil && strings.TrimSpace(*actionTagOverride) != "" {
-		return strings.TrimSpace(*actionTagOverride)
-	}
-	if appTagOverride != nil && strings.TrimSpace(*appTagOverride) != "" {
-		return strings.TrimSpace(*appTagOverride)
-	}
-	return defaultRouteTag()
+func effectiveRouteTag(appTag string, appTagOverride *string, actionTag *string, actionTagOverride *string) string {
+	return contract.EffectiveRouteTag(appTag, appTagOverride, actionTag, actionTagOverride)
 }
 
 func decodeCanonicalTagOverride(w http.ResponseWriter, r *http.Request) (*string, bool) {
@@ -1481,6 +1529,17 @@ func validRouteTag(value string) bool {
 		if item == '_' || item == '-' {
 			continue
 		}
+		return false
+	}
+	return true
+}
+
+func validActionKey(value string) bool {
+	value = strings.TrimSpace(value)
+	if value == "" || len(value) > 128 || !utf8.ValidString(value) {
+		return false
+	}
+	if value == "." || value == ".." || strings.ContainsAny(value, `/\`) {
 		return false
 	}
 	return true
@@ -2101,6 +2160,7 @@ type jobStatusResponse struct {
 	ActionKey   *string         `json:"action_key,omitempty"`
 	Kind        *string         `json:"kind,omitempty"`
 	CommitSha   *string         `json:"commit_sha,omitempty"`
+	Tag         string          `json:"tag,omitempty"`
 	Input       json.RawMessage `json:"input,omitempty"`
 	CreatedAt   *time.Time      `json:"created_at,omitempty"`
 	StartedAt   *time.Time      `json:"started_at,omitempty"`
@@ -2129,6 +2189,10 @@ func newJobStatus(workspaceID string, job state.Job, run state.Run) jobStatusRes
 	action := job.Payload.Action
 	kind := job.Kind
 	commit := job.Payload.Commit
+	tag := strings.TrimSpace(job.Payload.Tag)
+	if tag == "" {
+		tag = contract.EffectiveRouteTag(job.Payload.Deployment.Tag, job.Payload.Deployment.TagOverride, job.Payload.ActionSpec.Tag, job.Payload.ActionSpec.TagOverride)
+	}
 	response := jobStatusResponse{
 		ID:          job.ID,
 		WorkspaceID: contract.NormalizeWorkspace(workspaceID),
@@ -2139,6 +2203,7 @@ func newJobStatus(workspaceID string, job state.Job, run state.Run) jobStatusRes
 		ActionKey:   stringPtr(action),
 		Kind:        stringPtr(kind),
 		CommitSha:   stringPtr(commit),
+		Tag:         tag,
 		Input:       cloneRaw(job.Payload.Input),
 		CreatedAt:   &job.CreatedAt,
 		StartedAt:   startedAt,

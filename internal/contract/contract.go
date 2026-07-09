@@ -10,6 +10,7 @@ import (
 const (
 	DefaultWorkspace   = "default"
 	DefaultGitSourceID = "local"
+	DefaultRouteTag    = "default"
 
 	ActionAdapterJSONFile = "json-file"
 	ActionAdapterCommand  = "command"
@@ -19,12 +20,14 @@ const (
 type App struct {
 	App     string            `json:"app"`
 	Name    string            `json:"name,omitempty"`
+	Tag     string            `json:"tag,omitempty"`
 	Actions map[string]Action `json:"actions"`
 }
 
 // Action is one executable unit inside an app.
 type Action struct {
 	Action       string         `json:"action"`
+	Tag          *string        `json:"tag,omitempty"`
 	TagOverride  *string        `json:"tagOverride,omitempty"`
 	Runtime      string         `json:"runtime,omitempty"`
 	Entrypoint   string         `json:"entrypoint,omitempty"`
@@ -53,6 +56,7 @@ type Deployment struct {
 	GitSourceID  string            `json:"gitSourceId,omitempty"`
 	App          string            `json:"app"`
 	Version      string            `json:"version,omitempty"`
+	Tag          string            `json:"tag,omitempty"`
 	TagOverride  *string           `json:"tagOverride,omitempty"`
 	Commit       string            `json:"commit"`
 	BundleDigest string            `json:"bundleDigest,omitempty"`
@@ -91,6 +95,22 @@ func (a Action) AdapterType() string {
 		return ActionAdapterJSONFile
 	}
 	return value
+}
+
+func EffectiveRouteTag(appTag string, appTagOverride *string, actionTag *string, actionTagOverride *string) string {
+	if actionTagOverride != nil && strings.TrimSpace(*actionTagOverride) != "" {
+		return strings.TrimSpace(*actionTagOverride)
+	}
+	if actionTag != nil && strings.TrimSpace(*actionTag) != "" {
+		return strings.TrimSpace(*actionTag)
+	}
+	if appTagOverride != nil && strings.TrimSpace(*appTagOverride) != "" {
+		return strings.TrimSpace(*appTagOverride)
+	}
+	if strings.TrimSpace(appTag) != "" {
+		return strings.TrimSpace(appTag)
+	}
+	return DefaultRouteTag
 }
 
 func NormalizeWorkspace(value string) string {

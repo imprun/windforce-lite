@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -267,6 +268,56 @@ WHERE COALESCE(NULLIF(payload->>'workspace', ''), NULLIF(payload->'deployment'->
 		return JobSummary{}, err
 	}
 	return summarizeJobs(records, workspaceID, recent), nil
+}
+
+func (s *PostgresStore) RequeueQueuedJobsForApp(ctx context.Context, spec RequeueAppSpec) (int64, error) {
+	workspaceID := contract.NormalizeWorkspace(spec.WorkspaceID)
+	var moved int64
+	err := s.withTx(ctx, func(tx pgx.Tx) error {
+		now := time.Now().UTC()
+		rows, err := tx.Query(ctx, `SELECT `+jobColumns+` FROM jobs WHERE state=$1 FOR UPDATE`, string(JobQueued))
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+
+		jobs := []Job{}
+		for rows.Next() {
+			job, err := scanJob(rows)
+			if err != nil {
+				return err
+			}
+			jobs = append(jobs, job)
+		}
+		if err := rows.Err(); err != nil {
+			return err
+		}
+
+		for _, job := range jobs {
+			if normalizedJobWorkspace("", job) != workspaceID || job.Payload.App != spec.AppKey {
+				continue
+			}
+			if spec.ActionKey != nil && job.Payload.Action != *spec.ActionKey {
+				continue
+			}
+			tag, ok := spec.ActionTags[job.Payload.Action]
+			if !ok || strings.TrimSpace(tag) == "" {
+				continue
+			}
+			tag = strings.TrimSpace(tag)
+			if job.Payload.Tag == tag {
+				continue
+			}
+			job.Payload.Tag = tag
+			job.UpdatedAt = now
+			if _, err := tx.Exec(ctx, `UPDATE jobs SET payload=$1, updated_at=$2 WHERE id=$3 AND state=$4`, mustRaw(job.Payload), now, job.ID, string(JobQueued)); err != nil {
+				return err
+			}
+			moved++
+		}
+		return nil
+	})
+	return moved, err
 }
 
 func (s *PostgresStore) CreateRunAndEnqueue(ctx context.Context, run Run, job Job) error {
