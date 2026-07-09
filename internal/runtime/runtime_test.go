@@ -318,6 +318,118 @@ export const main = createApp({
 	}
 }
 
+func TestRunnerReusesReadyPreparedSource(t *testing.T) {
+	tempDir := t.TempDir()
+	sourceDir := filepath.Join(tempDir, "source")
+	if err := os.MkdirAll(sourceDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sourceDir, "windforce.json"), []byte(`{"app":"echo","entrypoint":"main.ts","scriptLang":"typescript","actions":{"echo":{}}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sourceDir, "main.ts"), []byte(`export async function main(ctx) { return ctx.input }`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	store := bundle.NewLocalStore(filepath.Join(tempDir, "store"))
+	if err := store.Materialize(context.Background(), "workspace-a", "source-a", "commit-ready", sourceDir); err != nil {
+		t.Fatal(err)
+	}
+
+	cacheRoot := filepath.Join(tempDir, "cache")
+	runner := Runner{Store: store, CacheRoot: cacheRoot}
+	req := RunRequest{
+		Deployment: contract.Deployment{
+			Workspace:   "workspace-a",
+			GitSourceID: "source-a",
+			App:         "echo",
+			Commit:      "commit-ready",
+			Entrypoint:  "main.ts",
+			ScriptLang:  "typescript",
+			Actions: map[string]contract.Action{
+				"echo": {
+					Action:  "echo",
+					Command: []string{"legacy", "script"},
+					Adapter: &contract.ActionAdapter{
+						Type:    contract.ActionAdapterCommand,
+						Command: []string{os.Args[0], "-test.run=TestRuntimeActionAdapterHelperProcess", "--"},
+						Env:     []string{"WINDFORCE_RUNTIME_ADAPTER_HELPER=1"},
+						Options: map[string]json.RawMessage{"mode": json.RawMessage(`"cache"`)},
+					},
+				},
+			},
+		},
+		Action: "echo",
+		Input:  json.RawMessage(`{"message":"hello"}`),
+	}
+	if _, err := runner.Run(context.Background(), req); err != nil {
+		t.Fatalf("first Run returned error: %v", err)
+	}
+	preparedDir := filepath.Join(cacheRoot, "src", "workspace-a", "source-a", "commit-ready")
+	if _, err := os.Stat(filepath.Join(preparedDir, sourceReadyFile)); err != nil {
+		t.Fatalf("ready marker missing: %v", err)
+	}
+	sentinel := filepath.Join(preparedDir, "prepare-sentinel.txt")
+	if err := os.WriteFile(sentinel, []byte("keep"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runner.Run(context.Background(), req); err != nil {
+		t.Fatalf("second Run returned error: %v", err)
+	}
+	if _, err := os.Stat(sentinel); err != nil {
+		t.Fatalf("prepared source was fetched again despite ready marker: %v", err)
+	}
+}
+
+func TestRunnerDoesNotMarkFailedPrepareReady(t *testing.T) {
+	tempDir := t.TempDir()
+	sourceDir := filepath.Join(tempDir, "source")
+	if err := os.MkdirAll(sourceDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sourceDir, "windforce.json"), []byte(`{"app":"echo","entrypoint":"main.py","scriptLang":"python","actions":{"echo":{}}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sourceDir, "main.py"), []byte(`def main(ctx): return ctx.input`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sourceDir, "requirements.txt"), []byte("definitely-missing-package-for-windforce-lite-test==0\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	store := bundle.NewLocalStore(filepath.Join(tempDir, "store"))
+	if err := store.Materialize(context.Background(), "workspace-a", "source-a", "commit-fail", sourceDir); err != nil {
+		t.Fatal(err)
+	}
+
+	cacheRoot := filepath.Join(tempDir, "cache")
+	runner := Runner{
+		Store:      store,
+		CacheRoot:  cacheRoot,
+		PythonPath: filepath.Join(tempDir, "missing-python"),
+	}
+	_, err := runner.Run(context.Background(), RunRequest{
+		Deployment: contract.Deployment{
+			Workspace:   "workspace-a",
+			GitSourceID: "source-a",
+			App:         "echo",
+			Commit:      "commit-fail",
+			Entrypoint:  "main.py",
+			ScriptLang:  "python",
+			Actions: map[string]contract.Action{
+				"echo": {Action: "echo"},
+			},
+		},
+		Action: "echo",
+		Input:  json.RawMessage(`{"message":"hello"}`),
+	})
+	if err == nil {
+		t.Fatalf("Run unexpectedly succeeded")
+	}
+	readyPath := filepath.Join(cacheRoot, "src", "workspace-a", "source-a", "commit-fail", sourceReadyFile)
+	if _, statErr := os.Stat(readyPath); !os.IsNotExist(statErr) {
+		t.Fatalf("ready marker after failed prepare stat err = %v, want not exist", statErr)
+	}
+}
+
 func TestRunnerJobEnvIncludesSDKCallbackEndpoint(t *testing.T) {
 	runner := Runner{
 		BaseURL:  "http://127.0.0.1:18080",

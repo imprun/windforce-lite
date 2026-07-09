@@ -17,12 +17,13 @@ import (
 )
 
 type Runner struct {
-	Store      bundle.Store
-	CacheRoot  string
-	BaseURL    string
-	APIToken   string
-	BunPath    string
-	PythonPath string
+	Store          bundle.Store
+	CacheRoot      string
+	BaseURL        string
+	APIToken       string
+	BunPath        string
+	PythonPath     string
+	PrepareTimeout time.Duration
 }
 
 type RunRequest struct {
@@ -87,16 +88,9 @@ func (r *Runner) Run(ctx context.Context, req RunRequest) (contract.JobResult, e
 		return contract.JobResult{}, fmt.Errorf("action %q has no adapter command", req.Action)
 	}
 
-	cacheRoot := r.CacheRoot
-	if cacheRoot == "" {
-		cacheRoot = filepath.Join(os.TempDir(), "windforce-lite-cache")
-	}
-	sourceDir := filepath.Join(cacheRoot, "src", safePath(workspace), safePath(gitSourceID), safePath(req.Deployment.Commit))
-	if err := r.Store.FetchTo(ctx, sourceDir, workspace, gitSourceID, req.Deployment.Commit); err != nil {
-		return contract.JobResult{}, err
-	}
 	scriptLang := firstNonEmpty(req.Deployment.ScriptLang, "typescript")
-	if err := r.prepareSource(ctx, sourceDir, scriptLang); err != nil {
+	sourceDir, err := r.ensureSource(ctx, workspace, gitSourceID, req.Deployment.Commit, scriptLang)
+	if err != nil {
 		return contract.JobResult{}, err
 	}
 	if adapterType == contract.ActionAdapterJSONFile && len(action.Command) == 0 {

@@ -358,6 +358,11 @@ The runtime follows the original Windforce control-plane/worker model:
 - HITL pauses a run in `WAITING_HUMAN`
 - resume API enqueues the next job
 
+Prepared source is cached by workspace/git-source/commit under the worker cache
+root. A `.ready` marker is written only after fetch, dependency install, and SDK
+injection complete, so a failed prepare is retried from a fresh source copy on
+the next job.
+
 Production process roles are separated:
 
 - `windforce-lite api`: control plane, HTTP run ingress, run status, HITL resume

@@ -12,9 +12,68 @@ import (
 
 	windforcepyclient "github.com/imprun/windforce-lite/internal/sdk/python"
 	windforceclient "github.com/imprun/windforce-lite/internal/sdk/typescript"
+	"golang.org/x/sync/singleflight"
 )
 
 const pyVendorDir = ".windforce/site-packages"
+const sourceReadyFile = ".ready"
+
+var sourcePrepareGroup singleflight.Group
+
+func (r *Runner) ensureSource(ctx context.Context, workspace string, gitSourceID string, commit string, scriptLang string) (string, error) {
+	cacheRoot := r.CacheRoot
+	if cacheRoot == "" {
+		cacheRoot = filepath.Join(os.TempDir(), "windforce-lite-cache")
+	}
+	sourceDir := filepath.Join(cacheRoot, "src", safePath(workspace), safePath(gitSourceID), safePath(commit))
+	key := sourceDir
+
+	ch := sourcePrepareGroup.DoChan(key, func() (any, error) {
+		if fileExists(filepath.Join(sourceDir, sourceReadyFile)) {
+			return sourceDir, nil
+		}
+		pctx, cancel := context.WithTimeout(context.Background(), r.prepareTimeout())
+		defer cancel()
+		exists, err := r.Store.Exists(pctx, workspace, gitSourceID, commit)
+		if err != nil {
+			return "", err
+		}
+		if !exists {
+			return "", os.ErrNotExist
+		}
+		if err := r.Store.FetchTo(pctx, sourceDir, workspace, gitSourceID, commit); err != nil {
+			return "", err
+		}
+		if err := r.prepareSource(pctx, sourceDir, scriptLang); err != nil {
+			return "", err
+		}
+		if err := os.WriteFile(filepath.Join(sourceDir, sourceReadyFile), []byte("ok"), 0o644); err != nil {
+			return "", err
+		}
+		return sourceDir, nil
+	})
+
+	select {
+	case <-ctx.Done():
+		return "", ctx.Err()
+	case result := <-ch:
+		if result.Err != nil {
+			return "", result.Err
+		}
+		sourceDir, _ := result.Val.(string)
+		if sourceDir == "" {
+			sourceDir = filepath.Join(cacheRoot, "src", safePath(workspace), safePath(gitSourceID), safePath(commit))
+		}
+		return sourceDir, nil
+	}
+}
+
+func (r *Runner) prepareTimeout() time.Duration {
+	if r.PrepareTimeout > 0 {
+		return r.PrepareTimeout
+	}
+	return 5 * time.Minute
+}
 
 func (r *Runner) prepareSource(ctx context.Context, sourceDir string, scriptLang string) error {
 	switch scriptLang {
