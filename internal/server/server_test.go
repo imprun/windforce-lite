@@ -278,7 +278,7 @@ func TestCanonicalJobRunStatusAndResultAPI(t *testing.T) {
 	if err := json.Unmarshal(doneBody.Result, &doneResult); err != nil {
 		t.Fatal(err)
 	}
-	if doneBody.Status != "completed" || !doneResult.OK {
+	if doneBody.Status != "success" || !doneResult.OK {
 		t.Fatalf("done result = %#v result=%s", doneBody, doneBody.Result)
 	}
 
@@ -870,7 +870,7 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 		t.Fatalf("openapi request schema missing message: %#v", requestSchema)
 	}
 	statusEnum := runWait["responses"].(map[string]any)["200"].(map[string]any)["content"].(map[string]any)["application/json"].(map[string]any)["schema"].(map[string]any)["properties"].(map[string]any)["status"].(map[string]any)["enum"].([]any)
-	if fmt.Sprint(statusEnum) != "[completed failed canceled]" {
+	if fmt.Sprint(statusEnum) != "[success failure canceled]" {
 		t.Fatalf("openapi status enum = %#v", statusEnum)
 	}
 	if paths["/api/w/ws-a/jobs/run/echo/echo"] == nil || paths["/api/w/ws-a/jobs/webhook/echo/echo"] == nil ||

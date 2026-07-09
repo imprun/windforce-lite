@@ -2411,7 +2411,7 @@ func jobResult(job state.Job, run state.Run) (string, json.RawMessage, bool) {
 	}
 	status := terminalJobStatus(job, run)
 	switch status {
-	case "completed":
+	case "success":
 		return status, rawOrNull(run.Output), true
 	case "canceled":
 		message := runErrorMessage(run)
@@ -2424,7 +2424,7 @@ func jobResult(job state.Job, run state.Run) (string, json.RawMessage, bool) {
 		if message == "" {
 			message = "job failed"
 		}
-		return "failed", mustRaw(map[string]string{"name": "Error", "message": message}), true
+		return "failure", mustRaw(map[string]string{"name": "Error", "message": message}), true
 	}
 }
 
@@ -2433,20 +2433,13 @@ func terminalJobStatus(job state.Job, run state.Run) string {
 		return "canceled"
 	}
 	if job.State == state.JobSucceeded || run.State == state.RunSucceeded || run.State == state.RunWaitingHuman {
-		return "completed"
+		return "success"
 	}
-	return "failed"
+	return "failure"
 }
 
 func jobDetailStatus(job state.Job, run state.Run) string {
-	switch terminalJobStatus(job, run) {
-	case "completed":
-		return "success"
-	case "canceled":
-		return "canceled"
-	default:
-		return "failure"
-	}
+	return terminalJobStatus(job, run)
 }
 
 func runErrorMessage(run state.Run) string {
