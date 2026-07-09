@@ -1041,6 +1041,87 @@ func TestCanonicalJobWebhookAPI(t *testing.T) {
 	}
 }
 
+func TestCanonicalJobRunBodyValidationMatchesCanonicalAPI(t *testing.T) {
+	tempDir := t.TempDir()
+	store := state.NewLocalStore(filepath.Join(tempDir, "state.json"))
+	fileCatalog := catalog.NewFileCatalog(filepath.Join(tempDir, "catalog.json"))
+	if err := fileCatalog.UpsertDeployment(context.Background(), contract.Deployment{
+		Workspace: "ws-a",
+		App:       "echo",
+		Commit:    "commit-a",
+		Actions: map[string]contract.Action{
+			"echo": {Action: "echo", Command: []string{"helper"}},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	server := httptest.NewServer(New(Config{Store: store, Catalog: fileCatalog, EnableAPI: true}))
+	defer server.Close()
+
+	for _, body := range []string{`[1,2,3]`, `"a string"`, `42`, `null`, `{not json`} {
+		resp, err := http.Post(server.URL+"/api/w/ws-a/jobs/run/echo/echo", "application/json", bytes.NewBufferString(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if resp.StatusCode != http.StatusBadRequest {
+			_ = resp.Body.Close()
+			t.Fatalf("run body %s status = %d, want %d", body, resp.StatusCode, http.StatusBadRequest)
+		}
+		_ = resp.Body.Close()
+	}
+
+	reservedResp, err := http.Post(server.URL+"/api/w/ws-a/jobs/run/echo/echo", "application/json", bytes.NewBufferString(`{"__wf_enc":true}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reservedResp.Body.Close()
+	var reservedBody struct {
+		Error string `json:"error"`
+	}
+	if err := json.NewDecoder(reservedResp.Body).Decode(&reservedBody); err != nil {
+		t.Fatal(err)
+	}
+	if reservedResp.StatusCode != http.StatusBadRequest || reservedBody.Error != `"__wf_enc" is a reserved top-level input key` {
+		t.Fatalf("reserved input response = %d %#v, want reserved-key 400", reservedResp.StatusCode, reservedBody)
+	}
+
+	emptyResp, err := http.Post(server.URL+"/api/w/ws-a/jobs/run/echo/echo", "application/json", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer emptyResp.Body.Close()
+	if emptyResp.StatusCode != http.StatusCreated {
+		t.Fatalf("empty body status = %d, want %d", emptyResp.StatusCode, http.StatusCreated)
+	}
+	var created struct {
+		JobID string `json:"job_id"`
+	}
+	if err := json.NewDecoder(emptyResp.Body).Decode(&created); err != nil {
+		t.Fatal(err)
+	}
+	job, _, found, err := store.GetJob(context.Background(), "ws-a", created.JobID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found || !bytes.Equal(bytes.TrimSpace(job.Payload.Input), []byte(`{}`)) {
+		t.Fatalf("empty body job input = found:%v input:%s", found, job.Payload.Input)
+	}
+
+	oversize := bytes.Repeat([]byte("a"), maxRunBodyBytes+1024)
+	for _, path := range []string{"/api/w/ws-a/jobs/run/echo/echo", "/api/w/ws-a/jobs/webhook/echo/echo"} {
+		resp, err := http.Post(server.URL+path, "application/json", bytes.NewReader(oversize))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if resp.StatusCode != http.StatusRequestEntityTooLarge {
+			_ = resp.Body.Close()
+			t.Fatalf("oversize %s status = %d, want %d", path, resp.StatusCode, http.StatusRequestEntityTooLarge)
+		}
+		_ = resp.Body.Close()
+	}
+}
+
 func TestCanonicalJobCancelAPI(t *testing.T) {
 	tempDir := t.TempDir()
 	store := state.NewLocalStore(filepath.Join(tempDir, "state.json"))
