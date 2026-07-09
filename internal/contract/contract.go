@@ -87,6 +87,7 @@ type Deployment struct {
 	MaxConcurrent        *int32            `json:"maxConcurrent,omitempty"`
 	RequiredCapabilities []string          `json:"requiredCapabilities,omitempty"`
 	Commit               string            `json:"commit"`
+	Message              *string           `json:"message,omitempty"`
 	BundleDigest         string            `json:"bundleDigest,omitempty"`
 	ObjectURI            string            `json:"objectUri"`
 	Actions              map[string]Action `json:"actions"`

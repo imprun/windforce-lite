@@ -3,11 +3,13 @@ package syncer
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/imprun/windforce-lite/internal/bundle"
+	catalogpkg "github.com/imprun/windforce-lite/internal/catalog"
 	"github.com/imprun/windforce-lite/internal/contract"
 )
 
@@ -92,6 +94,55 @@ func TestSyncMaterializesBeforeCatalogUpdate(t *testing.T) {
 	}
 }
 
+func TestSyncCapturesGitCommitMessageInHistory(t *testing.T) {
+	tempDir := t.TempDir()
+	repoDir := filepath.Join(tempDir, "repo")
+	if err := os.MkdirAll(repoDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	runSyncerTestGit(t, repoDir, "init")
+	runSyncerTestGit(t, repoDir, "checkout", "-b", "main")
+	runSyncerTestGit(t, repoDir, "config", "user.email", "test@example.com")
+	runSyncerTestGit(t, repoDir, "config", "user.name", "Test User")
+	if err := os.WriteFile(filepath.Join(repoDir, "windforce.json"), []byte(`{
+		"app": "echo",
+		"entrypoint": "main.ts",
+		"actions": {"echo": {}}
+	}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repoDir, "main.ts"), []byte(`export async function main(ctx) { return ctx.input }`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runSyncerTestGit(t, repoDir, "add", ".")
+	runSyncerTestGit(t, repoDir, "commit", "-m", "Add echo app")
+
+	store := bundle.NewLocalStore(filepath.Join(tempDir, "store"))
+	catalog := catalogpkg.NewFileCatalog(filepath.Join(tempDir, "catalog.json"))
+	syncer := Syncer{Store: store, Catalog: catalog, CloneRoot: filepath.Join(tempDir, "clones")}
+
+	deployment, err := syncer.Sync(context.Background(), Source{
+		Workspace:   "workspace-a",
+		GitSourceID: "1",
+		App:         "echo",
+		RepoURL:     filepath.ToSlash(repoDir),
+		Branch:      "main",
+	})
+	if err != nil {
+		t.Fatalf("Sync returned error: %v", err)
+	}
+	if deployment.Message == nil || *deployment.Message != "Add echo app" {
+		t.Fatalf("deployment message = %v, want Add echo app", deployment.Message)
+	}
+	snapshot, err := catalog.Load(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.History) != 1 || snapshot.History[0].Message == nil || *snapshot.History[0].Message != "Add echo app" {
+		t.Fatalf("history message = %#v", snapshot.History)
+	}
+}
+
 func TestSyncRejectsInvalidSchemaReferences(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -168,5 +219,15 @@ func TestSyncRejectsInvalidSchemaReferences(t *testing.T) {
 				t.Fatalf("invalid source should not be materialized")
 			}
 		})
+	}
+}
+
+func runSyncerTestGit(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v: %v: %s", args, err, string(out))
 	}
 }

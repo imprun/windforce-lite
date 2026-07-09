@@ -90,6 +90,13 @@ func (s *Syncer) Sync(ctx context.Context, src Source) (contract.Deployment, err
 	}
 
 	updatedAt := time.Now().UTC()
+	var message *string
+	if src.RepoURL != "" {
+		if subject, err := source.CommitSubject(ctx, sourceDir); err == nil && strings.TrimSpace(subject) != "" {
+			trimmed := strings.TrimSpace(subject)
+			message = &trimmed
+		}
+	}
 	deployment := contract.Deployment{
 		Workspace:            workspace,
 		GitSourceID:          gitSourceID,
@@ -102,6 +109,7 @@ func (s *Syncer) Sync(ctx context.Context, src Source) (contract.Deployment, err
 		MaxConcurrent:        app.MaxConcurrent,
 		RequiredCapabilities: app.Capabilities,
 		Commit:               commit,
+		Message:              message,
 		Actions:              app.Actions,
 		UpdatedAt:            &updatedAt,
 	}

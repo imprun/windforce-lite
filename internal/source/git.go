@@ -60,6 +60,14 @@ func ListRemoteBranches(ctx context.Context, repoURL string, token string) ([]st
 	return branches, nil
 }
 
+func CommitSubject(ctx context.Context, repoDir string) (string, error) {
+	out, err := runGit(ctx, repoDir, "log", "-1", "--format=%s")
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(out), nil
+}
+
 func CloneCommit(ctx context.Context, repoURL string, branch string, commit string, destinationDir string, token string) error {
 	cloneURL := authURL(repoURL, token)
 	args := []string{"clone", "--no-tags"}

@@ -34,6 +34,7 @@ type DeploymentHistory struct {
 	Entrypoint  string              `json:"entrypoint,omitempty"`
 	Source      string              `json:"source"`
 	Status      string              `json:"status"`
+	Message     *string             `json:"message,omitempty"`
 	ObjectURI   string              `json:"objectUri,omitempty"`
 	Deployment  contract.Deployment `json:"deployment"`
 	CreatedAt   time.Time           `json:"createdAt"`
@@ -213,6 +214,7 @@ func newDeploymentHistory(deployment contract.Deployment) DeploymentHistory {
 		Entrypoint:  deployment.Entrypoint,
 		Source:      "external_sync",
 		Status:      "deployed",
+		Message:     deployment.Message,
 		ObjectURI:   deployment.ObjectURI,
 		Deployment:  deployment,
 		CreatedAt:   createdAt,
