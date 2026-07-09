@@ -4,6 +4,8 @@
     "echo": {
       "runtime": "go",
       "command": ["go", "run", "./action.go"],
+      "inputSchema": "input.schema.json",
+      "outputSchema": "output.schema.json",
       "timeoutMs": 30000
     }
   }
