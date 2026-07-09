@@ -1,7 +1,8 @@
 .PHONY: help fmt test test-postgres build clean \
 	sync-example run-example smoke \
 	compose-up compose-down compose-reset compose-logs compose-ps postgres-dsn \
-	dev-standalone dev-standalone-postgres dev-trigger dev-api dev-worker worker-once
+	dev-standalone dev-standalone-postgres dev-trigger dev-api dev-worker worker-once \
+	windforce-register windforce-sync windforce-schema windforce-openapi
 
 APP := windforce-lite
 CMD := ./cmd/windforce-lite
@@ -33,6 +34,17 @@ OUTPUT ?= $(DEV_DIR)/output.json
 ADDR ?= 127.0.0.1:8080
 WAIT ?= 30s
 
+WF_API_URL ?= http://127.0.0.1:8080
+WF_WORKSPACE ?= default
+WF_APP ?= echo
+WF_ACTION ?= echo
+WF_GIT_SOURCE_ID ?= $(WF_APP)
+WF_REPO_URL ?= .
+WF_BRANCH ?= main
+WF_SUBPATH ?= examples/echo
+WF_COMMIT ?=
+WF_GIT_TOKEN_ENV ?=
+
 WINDFORCE_POSTGRES_DB ?= windforce_lite
 WINDFORCE_POSTGRES_USER ?= postgres
 WINDFORCE_POSTGRES_PORT ?= 5432
@@ -54,6 +66,10 @@ help:
 	@echo "  dev-api                run API process with PostgreSQL state"
 	@echo "  dev-worker             run worker process with PostgreSQL state"
 	@echo "  worker-once            claim at most one PostgreSQL-backed queued job"
+	@echo "  windforce-register     register WF_REPO_URL as a git source through the control API"
+	@echo "  windforce-sync         sync WF_GIT_SOURCE_ID through the control API"
+	@echo "  windforce-schema       print WF_APP/WF_ACTION schemas from the control API"
+	@echo "  windforce-openapi      print WF_APP invocation OpenAPI from the control API"
 	@echo "  compose-up/down/reset/logs/ps"
 
 fmt:
@@ -115,6 +131,18 @@ dev-worker: compose-up
 
 worker-once: compose-up
 	$(GO) run $(CMD) worker --store "$(STORE)" --cache "$(CACHE)" --state-backend postgres --database-url "$(POSTGRES_DSN)" --migrate --once
+
+windforce-register:
+	python tools/windforce_control.py --api-url "$(WF_API_URL)" --workspace "$(WF_WORKSPACE)" --pretty register --name "$(WF_GIT_SOURCE_ID)" --repo-url "$(WF_REPO_URL)" --branch "$(WF_BRANCH)" --subpath "$(WF_SUBPATH)" --token-env "$(WF_GIT_TOKEN_ENV)"
+
+windforce-sync:
+	python tools/windforce_control.py --api-url "$(WF_API_URL)" --workspace "$(WF_WORKSPACE)" --pretty sync --git-source-id "$(WF_GIT_SOURCE_ID)" --app "$(WF_APP)" --commit "$(WF_COMMIT)"
+
+windforce-schema:
+	python tools/windforce_control.py --api-url "$(WF_API_URL)" --workspace "$(WF_WORKSPACE)" --pretty schema --app "$(WF_APP)" --action "$(WF_ACTION)"
+
+windforce-openapi:
+	python tools/windforce_control.py --api-url "$(WF_API_URL)" --workspace "$(WF_WORKSPACE)" --pretty openapi --app "$(WF_APP)"
 
 clean:
 	rm -rf "$(WFL_TMP)"

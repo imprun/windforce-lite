@@ -230,8 +230,8 @@ Implemented control-plane endpoints:
 - `POST /api/w/{workspace}/apps/{app}/requeue`
 - `GET /api/w/{workspace}/apps/{app}/source`
 - `GET /api/w/{workspace}/apps/{app}/history`
-- `GET /api/w/{workspace}/apps/{app}/openapi.json` (app invocation OpenAPI generated from action schemas)
-- `GET /api/w/{workspace}/apps/{app}/actions/{action}` (`input_schema` and `output_schema` expose materialized schema JSON when the bundle store is configured)
+- `GET /api/w/{workspace}/apps/{app}/openapi.json` (app invocation OpenAPI generated from materialized action schemas)
+- `GET /api/w/{workspace}/apps/{app}/actions/{action}` (`input_schema` and `output_schema` are the canonical control-plane schema surface)
 - `GET /api/w/{workspace}/apps/{app}/actions/{action}/schema` (schema-only control-plane view with materialized `input_schema` and `output_schema`)
 - `PATCH /api/w/{workspace}/apps/{app}/actions/{action}`
 - `GET /api/w/{workspace}/deployments/{app}`
@@ -250,6 +250,22 @@ Implemented control-plane endpoints:
 - `GET /v1/human-tasks/{humanTaskID}`
 - `POST /v1/human-tasks/{humanTaskID}/resume`
 - `POST /v1/runs/{runID}/resume`
+
+For local development without the full UI, `tools/windforce_control.py` calls
+the same control-plane API:
+
+```powershell
+python tools/windforce_control.py --api-url http://127.0.0.1:8080 register `
+  --name echo --repo-url . --subpath examples/echo
+python tools/windforce_control.py --api-url http://127.0.0.1:8080 sync `
+  --git-source-id echo --app echo
+python tools/windforce_control.py --api-url http://127.0.0.1:8080 --pretty schema `
+  --app echo --action echo
+```
+
+The schema command intentionally reads the canonical action detail endpoint,
+`GET /api/w/{workspace}/apps/{app}/actions/{action}`. The schema-only
+`/actions/{action}/schema` route is a narrow local control-plane convenience.
 
 PostgreSQL is the production state backend. All runtime modes accept
 `--state-backend postgres`, `--database-url`, and `--migrate`:

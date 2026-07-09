@@ -88,7 +88,7 @@ func buildAppOpenAPI(baseURL string, workspaceID string, deployment contract.Dep
 				"description": "Runs the action and blocks up to the wait timeout. 200 carries the finished result; 202 means it is still running. Poll GET .../jobs/{id}/result with the returned job_id.",
 				"requestBody": oapiJSONBody(inputSchema, true),
 				"responses": withErrors(map[string]any{
-					"200": oapiResponse("Finished run. status is success, failure, or canceled; result holds the action output or failure detail.", map[string]any{
+					"200": oapiResponse("Finished run. status is completed, failed, or canceled; result holds the action output or failure detail.", map[string]any{
 						"type": "object",
 						"properties": map[string]any{
 							"job_id": oapiStringSchema(),
@@ -141,7 +141,7 @@ func buildAppOpenAPI(baseURL string, workspaceID string, deployment contract.Dep
 				"description": "job_id returned by an async run",
 			}},
 			"responses": map[string]any{
-				"200": oapiResponse("Finished run. status is success, failure, or canceled; result holds the output or failure detail.", map[string]any{
+				"200": oapiResponse("Finished run. status is completed, failed, or canceled; result holds the output or failure detail.", map[string]any{
 					"type": "object",
 					"properties": map[string]any{
 						"status": oapiStatusSchema(),
@@ -168,7 +168,7 @@ func buildAppOpenAPI(baseURL string, workspaceID string, deployment contract.Dep
 		"info": map[string]any{
 			"title":       deployment.App + " API",
 			"version":     version,
-			"description": "Auto-generated from windforce action input/output schemas. Actions are invoked over HTTP; the run API is asynchronous: enqueue and poll. Actions without a declared schema accept or return an unconstrained JSON body.",
+			"description": "Auto-generated from windforce action input/output schemas. Actions are invoked over HTTP; the run API is asynchronous: enqueue and poll. A failed action is reported as status \"failed\" inside a 200 response, not as an HTTP error. Actions without a declared schema accept or return an unconstrained JSON body.",
 		},
 		"servers":  []any{map[string]any{"url": baseURL}},
 		"security": []any{map[string]any{"bearerAuth": []any{}}},
