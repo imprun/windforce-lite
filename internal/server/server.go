@@ -1392,9 +1392,11 @@ func (r *canonicalSchemaReader) Read(schemaPath string, schemaBody json.RawMessa
 	if body, ok, err := materializedSchemaBody(schemaBody); ok || err != nil {
 		return body, err
 	}
-	schemaPath = strings.TrimSpace(schemaPath)
 	if schemaPath == "" {
 		return emptyJSONSchema(), nil
+	}
+	if filepath.IsAbs(schemaPath) || strings.HasPrefix(schemaPath, "/") || strings.Contains(schemaPath, "..") {
+		return nil, fmt.Errorf("schema path %q must be a relative path inside the app", schemaPath)
 	}
 	if r.store == nil {
 		return nil, errors.New("source storage is not configured")
@@ -1403,19 +1405,15 @@ func (r *canonicalSchemaReader) Read(schemaPath string, schemaBody json.RawMessa
 	if err != nil {
 		return nil, err
 	}
-	normalized, err := contract.NormalizeSourcePath(schemaPath)
+	data, err := os.ReadFile(filepath.Join(sourceDir, filepath.FromSlash(schemaPath)))
 	if err != nil {
-		return nil, err
-	}
-	if normalized == "" {
-		return nil, nil
-	}
-	data, err := os.ReadFile(filepath.Join(sourceDir, filepath.FromSlash(normalized)))
-	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("manifest references schema %q but the file is missing", schemaPath)
+		}
 		return nil, err
 	}
 	if !json.Valid(data) {
-		return nil, fmt.Errorf("%q is not valid JSON", schemaPath)
+		return nil, fmt.Errorf("schema %q is not valid JSON", schemaPath)
 	}
 	return json.RawMessage(append([]byte(nil), data...)), nil
 }

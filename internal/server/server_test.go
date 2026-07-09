@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -1297,6 +1298,61 @@ func TestCanonicalActionExposesPinnedSchemaBodiesWithoutSourceStore(t *testing.T
 	if !bytes.Contains(actionBody.InputSchema, []byte(`"message"`)) ||
 		!bytes.Contains(actionBody.OutputSchema, []byte(`"ok"`)) {
 		t.Fatalf("action schemas = input:%s output:%s", actionBody.InputSchema, actionBody.OutputSchema)
+	}
+}
+
+func TestCanonicalActionSourceFallbackUsesManifestSchemaPathVerbatim(t *testing.T) {
+	tempDir := t.TempDir()
+	fileCatalog := catalog.NewFileCatalog(filepath.Join(tempDir, "catalog.json"))
+	sourceStore := bundle.NewLocalStore(filepath.Join(tempDir, "store"))
+	sourceDir := filepath.Join(tempDir, "source")
+	if err := os.MkdirAll(sourceDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sourceDir, "input.schema.json"), []byte(`{"type":"object"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := sourceStore.Materialize(context.Background(), "ws-a", "1", "commit-a", sourceDir); err != nil {
+		t.Fatal(err)
+	}
+	if err := fileCatalog.UpsertDeployment(context.Background(), contract.Deployment{
+		Workspace:   "ws-a",
+		GitSourceID: "1",
+		App:         "echo",
+		Commit:      "commit-a",
+		Actions: map[string]contract.Action{
+			"echo": {
+				Action:      "echo",
+				InputSchema: " input.schema.json ",
+			},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	server := httptest.NewServer(New(Config{
+		Catalog:   fileCatalog,
+		Syncer:    &syncer.Syncer{Store: sourceStore},
+		EnableAPI: true,
+	}))
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/api/w/ws-a/apps/echo/actions/echo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("action status = %d, want %d", resp.StatusCode, http.StatusInternalServerError)
+	}
+	var body struct {
+		Error string `json:"error"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(body.Error, `manifest references schema " input.schema.json " but the file is missing`) {
+		t.Fatalf("error = %q", body.Error)
 	}
 }
 
