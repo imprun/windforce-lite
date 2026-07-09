@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -642,6 +643,135 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 	if len(history) != 1 || history[0].ID == "" || history[0].CommitSha != syncBody.Commit ||
 		history[0].Source != "external_sync" || history[0].GitSourceKey != "source-a" || history[0].Status != "deployed" {
 		t.Fatalf("history = %#v", history)
+	}
+}
+
+func TestCanonicalGitSourceProbePatchAndDelete(t *testing.T) {
+	tempDir := t.TempDir()
+	repoDir := filepath.Join(tempDir, "repo")
+	if err := os.MkdirAll(repoDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repoDir, "windforce.json"), []byte(`{"app":"echo","actions":{"echo":{"command":["helper"]}}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runTestGit(t, repoDir, "init")
+	runTestGit(t, repoDir, "checkout", "-b", "main")
+	runTestGit(t, repoDir, "config", "user.email", "test@example.com")
+	runTestGit(t, repoDir, "config", "user.name", "Test User")
+	runTestGit(t, repoDir, "add", "windforce.json")
+	runTestGit(t, repoDir, "commit", "-m", "initial")
+	runTestGit(t, repoDir, "checkout", "-b", "feature")
+
+	registry := gitsource.NewFileRegistry(filepath.Join(tempDir, "git-sources.json"))
+	server := httptest.NewServer(New(Config{GitSources: registry, EnableAPI: true}))
+	defer server.Close()
+
+	probeBody, err := json.Marshal(map[string]string{
+		"repo_url": filepath.ToSlash(repoDir),
+		"branch":   "main",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	probeResp, err := http.Post(server.URL+"/api/w/ws-a/git_sources/probe", "application/json", bytes.NewReader(probeBody))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer probeResp.Body.Close()
+	if probeResp.StatusCode != http.StatusOK {
+		t.Fatalf("probe status = %d, want %d", probeResp.StatusCode, http.StatusOK)
+	}
+	var probe struct {
+		Reachable    bool     `json:"reachable"`
+		Branch       string   `json:"branch"`
+		BranchExists bool     `json:"branch_exists"`
+		Branches     []string `json:"branches"`
+	}
+	if err := json.NewDecoder(probeResp.Body).Decode(&probe); err != nil {
+		t.Fatal(err)
+	}
+	if !probe.Reachable || probe.Branch != "main" || !probe.BranchExists || len(probe.Branches) != 2 {
+		t.Fatalf("probe = %#v", probe)
+	}
+
+	registerBody, err := json.Marshal(map[string]string{
+		"name":     "source-a",
+		"repo_url": filepath.ToSlash(repoDir),
+		"branch":   "main",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	registerResp, err := http.Post(server.URL+"/api/w/ws-a/git_sources", "application/json", bytes.NewReader(registerBody))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = registerResp.Body.Close()
+	if registerResp.StatusCode != http.StatusCreated {
+		t.Fatalf("register status = %d, want %d", registerResp.StatusCode, http.StatusCreated)
+	}
+
+	patchBody, err := json.Marshal(map[string]string{
+		"name":      "source-b",
+		"branch":    "feature",
+		"creds_ref": "WINDFORCE_LITE_GIT_TOKEN",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	patchReq, err := http.NewRequest(http.MethodPatch, server.URL+"/api/w/ws-a/git_sources/source-a", bytes.NewReader(patchBody))
+	if err != nil {
+		t.Fatal(err)
+	}
+	patchReq.Header.Set("Content-Type", "application/json")
+	patchResp, err := http.DefaultClient.Do(patchReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer patchResp.Body.Close()
+	if patchResp.StatusCode != http.StatusOK {
+		t.Fatalf("patch status = %d, want %d", patchResp.StatusCode, http.StatusOK)
+	}
+	var patched struct {
+		ID       string `json:"id"`
+		Name     string `json:"name"`
+		Branch   string `json:"branch"`
+		CredsRef string `json:"creds_ref"`
+	}
+	if err := json.NewDecoder(patchResp.Body).Decode(&patched); err != nil {
+		t.Fatal(err)
+	}
+	if patched.ID != "source-b" || patched.Name != "source-b" || patched.Branch != "feature" || patched.CredsRef != "WINDFORCE_LITE_GIT_TOKEN" {
+		t.Fatalf("patched = %#v", patched)
+	}
+	if _, err := registry.Get(context.Background(), "ws-a", "source-a"); !errors.Is(err, gitsource.ErrGitSourceNotFound) {
+		t.Fatalf("old source lookup err = %v, want not found", err)
+	}
+
+	deleteReq, err := http.NewRequest(http.MethodDelete, server.URL+"/api/w/ws-a/git_sources/source-b", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	deleteResp, err := http.DefaultClient.Do(deleteReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = deleteResp.Body.Close()
+	if deleteResp.StatusCode != http.StatusNoContent {
+		t.Fatalf("delete status = %d, want %d", deleteResp.StatusCode, http.StatusNoContent)
+	}
+	deleteAgainReq, err := http.NewRequest(http.MethodDelete, server.URL+"/api/w/ws-a/git_sources/source-b", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	deleteAgainResp, err := http.DefaultClient.Do(deleteAgainReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = deleteAgainResp.Body.Close()
+	if deleteAgainResp.StatusCode != http.StatusNotFound {
+		t.Fatalf("delete again status = %d, want %d", deleteAgainResp.StatusCode, http.StatusNotFound)
 	}
 }
 

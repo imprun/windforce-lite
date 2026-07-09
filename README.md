@@ -217,6 +217,9 @@ Implemented control-plane endpoints:
 - `GET /v1/runs/{runID}`
 - `GET /api/w/{workspace}/git_sources`
 - `POST /api/w/{workspace}/git_sources`
+- `POST /api/w/{workspace}/git_sources/probe`
+- `PATCH /api/w/{workspace}/git_sources/{gitSourceId}`
+- `DELETE /api/w/{workspace}/git_sources/{gitSourceId}`
 - `POST /api/w/{workspace}/git_sources/{gitSourceId}/sync`
 - `GET /api/w/{workspace}/apps`
 - `GET /api/w/{workspace}/apps?view=summary`

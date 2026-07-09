@@ -12,6 +12,7 @@ import (
 )
 
 var ErrGitSourceNotFound = errors.New("git source not found")
+var ErrGitSourceConflict = errors.New("git source already exists")
 
 type Source struct {
 	Workspace string `json:"workspace,omitempty"`
@@ -20,6 +21,14 @@ type Source struct {
 	Branch    string `json:"branch,omitempty"`
 	Subpath   string `json:"subpath,omitempty"`
 	TokenEnv  string `json:"tokenEnv,omitempty"`
+}
+
+type Patch struct {
+	ID       *string
+	RepoURL  *string
+	Branch   *string
+	Subpath  *string
+	TokenEnv *string
 }
 
 type Snapshot struct {
@@ -38,22 +47,10 @@ func (r *FileRegistry) Upsert(ctx context.Context, source Source) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	source.Workspace = contract.NormalizeWorkspace(source.Workspace)
-	source.ID = contract.NormalizeGitSourceID(source.ID, "")
-	if source.ID == contract.DefaultGitSourceID {
-		return errors.New("git source id is required")
-	}
-	if source.RepoURL == "" {
-		return errors.New("repo URL is required")
-	}
-	if source.Branch == "" {
-		source.Branch = "main"
-	}
-	subpath, err := contract.NormalizeSourcePath(source.Subpath)
+	source, err := normalizeSource(source)
 	if err != nil {
 		return err
 	}
-	source.Subpath = subpath
 
 	snapshot, err := r.Load(ctx)
 	if err != nil {
@@ -64,6 +61,71 @@ func (r *FileRegistry) Upsert(ctx context.Context, source Source) error {
 	}
 	snapshot.Sources[key(source.Workspace, source.ID)] = source
 	return r.write(snapshot)
+}
+
+func (r *FileRegistry) Patch(ctx context.Context, workspace string, id string, patch Patch) (Source, error) {
+	if err := ctx.Err(); err != nil {
+		return Source{}, err
+	}
+	snapshot, err := r.Load(ctx)
+	if err != nil {
+		return Source{}, err
+	}
+	workspace = contract.NormalizeWorkspace(workspace)
+	id = contract.NormalizeGitSourceID(id, "")
+	oldKey := key(workspace, id)
+	source, ok := snapshot.Sources[oldKey]
+	if !ok {
+		return Source{}, ErrGitSourceNotFound
+	}
+	if patch.ID != nil {
+		source.ID = *patch.ID
+	}
+	if patch.RepoURL != nil {
+		source.RepoURL = *patch.RepoURL
+	}
+	if patch.Branch != nil {
+		source.Branch = *patch.Branch
+	}
+	if patch.Subpath != nil {
+		source.Subpath = *patch.Subpath
+	}
+	if patch.TokenEnv != nil {
+		source.TokenEnv = *patch.TokenEnv
+	}
+	source.Workspace = workspace
+	source, err = normalizeSource(source)
+	if err != nil {
+		return Source{}, err
+	}
+	newKey := key(source.Workspace, source.ID)
+	if newKey != oldKey {
+		if _, exists := snapshot.Sources[newKey]; exists {
+			return Source{}, ErrGitSourceConflict
+		}
+		delete(snapshot.Sources, oldKey)
+	}
+	snapshot.Sources[newKey] = source
+	if err := r.write(snapshot); err != nil {
+		return Source{}, err
+	}
+	return source, nil
+}
+
+func (r *FileRegistry) Delete(ctx context.Context, workspace string, id string) (bool, error) {
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+	snapshot, err := r.Load(ctx)
+	if err != nil {
+		return false, err
+	}
+	key := key(workspace, id)
+	if _, ok := snapshot.Sources[key]; !ok {
+		return false, nil
+	}
+	delete(snapshot.Sources, key)
+	return true, r.write(snapshot)
 }
 
 func (r *FileRegistry) Get(ctx context.Context, workspace string, id string) (Source, error) {
@@ -120,4 +182,24 @@ func (r *FileRegistry) write(snapshot Snapshot) error {
 
 func key(workspace string, id string) string {
 	return fmt.Sprintf("%s/%s", contract.NormalizeWorkspace(workspace), contract.NormalizeGitSourceID(id, ""))
+}
+
+func normalizeSource(source Source) (Source, error) {
+	source.Workspace = contract.NormalizeWorkspace(source.Workspace)
+	source.ID = contract.NormalizeGitSourceID(source.ID, "")
+	if source.ID == contract.DefaultGitSourceID {
+		return Source{}, errors.New("git source id is required")
+	}
+	if source.RepoURL == "" {
+		return Source{}, errors.New("repo URL is required")
+	}
+	if source.Branch == "" {
+		source.Branch = "main"
+	}
+	subpath, err := contract.NormalizeSourcePath(source.Subpath)
+	if err != nil {
+		return Source{}, err
+	}
+	source.Subpath = subpath
+	return source, nil
 }

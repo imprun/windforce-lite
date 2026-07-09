@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/imprun/windforce-lite/internal/contract"
@@ -36,6 +37,27 @@ func ResolveBranchCommit(ctx context.Context, repoURL string, branch string, tok
 		return "", fmt.Errorf("could not resolve commit for %s@%s", repoURL, branch)
 	}
 	return fields[0], nil
+}
+
+func ListRemoteBranches(ctx context.Context, repoURL string, token string) ([]string, error) {
+	out, err := runGit(ctx, "", "ls-remote", "--heads", authURL(repoURL, token))
+	if err != nil {
+		return nil, err
+	}
+	branches := []string{}
+	for _, line := range strings.Split(out, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+		branch, ok := strings.CutPrefix(fields[1], "refs/heads/")
+		if !ok || branch == "" {
+			continue
+		}
+		branches = append(branches, branch)
+	}
+	sort.Strings(branches)
+	return branches, nil
 }
 
 func CloneCommit(ctx context.Context, repoURL string, branch string, commit string, destinationDir string, token string) error {

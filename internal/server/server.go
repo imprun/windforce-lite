@@ -21,6 +21,7 @@ import (
 	catalogpkg "github.com/imprun/windforce-lite/internal/catalog"
 	"github.com/imprun/windforce-lite/internal/contract"
 	gitsourcepkg "github.com/imprun/windforce-lite/internal/gitsource"
+	sourcepkg "github.com/imprun/windforce-lite/internal/source"
 	"github.com/imprun/windforce-lite/internal/state"
 	"github.com/imprun/windforce-lite/internal/syncer"
 )
@@ -212,6 +213,18 @@ func (h *Handler) handleAPI(w http.ResponseWriter, r *http.Request) bool {
 	}
 	if len(parts) == 4 && parts[0] == "api" && parts[1] == "w" && parts[3] == "git_sources" && r.Method == http.MethodPost {
 		h.handleCanonicalRegisterGitSource(w, r, parts[2])
+		return true
+	}
+	if len(parts) == 5 && parts[0] == "api" && parts[1] == "w" && parts[3] == "git_sources" && parts[4] == "probe" && r.Method == http.MethodPost {
+		h.handleCanonicalProbeGitSource(w, r, parts[2])
+		return true
+	}
+	if len(parts) == 5 && parts[0] == "api" && parts[1] == "w" && parts[3] == "git_sources" && r.Method == http.MethodPatch {
+		h.handleCanonicalPatchGitSource(w, r, parts[2], parts[4])
+		return true
+	}
+	if len(parts) == 5 && parts[0] == "api" && parts[1] == "w" && parts[3] == "git_sources" && r.Method == http.MethodDelete {
+		h.handleCanonicalDeleteGitSource(w, r, parts[2], parts[4])
 		return true
 	}
 	if len(parts) == 6 && parts[0] == "api" && parts[1] == "w" && parts[3] == "git_sources" && parts[5] == "sync" && r.Method == http.MethodPost {
@@ -617,6 +630,101 @@ func (h *Handler) handleCanonicalRegisterGitSource(w http.ResponseWriter, r *htt
 	writeJSON(w, http.StatusCreated, newCanonicalGitSourceView(source))
 }
 
+func (h *Handler) handleCanonicalProbeGitSource(w http.ResponseWriter, r *http.Request, workspaceID string) {
+	var request struct {
+		RepoURL     string `json:"repo_url"`
+		RepoURLV1   string `json:"repoUrl"`
+		Branch      string `json:"branch"`
+		AccessToken string `json:"access_token"`
+		CredsRef    string `json:"creds_ref"`
+		CredsRefV1  string `json:"tokenEnv"`
+	}
+	if err := readOptionalJSON(r, &request); err != nil || strings.TrimSpace(firstNonEmpty(request.RepoURL, request.RepoURLV1)) == "" {
+		writeError(w, http.StatusBadRequest, "repo_url required")
+		return
+	}
+	token := strings.TrimSpace(request.AccessToken)
+	if token == "" {
+		if credsRef := strings.TrimSpace(firstNonEmpty(request.CredsRef, request.CredsRefV1)); credsRef != "" {
+			token = os.Getenv(credsRef)
+		}
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), probeTimeout)
+	defer cancel()
+	branches, err := sourcepkg.ListRemoteBranches(ctx, strings.TrimSpace(firstNonEmpty(request.RepoURL, request.RepoURLV1)), token)
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"reachable": false,
+			"error":     err.Error(),
+			"branches":  []string{},
+		})
+		return
+	}
+	branch := strings.TrimSpace(request.Branch)
+	if branch == "" {
+		branch = "main"
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"reachable":     true,
+		"branch":        branch,
+		"branch_exists": stringSliceContains(branches, branch),
+		"branches":      branches,
+	})
+}
+
+func (h *Handler) handleCanonicalPatchGitSource(w http.ResponseWriter, r *http.Request, workspaceID string, sourceID string) {
+	patcher, ok := h.gitSources.(interface {
+		Patch(context.Context, string, string, gitsourcepkg.Patch) (gitsourcepkg.Source, error)
+	})
+	if !ok {
+		writeError(w, http.StatusNotImplemented, "git source patch is not supported")
+		return
+	}
+	var request canonicalGitSourcePatchRequest
+	if err := readOptionalJSON(r, &request); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	patch, ok := canonicalGitSourcePatchFromRequest(w, request)
+	if !ok {
+		return
+	}
+	source, err := patcher.Patch(r.Context(), workspaceID, sourceID, patch)
+	if errors.Is(err, gitsourcepkg.ErrGitSourceConflict) {
+		writeError(w, http.StatusConflict, "git source name already exists")
+		return
+	}
+	if errors.Is(err, gitsourcepkg.ErrGitSourceNotFound) {
+		writeError(w, http.StatusNotFound, "git source not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, newCanonicalGitSourceView(source))
+}
+
+func (h *Handler) handleCanonicalDeleteGitSource(w http.ResponseWriter, r *http.Request, workspaceID string, sourceID string) {
+	deleter, ok := h.gitSources.(interface {
+		Delete(context.Context, string, string) (bool, error)
+	})
+	if !ok {
+		writeError(w, http.StatusNotImplemented, "git source delete is not supported")
+		return
+	}
+	deleted, err := deleter.Delete(r.Context(), workspaceID, sourceID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if !deleted {
+		writeError(w, http.StatusNotFound, "git source not found")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *Handler) handleCanonicalGitSourceSync(w http.ResponseWriter, r *http.Request, workspaceID string, sourceID string) {
 	if h.syncer == nil {
 		writeError(w, http.StatusServiceUnavailable, "sync API is not configured")
@@ -861,6 +969,80 @@ func newCanonicalGitSourceView(source gitsourcepkg.Source) canonicalGitSourceVie
 		CredsRef:    source.TokenEnv,
 		Kind:        "external",
 	}
+}
+
+const probeTimeout = 15 * time.Second
+
+type canonicalGitSourcePatchRequest struct {
+	Name     *string `json:"name"`
+	RepoURL  *string `json:"repo_url"`
+	Branch   *string `json:"branch"`
+	Subpath  *string `json:"subpath"`
+	CredsRef *string `json:"creds_ref"`
+
+	NameCamel     *string `json:"Name"`
+	RepoURLCamel  *string `json:"RepoURL"`
+	BranchCamel   *string `json:"Branch"`
+	SubpathCamel  *string `json:"Subpath"`
+	CredsRefCamel *string `json:"CredsRef"`
+
+	ID        *string `json:"id"`
+	RepoURLV1 *string `json:"repoUrl"`
+	TokenEnv  *string `json:"tokenEnv"`
+}
+
+func canonicalGitSourcePatchFromRequest(w http.ResponseWriter, request canonicalGitSourcePatchRequest) (gitsourcepkg.Patch, bool) {
+	var patch gitsourcepkg.Patch
+	if value, ok := firstPresentString(request.Name, request.NameCamel, request.ID); ok {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			writeError(w, http.StatusBadRequest, "name cannot be empty")
+			return patch, false
+		}
+		patch.ID = &value
+	}
+	if value, ok := firstPresentString(request.RepoURL, request.RepoURLCamel, request.RepoURLV1); ok {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			writeError(w, http.StatusBadRequest, "repo_url cannot be empty")
+			return patch, false
+		}
+		patch.RepoURL = &value
+	}
+	if value, ok := firstPresentString(request.Branch, request.BranchCamel); ok {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			value = "main"
+		}
+		patch.Branch = &value
+	}
+	if value, ok := firstPresentString(request.Subpath, request.SubpathCamel); ok {
+		value = strings.TrimSpace(value)
+		patch.Subpath = &value
+	}
+	if value, ok := firstPresentString(request.CredsRef, request.CredsRefCamel, request.TokenEnv); ok {
+		value = strings.TrimSpace(value)
+		patch.TokenEnv = &value
+	}
+	return patch, true
+}
+
+func firstPresentString(values ...*string) (string, bool) {
+	for _, value := range values {
+		if value != nil {
+			return *value, true
+		}
+	}
+	return "", false
+}
+
+func stringSliceContains(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
 }
 
 type canonicalSyncResult struct {
