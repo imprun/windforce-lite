@@ -60,8 +60,14 @@ def main(argv: list[str] | None = None) -> int:
     list_sources = sub.add_parser("git-sources", help="list registered git sources")
     list_sources.set_defaults(func=cmd_git_sources)
 
-    sync = sub.add_parser("sync", help="sync a registered git source")
-    sync.add_argument("--git-source-id", "--name", dest="git_source_id", required=True)
+    sync = sub.add_parser("sync", help="sync a registered git source by returned numeric id")
+    sync.add_argument(
+        "--git-source-id",
+        "--name",
+        dest="git_source_id",
+        required=True,
+        help="numeric git source id; source name is accepted for local compatibility",
+    )
     # Compatibility with earlier local scripts. These fields belong to the
     # registered git source and are not sent to the sync endpoint.
     sync.add_argument("--subpath", default=argparse.SUPPRESS)

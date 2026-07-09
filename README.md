@@ -247,6 +247,17 @@ Implemented control-plane endpoints:
 - `GET /api/w/{workspace}/jobs/{jobID}/logs?tail_bytes={bytes}`
 - `POST /api/w/{workspace}/jobs/{jobID}/cancel`
 - `GET|POST /api/w/{workspace}/state?path={path}` (canonical `ctx.state` helper storage)
+- `GET|POST /api/w/{workspace}/variables`
+- `GET /api/w/{workspace}/variables/get/p/{path}`
+- `DELETE /api/w/{workspace}/variables/p/{path}`
+- `POST /api/w/{workspace}/resources`
+- `GET /api/w/{workspace}/resources/get/p/{path}`
+
+`git_sources` responses follow the canonical control-plane shape: `id` is the
+numeric source identifier used by `{gitSourceId}` routes, and `name` is the
+human-readable source name. The lite CLI still accepts a source name for local
+compatibility, but control-plane integrations should store and call the returned
+numeric `id`.
 
 For local development without the full UI, `tools/windforce_control.py` calls
 the same control-plane API:
@@ -254,7 +265,7 @@ the same control-plane API:
 ```powershell
 python tools/windforce_control.py --api-url http://127.0.0.1:8080 register `
   --name echo --repo-url . --subpath examples/echo
-python tools/windforce_control.py --api-url http://127.0.0.1:8080 sync --git-source-id echo
+python tools/windforce_control.py --api-url http://127.0.0.1:8080 sync --git-source-id 1
 python tools/windforce_control.py --api-url http://127.0.0.1:8080 sample --app-key sample_hello
 python tools/windforce_control.py --api-url http://127.0.0.1:8080 --pretty schema `
   --app echo --action echo

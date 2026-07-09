@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/imprun/windforce-lite/internal/contract"
@@ -18,6 +20,7 @@ var ErrGitSourceConflict = errors.New("git source already exists")
 type Source struct {
 	Workspace        string     `json:"workspace,omitempty"`
 	ID               string     `json:"id"`
+	Name             string     `json:"name,omitempty"`
 	RepoURL          string     `json:"repoUrl"`
 	Branch           string     `json:"branch,omitempty"`
 	Subpath          string     `json:"subpath,omitempty"`
@@ -29,6 +32,7 @@ type Source struct {
 }
 
 type Patch struct {
+	Name     *string
 	ID       *string
 	RepoURL  *string
 	Branch   *string
@@ -64,6 +68,12 @@ func (r *FileRegistry) Create(ctx context.Context, source Source) (Source, error
 	if snapshot.Sources == nil {
 		snapshot.Sources = map[string]Source{}
 	}
+	if hasSourceName(snapshot, source.Workspace, source.Name, "") {
+		return Source{}, ErrGitSourceConflict
+	}
+	if source.ID == "" {
+		source.ID = strconv.FormatInt(nextSourceID(snapshot), 10)
+	}
 	sourceKey := key(source.Workspace, source.ID)
 	if _, exists := snapshot.Sources[sourceKey]; exists {
 		return Source{}, ErrGitSourceConflict
@@ -95,6 +105,13 @@ func (r *FileRegistry) Upsert(ctx context.Context, source Source) error {
 	if snapshot.Sources == nil {
 		snapshot.Sources = map[string]Source{}
 	}
+	if source.ID == "" {
+		if existing, ok := findSourceByName(snapshot, source.Workspace, source.Name); ok {
+			source.ID = existing.ID
+		} else {
+			source.ID = strconv.FormatInt(nextSourceID(snapshot), 10)
+		}
+	}
 	sourceKey := key(source.Workspace, source.ID)
 	if existing, ok := snapshot.Sources[sourceKey]; ok {
 		if source.CreatedAt == nil {
@@ -124,14 +141,16 @@ func (r *FileRegistry) Patch(ctx context.Context, workspace string, id string, p
 		return Source{}, err
 	}
 	workspace = contract.NormalizeWorkspace(workspace)
-	id = contract.NormalizeGitSourceID(id, "")
-	oldKey := key(workspace, id)
-	source, ok := snapshot.Sources[oldKey]
+	oldKey, source, ok := resolveSource(snapshot, workspace, id)
 	if !ok {
 		return Source{}, ErrGitSourceNotFound
 	}
-	if patch.ID != nil {
-		source.ID = *patch.ID
+	namePatch := patch.Name
+	if namePatch == nil {
+		namePatch = patch.ID
+	}
+	if namePatch != nil {
+		source.Name = *namePatch
 	}
 	if patch.RepoURL != nil {
 		source.RepoURL = *patch.RepoURL
@@ -149,6 +168,9 @@ func (r *FileRegistry) Patch(ctx context.Context, workspace string, id string, p
 	source, err = normalizeSource(source)
 	if err != nil {
 		return Source{}, err
+	}
+	if hasSourceName(snapshot, source.Workspace, source.Name, oldKey) {
+		return Source{}, ErrGitSourceConflict
 	}
 	newKey := key(source.Workspace, source.ID)
 	if newKey != oldKey {
@@ -172,8 +194,8 @@ func (r *FileRegistry) MarkSynced(ctx context.Context, workspace string, id stri
 	if err != nil {
 		return Source{}, err
 	}
-	sourceKey := key(workspace, id)
-	source, ok := snapshot.Sources[sourceKey]
+	workspace = contract.NormalizeWorkspace(workspace)
+	sourceKey, source, ok := resolveSource(snapshot, workspace, id)
 	if !ok {
 		return Source{}, ErrGitSourceNotFound
 	}
@@ -197,11 +219,12 @@ func (r *FileRegistry) Delete(ctx context.Context, workspace string, id string) 
 	if err != nil {
 		return false, err
 	}
-	key := key(workspace, id)
-	if _, ok := snapshot.Sources[key]; !ok {
+	workspace = contract.NormalizeWorkspace(workspace)
+	sourceKey, _, ok := resolveSource(snapshot, workspace, id)
+	if !ok {
 		return false, nil
 	}
-	delete(snapshot.Sources, key)
+	delete(snapshot.Sources, sourceKey)
 	return true, r.write(snapshot)
 }
 
@@ -211,8 +234,7 @@ func (r *FileRegistry) Get(ctx context.Context, workspace string, id string) (So
 		return Source{}, err
 	}
 	workspace = contract.NormalizeWorkspace(workspace)
-	id = contract.NormalizeGitSourceID(id, "")
-	source, ok := snapshot.Sources[key(workspace, id)]
+	_, source, ok := resolveSource(snapshot, workspace, id)
 	if !ok {
 		return Source{}, ErrGitSourceNotFound
 	}
@@ -237,6 +259,7 @@ func (r *FileRegistry) Load(ctx context.Context) (Snapshot, error) {
 	if snapshot.Sources == nil {
 		snapshot.Sources = map[string]Source{}
 	}
+	snapshot.Sources = normalizeSnapshot(snapshot.Sources)
 	return snapshot, nil
 }
 
@@ -258,14 +281,22 @@ func (r *FileRegistry) write(snapshot Snapshot) error {
 }
 
 func key(workspace string, id string) string {
-	return fmt.Sprintf("%s/%s", contract.NormalizeWorkspace(workspace), contract.NormalizeGitSourceID(id, ""))
+	return fmt.Sprintf("%s/%s", contract.NormalizeWorkspace(workspace), strings.TrimSpace(id))
 }
 
 func normalizeSource(source Source) (Source, error) {
 	source.Workspace = contract.NormalizeWorkspace(source.Workspace)
-	source.ID = contract.NormalizeGitSourceID(source.ID, "")
-	if source.ID == contract.DefaultGitSourceID {
-		return Source{}, errors.New("git source id is required")
+	rawID := strings.TrimSpace(source.ID)
+	source.ID = normalizeNumericID(rawID)
+	source.Name = strings.TrimSpace(source.Name)
+	if source.Name == "" && source.ID != "" {
+		source.Name = source.ID
+	}
+	if source.Name == "" {
+		source.Name = rawID
+	}
+	if source.Name == "" || source.Name == contract.DefaultGitSourceID {
+		return Source{}, errors.New("git source name is required")
 	}
 	if source.RepoURL == "" {
 		return Source{}, errors.New("repo URL is required")
@@ -285,4 +316,127 @@ func normalizeSource(source Source) (Source, error) {
 	}
 	source.Subpath = subpath
 	return source, nil
+}
+
+func normalizeSnapshot(sources map[string]Source) map[string]Source {
+	prepared := make([]Source, 0, len(sources))
+	used := map[string]bool{}
+	nextID := int64(1)
+	for _, source := range sources {
+		source.Workspace = contract.NormalizeWorkspace(source.Workspace)
+		source.Name = strings.TrimSpace(source.Name)
+		source.ID = strings.TrimSpace(source.ID)
+		if source.Name == "" && !isPositiveInteger(source.ID) {
+			source.Name = source.ID
+			source.ID = ""
+		}
+		if source.Name == "" {
+			source.Name = source.ID
+		}
+		if id, ok := parsePositiveID(source.ID); ok {
+			used[key(source.Workspace, source.ID)] = true
+			if id >= nextID {
+				nextID = id + 1
+			}
+		} else {
+			source.ID = ""
+		}
+		if source.Kind == "" {
+			source.Kind = "external"
+		}
+		if source.Branch == "" {
+			source.Branch = "main"
+		}
+		prepared = append(prepared, source)
+	}
+	normalized := map[string]Source{}
+	for _, source := range prepared {
+		if source.ID != "" {
+			normalized[key(source.Workspace, source.ID)] = source
+			continue
+		}
+		for {
+			id := strconv.FormatInt(nextID, 10)
+			nextID++
+			sourceKey := key(source.Workspace, id)
+			if used[sourceKey] {
+				continue
+			}
+			source.ID = id
+			used[sourceKey] = true
+			normalized[sourceKey] = source
+			break
+		}
+	}
+	return normalized
+}
+
+func resolveSource(snapshot Snapshot, workspace string, ref string) (string, Source, bool) {
+	workspace = contract.NormalizeWorkspace(workspace)
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		return "", Source{}, false
+	}
+	if isPositiveInteger(ref) {
+		sourceKey := key(workspace, ref)
+		source, ok := snapshot.Sources[sourceKey]
+		return sourceKey, source, ok
+	}
+	if source, ok := findSourceByName(snapshot, workspace, ref); ok {
+		return key(source.Workspace, source.ID), source, true
+	}
+	return "", Source{}, false
+}
+
+func findSourceByName(snapshot Snapshot, workspace string, name string) (Source, bool) {
+	workspace = contract.NormalizeWorkspace(workspace)
+	name = strings.TrimSpace(name)
+	for _, source := range snapshot.Sources {
+		if contract.NormalizeWorkspace(source.Workspace) == workspace && source.Name == name {
+			return source, true
+		}
+	}
+	return Source{}, false
+}
+
+func hasSourceName(snapshot Snapshot, workspace string, name string, exceptKey string) bool {
+	workspace = contract.NormalizeWorkspace(workspace)
+	name = strings.TrimSpace(name)
+	for sourceKey, source := range snapshot.Sources {
+		if sourceKey == exceptKey {
+			continue
+		}
+		if contract.NormalizeWorkspace(source.Workspace) == workspace && source.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+func nextSourceID(snapshot Snapshot) int64 {
+	next := int64(1)
+	for _, source := range snapshot.Sources {
+		if id, ok := parsePositiveID(source.ID); ok && id >= next {
+			next = id + 1
+		}
+	}
+	return next
+}
+
+func normalizeNumericID(value string) string {
+	value = strings.TrimSpace(value)
+	if isPositiveInteger(value) {
+		return value
+	}
+	return ""
+}
+
+func isPositiveInteger(value string) bool {
+	_, ok := parsePositiveID(value)
+	return ok
+}
+
+func parsePositiveID(value string) (int64, bool) {
+	id, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
+	return id, err == nil && id > 0
 }

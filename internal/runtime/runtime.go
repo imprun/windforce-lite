@@ -19,6 +19,8 @@ import (
 type Runner struct {
 	Store     bundle.Store
 	CacheRoot string
+	BaseURL   string
+	APIToken  string
 }
 
 type RunRequest struct {
@@ -306,6 +308,12 @@ func (r *Runner) jobEnv(req RunRequest, action contract.Action) []string {
 	add("WF_RUNNABLE_PATH", req.Deployment.Entrypoint)
 	add("WF_STATE_PATH", req.Deployment.App+"/"+req.Action)
 	add("WF_TRIGGER_KIND", triggerKind)
+	if r.BaseURL != "" {
+		add("WF_BASE_URL", r.BaseURL)
+	}
+	if r.APIToken != "" {
+		add("WF_TOKEN", r.APIToken)
+	}
 	return env
 }
 

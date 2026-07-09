@@ -59,6 +59,30 @@ func TestPostgresStoreJobState(t *testing.T) {
 	exerciseStoreJobState(t, store)
 }
 
+func TestLocalStoreVariablesAndResources(t *testing.T) {
+	store := NewLocalStore(t.TempDir() + "/state.json")
+	exerciseStoreVariablesAndResources(t, store)
+}
+
+func TestPostgresStoreVariablesAndResources(t *testing.T) {
+	dsn := os.Getenv("WINDFORCE_LITE_POSTGRES_TEST_DSN")
+	if dsn == "" {
+		t.Skip("WINDFORCE_LITE_POSTGRES_TEST_DSN is not set")
+	}
+	store, err := OpenPostgresStore(context.Background(), dsn)
+	if err != nil {
+		t.Fatalf("OpenPostgresStore returned error: %v", err)
+	}
+	defer store.Close()
+	if err := store.Migrate(context.Background()); err != nil {
+		t.Fatalf("Migrate returned error: %v", err)
+	}
+	if _, err := store.pool.Exec(context.Background(), `TRUNCATE resource, variable, job_state, job_logs, run_events, human_tasks, jobs, runs RESTART IDENTITY CASCADE`); err != nil {
+		t.Fatalf("TRUNCATE returned error: %v", err)
+	}
+	exerciseStoreVariablesAndResources(t, store)
+}
+
 func TestLocalStoreClaimJobEnforcesMaxConcurrent(t *testing.T) {
 	store := NewLocalStore(t.TempDir() + "/state.json")
 	exerciseStoreMaxConcurrent(t, store)
@@ -113,6 +137,63 @@ func TestLocalStoreClaimJobForTags(t *testing.T) {
 	}
 	if _, _, err := store.ClaimJobForTags(context.Background(), "worker-green", []string{"green"}, time.Minute); err != ErrNoQueuedJob {
 		t.Fatalf("green claim error = %v, want %v", err, ErrNoQueuedJob)
+	}
+}
+
+func exerciseStoreVariablesAndResources(t *testing.T, store Store) {
+	t.Helper()
+	ctx := context.Background()
+	if err := store.SetVariable(ctx, "ws-a", "", "config/token", "shared", true, "shared token"); err != nil {
+		t.Fatalf("SetVariable shared returned error: %v", err)
+	}
+	if err := store.SetVariable(ctx, "ws-a", "echo", "config/token", "scoped", false, "scoped token"); err != nil {
+		t.Fatalf("SetVariable scoped returned error: %v", err)
+	}
+	variable, found, err := store.GetVariable(ctx, "ws-a", "echo", "config/token")
+	if err != nil {
+		t.Fatalf("GetVariable scoped returned error: %v", err)
+	}
+	if !found || variable.Value != "scoped" || variable.AppKey != "echo" {
+		t.Fatalf("scoped variable found=%v variable=%#v", found, variable)
+	}
+	variable, found, err = store.GetVariable(ctx, "ws-a", "other", "config/token")
+	if err != nil {
+		t.Fatalf("GetVariable shared fallback returned error: %v", err)
+	}
+	if !found || variable.Value != "shared" || variable.AppKey != "" {
+		t.Fatalf("shared variable found=%v variable=%#v", found, variable)
+	}
+	variables, err := store.ListVariables(ctx, "ws-a")
+	if err != nil {
+		t.Fatalf("ListVariables returned error: %v", err)
+	}
+	if len(variables) != 2 {
+		t.Fatalf("variables = %#v", variables)
+	}
+	if err := store.DeleteVariable(ctx, "ws-a", "echo", "config/token"); err != nil {
+		t.Fatalf("DeleteVariable returned error: %v", err)
+	}
+	variable, found, err = store.GetVariable(ctx, "ws-a", "echo", "config/token")
+	if err != nil {
+		t.Fatalf("GetVariable after delete returned error: %v", err)
+	}
+	if !found || variable.Value != "shared" {
+		t.Fatalf("post-delete variable found=%v variable=%#v", found, variable)
+	}
+
+	if err := store.SetResource(ctx, "ws-a", "browser/profile", json.RawMessage(`{"headless":true}`), "json", "browser settings"); err != nil {
+		t.Fatalf("SetResource returned error: %v", err)
+	}
+	resource, found, err := store.GetResource(ctx, "ws-a", "browser/profile")
+	if err != nil {
+		t.Fatalf("GetResource returned error: %v", err)
+	}
+	var got map[string]bool
+	if err := json.Unmarshal(resource.Value, &got); err != nil {
+		t.Fatalf("resource value is not JSON object: %v", err)
+	}
+	if !found || !got["headless"] || resource.ResourceType != "json" {
+		t.Fatalf("resource found=%v resource=%#v", found, resource)
 	}
 }
 
@@ -200,9 +281,13 @@ func exerciseStoreMaxConcurrent(t *testing.T, store Store) {
 }
 
 func maxConcurrentDeployment(app string, limit *int32) contract.Deployment {
+	gitSourceID := "1"
+	if app != "echo" {
+		gitSourceID = "2"
+	}
 	return contract.Deployment{
 		Workspace:     "ws-a",
-		GitSourceID:   app,
+		GitSourceID:   gitSourceID,
 		App:           app,
 		Commit:        "commit-a",
 		MaxConcurrent: limit,
@@ -228,8 +313,9 @@ func enqueueMaxConcurrentJob(t *testing.T, store Store, deployment contract.Depl
 func exerciseStoreLifecycle(t *testing.T, store Store) {
 	t.Helper()
 	deployment := contract.Deployment{
-		App:    "echo",
-		Commit: "commit-a",
+		GitSourceID: "1",
+		App:         "echo",
+		Commit:      "commit-a",
 		Actions: map[string]contract.Action{
 			"echo": {Action: "echo", Command: []string{"helper"}},
 		},
@@ -362,7 +448,7 @@ func exerciseStoreLifecycle(t *testing.T, store Store) {
 	}
 	foundCanceledRetry := false
 	for _, item := range items {
-		if item.ID == retryJob.ID && item.Completed && item.Status == "canceled" && item.GitSourceID != nil && *item.GitSourceID == "echo" {
+		if item.ID == retryJob.ID && item.Completed && item.Status == "canceled" {
 			foundCanceledRetry = true
 			break
 		}

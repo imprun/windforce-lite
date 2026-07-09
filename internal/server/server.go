@@ -223,6 +223,30 @@ func (h *Handler) handleAPI(w http.ResponseWriter, r *http.Request) bool {
 		h.handleSetState(w, r, parts[2])
 		return true
 	}
+	if len(parts) == 4 && parts[0] == "api" && parts[1] == "w" && parts[3] == "variables" && r.Method == http.MethodGet {
+		h.handleListVariables(w, r, parts[2])
+		return true
+	}
+	if len(parts) == 4 && parts[0] == "api" && parts[1] == "w" && parts[3] == "variables" && r.Method == http.MethodPost {
+		h.handleSetVariable(w, r, parts[2])
+		return true
+	}
+	if len(parts) >= 7 && parts[0] == "api" && parts[1] == "w" && parts[3] == "variables" && parts[4] == "get" && parts[5] == "p" && r.Method == http.MethodGet {
+		h.handleGetVariable(w, r, parts[2], joinPathParts(parts, 6))
+		return true
+	}
+	if len(parts) >= 6 && parts[0] == "api" && parts[1] == "w" && parts[3] == "variables" && parts[4] == "p" && r.Method == http.MethodDelete {
+		h.handleDeleteVariable(w, r, parts[2], joinPathParts(parts, 5))
+		return true
+	}
+	if len(parts) == 4 && parts[0] == "api" && parts[1] == "w" && parts[3] == "resources" && r.Method == http.MethodPost {
+		h.handleSetResource(w, r, parts[2])
+		return true
+	}
+	if len(parts) >= 7 && parts[0] == "api" && parts[1] == "w" && parts[3] == "resources" && parts[4] == "get" && parts[5] == "p" && r.Method == http.MethodGet {
+		h.handleGetResource(w, r, parts[2], joinPathParts(parts, 6))
+		return true
+	}
 	if len(parts) == 4 && parts[0] == "api" && parts[1] == "w" && parts[3] == "git_sources" && r.Method == http.MethodGet {
 		h.handleCanonicalGitSources(w, r, parts[2])
 		return true
@@ -366,7 +390,7 @@ func (h *Handler) handleCanonicalRegisterGitSource(w http.ResponseWriter, r *htt
 	}
 	source := gitsourcepkg.Source{
 		Workspace: workspaceID,
-		ID:        name,
+		Name:      name,
 		RepoURL:   repoURL,
 		Branch:    branch,
 		Subpath:   subpath,
@@ -477,7 +501,7 @@ func (h *Handler) handleCanonicalSampleGitSource(w http.ResponseWriter, r *http.
 	}
 	source := gitsourcepkg.Source{
 		Workspace: workspaceID,
-		ID:        repo.SourceName,
+		Name:      repo.SourceName,
 		RepoURL:   repo.RepoURL,
 		Branch:    repo.Branch,
 		Kind:      "managed",
@@ -698,7 +722,7 @@ func (h *Handler) handleCanonicalAppSource(w http.ResponseWriter, r *http.Reques
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"app_key":       deployment.App,
-		"git_source_id": deployment.SourceGitSourceID(),
+		"git_source_id": parseCanonicalGitSourceID(deployment.SourceGitSourceID()),
 		"commit_sha":    deployment.Commit,
 		"files":         files,
 		"skipped":       skipped,
@@ -964,7 +988,7 @@ func (h *Handler) lookupDeployment(ctx context.Context, workspaceID string, app 
 }
 
 type canonicalGitSourceView struct {
-	ID               string     `json:"id"`
+	ID               int64      `json:"id"`
 	WorkspaceID      string     `json:"workspace_id"`
 	Name             string     `json:"name"`
 	RepoURL          string     `json:"repo_url"`
@@ -979,9 +1003,9 @@ type canonicalGitSourceView struct {
 
 func newCanonicalGitSourceView(source gitsourcepkg.Source) canonicalGitSourceView {
 	return canonicalGitSourceView{
-		ID:               source.ID,
+		ID:               parseCanonicalGitSourceID(source.ID),
 		WorkspaceID:      contract.NormalizeWorkspace(source.Workspace),
-		Name:             source.ID,
+		Name:             source.Name,
 		RepoURL:          source.RepoURL,
 		Branch:           firstNonEmpty(source.Branch, "main"),
 		Subpath:          source.Subpath,
@@ -991,6 +1015,22 @@ func newCanonicalGitSourceView(source gitsourcepkg.Source) canonicalGitSourceVie
 		LastSyncedAt:     cloneTimePtr(source.LastSyncedAt),
 		CreatedAt:        timeValue(source.CreatedAt),
 	}
+}
+
+func parseCanonicalGitSourceID(id string) int64 {
+	value, err := strconv.ParseInt(strings.TrimSpace(id), 10, 64)
+	if err != nil || value < 0 {
+		return 0
+	}
+	return value
+}
+
+func canonicalGitSourceIDPtr(id string) *int64 {
+	value := parseCanonicalGitSourceID(id)
+	if value == 0 {
+		return nil
+	}
+	return &value
 }
 
 const probeTimeout = 15 * time.Second
@@ -1017,7 +1057,7 @@ func canonicalGitSourcePatchFromRequest(w http.ResponseWriter, request canonical
 			writeError(w, http.StatusBadRequest, "name cannot be empty")
 			return patch, false
 		}
-		patch.ID = &value
+		patch.Name = &value
 	}
 	if value, ok := firstPresentString(request.RepoURL, request.RepoURLCamel); ok {
 		value = strings.TrimSpace(value)
@@ -1086,7 +1126,7 @@ type canonicalAppModel struct {
 	ID                   string    `json:"id"`
 	WorkspaceID          string    `json:"workspace_id"`
 	AppKey               string    `json:"app_key"`
-	GitSourceID          *string   `json:"git_source_id"`
+	GitSourceID          *int64    `json:"git_source_id"`
 	CommitSha            string    `json:"commit_sha"`
 	Entrypoint           string    `json:"entrypoint"`
 	Tag                  string    `json:"tag"`
@@ -1189,7 +1229,7 @@ func newCanonicalAppModel(deployment contract.Deployment) canonicalAppModel {
 		ID:                   canonicalAppID(deployment),
 		WorkspaceID:          contract.NormalizeWorkspace(deployment.SourceWorkspace()),
 		AppKey:               deployment.App,
-		GitSourceID:          stringPtr(deployment.SourceGitSourceID()),
+		GitSourceID:          canonicalGitSourceIDPtr(deployment.SourceGitSourceID()),
 		CommitSha:            deployment.Commit,
 		Entrypoint:           canonicalDeploymentEntrypoint(deployment),
 		Tag:                  firstNonEmpty(strings.TrimSpace(deployment.Tag), defaultRouteTag()),
@@ -1878,6 +1918,134 @@ func (h *Handler) handleSetState(w http.ResponseWriter, r *http.Request, workspa
 	writeJSON(w, http.StatusOK, map[string]string{"path": statePath})
 }
 
+func (h *Handler) handleListVariables(w http.ResponseWriter, r *http.Request, workspaceID string) {
+	if h.store == nil {
+		writeError(w, http.StatusServiceUnavailable, "state store is not configured")
+		return
+	}
+	variables, err := h.store.ListVariables(r.Context(), workspaceID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	for i := range variables {
+		if variables[i].IsSecret {
+			variables[i].Value = ""
+		}
+	}
+	writeJSON(w, http.StatusOK, variables)
+}
+
+func (h *Handler) handleSetVariable(w http.ResponseWriter, r *http.Request, workspaceID string) {
+	if h.store == nil {
+		writeError(w, http.StatusServiceUnavailable, "state store is not configured")
+		return
+	}
+	var request struct {
+		Path        string `json:"path"`
+		Value       string `json:"value"`
+		Description string `json:"description"`
+		IsSecret    bool   `json:"is_secret"`
+		AppKey      string `json:"app_key"`
+	}
+	body, err := readJSONBody(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := json.Unmarshal(body, &request); err != nil || request.Path == "" {
+		writeError(w, http.StatusBadRequest, "path required")
+		return
+	}
+	if request.AppKey != "" && !validAppKey(request.AppKey) {
+		writeError(w, http.StatusBadRequest, "invalid app key")
+		return
+	}
+	if err := h.store.SetVariable(r.Context(), workspaceID, request.AppKey, request.Path, request.Value, request.IsSecret, request.Description); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"path": request.Path, "app_key": request.AppKey})
+}
+
+func (h *Handler) handleGetVariable(w http.ResponseWriter, r *http.Request, workspaceID string, variablePath string) {
+	if h.store == nil {
+		writeError(w, http.StatusServiceUnavailable, "state store is not configured")
+		return
+	}
+	variable, found, err := h.store.GetVariable(r.Context(), workspaceID, r.URL.Query().Get("app"), variablePath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if !found {
+		writeError(w, http.StatusNotFound, "variable not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"path": variable.Path, "value": variable.Value, "is_secret": variable.IsSecret})
+}
+
+func (h *Handler) handleDeleteVariable(w http.ResponseWriter, r *http.Request, workspaceID string, variablePath string) {
+	if h.store == nil {
+		writeError(w, http.StatusServiceUnavailable, "state store is not configured")
+		return
+	}
+	if err := h.store.DeleteVariable(r.Context(), workspaceID, r.URL.Query().Get("app"), variablePath); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) handleSetResource(w http.ResponseWriter, r *http.Request, workspaceID string) {
+	if h.store == nil {
+		writeError(w, http.StatusServiceUnavailable, "state store is not configured")
+		return
+	}
+	var request struct {
+		Path         string          `json:"path"`
+		Value        json.RawMessage `json:"value"`
+		ResourceType string          `json:"resource_type"`
+		Description  string          `json:"description"`
+	}
+	body, err := readJSONBody(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := json.Unmarshal(body, &request); err != nil || request.Path == "" {
+		writeError(w, http.StatusBadRequest, "path required")
+		return
+	}
+	if len(request.Value) == 0 {
+		request.Value = json.RawMessage("{}")
+	}
+	if err := h.store.SetResource(r.Context(), workspaceID, request.Path, request.Value, request.ResourceType, request.Description); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"path": request.Path})
+}
+
+func (h *Handler) handleGetResource(w http.ResponseWriter, r *http.Request, workspaceID string, resourcePath string) {
+	if h.store == nil {
+		writeError(w, http.StatusServiceUnavailable, "state store is not configured")
+		return
+	}
+	resource, found, err := h.store.GetResource(r.Context(), workspaceID, resourcePath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if !found {
+		writeError(w, http.StatusNotFound, "resource not found")
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(rawOrNull(resource.Value))
+}
+
 func (h *Handler) handleSchema(w http.ResponseWriter, r *http.Request, route triggerRoute) {
 	if h.catalog == nil {
 		writeError(w, http.StatusServiceUnavailable, "catalog is not configured")
@@ -2019,6 +2187,13 @@ func SplitPath(path string) []string {
 
 func splitPath(path string) []string {
 	return SplitPath(path)
+}
+
+func joinPathParts(parts []string, start int) string {
+	if start >= len(parts) {
+		return ""
+	}
+	return strings.Join(parts[start:], "/")
 }
 
 func readJSONBody(r *http.Request) (json.RawMessage, error) {
@@ -2207,7 +2382,7 @@ type jobStatusResponse struct {
 	ActionKey    *string         `json:"action_key,omitempty"`
 	TriggerKind  *string         `json:"trigger_kind,omitempty"`
 	Kind         *string         `json:"kind,omitempty"`
-	GitSourceID  *string         `json:"git_source_id,omitempty"`
+	GitSourceID  *int64          `json:"git_source_id,omitempty"`
 	CommitSha    *string         `json:"commit_sha,omitempty"`
 	Entrypoint   *string         `json:"entrypoint,omitempty"`
 	InputSchema  json.RawMessage `json:"input_schema,omitempty"`
@@ -2256,7 +2431,7 @@ func newJobStatus(workspaceID string, job state.Job, run state.Run) jobStatusRes
 		ActionKey:    stringPtr(action),
 		TriggerKind:  stringPtr(jobStatusTriggerKind(job, run)),
 		Kind:         stringPtr(kind),
-		GitSourceID:  stringPtr(job.Payload.GitSourceID),
+		GitSourceID:  canonicalGitSourceIDPtr(job.Payload.GitSourceID),
 		CommitSha:    stringPtr(commit),
 		Entrypoint:   stringPtr(job.Payload.ActionSpec.Entrypoint),
 		InputSchema:  cloneRaw(job.Payload.InputSchema),

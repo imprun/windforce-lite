@@ -117,6 +117,36 @@ func TestRunnerFetchesBundleAndRunsAction(t *testing.T) {
 	}
 }
 
+func TestRunnerJobEnvIncludesSDKCallbackEndpoint(t *testing.T) {
+	runner := Runner{
+		BaseURL:  "http://127.0.0.1:18080",
+		APIToken: "api-token",
+	}
+	env := runner.jobEnv(RunRequest{
+		JobID:       "job-a",
+		WorkspaceID: "ws-a",
+		Deployment: contract.Deployment{
+			App:        "echo",
+			Entrypoint: "main.py",
+			Actions: map[string]contract.Action{
+				"run": {Action: "run"},
+			},
+		},
+		Action:      "run",
+		TriggerKind: "api",
+	}, contract.Action{Action: "run"})
+
+	for _, want := range []string{
+		"WF_BASE_URL=http://127.0.0.1:18080",
+		"WF_TOKEN=api-token",
+		"WF_STATE_PATH=echo/run",
+	} {
+		if !containsEnv(env, want) {
+			t.Fatalf("env missing %q in %#v", want, env)
+		}
+	}
+}
+
 func TestRunnerRunsActionThroughCommandAdapter(t *testing.T) {
 	tempDir := t.TempDir()
 	sourceDir := filepath.Join(tempDir, "source")

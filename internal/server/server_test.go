@@ -262,13 +262,121 @@ func TestCanonicalStateAPI(t *testing.T) {
 	}
 }
 
+func TestCanonicalVariablesAndResourcesAPI(t *testing.T) {
+	tempDir := t.TempDir()
+	server := httptest.NewServer(New(Config{
+		Store:     state.NewLocalStore(filepath.Join(tempDir, "state.json")),
+		EnableAPI: true,
+	}))
+	defer server.Close()
+
+	setVariableResp, err := http.Post(server.URL+"/api/w/ws-a/variables", "application/json", bytes.NewBufferString(`{"path":"config/token","value":"shared","is_secret":true,"description":"shared token"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer setVariableResp.Body.Close()
+	if setVariableResp.StatusCode != http.StatusOK {
+		t.Fatalf("set variable status = %d, want %d", setVariableResp.StatusCode, http.StatusOK)
+	}
+	setVariableResp, err = http.Post(server.URL+"/api/w/ws-a/variables", "application/json", bytes.NewBufferString(`{"app_key":"echo","path":"config/token","value":"scoped"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer setVariableResp.Body.Close()
+	if setVariableResp.StatusCode != http.StatusOK {
+		t.Fatalf("set scoped variable status = %d, want %d", setVariableResp.StatusCode, http.StatusOK)
+	}
+
+	getVariableResp, err := http.Get(server.URL + "/api/w/ws-a/variables/get/p/config/token?app=echo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer getVariableResp.Body.Close()
+	if getVariableResp.StatusCode != http.StatusOK {
+		t.Fatalf("get variable status = %d, want %d", getVariableResp.StatusCode, http.StatusOK)
+	}
+	var variableBody struct {
+		Path     string `json:"path"`
+		Value    string `json:"value"`
+		IsSecret bool   `json:"is_secret"`
+	}
+	if err := json.NewDecoder(getVariableResp.Body).Decode(&variableBody); err != nil {
+		t.Fatal(err)
+	}
+	if variableBody.Path != "config/token" || variableBody.Value != "scoped" || variableBody.IsSecret {
+		t.Fatalf("variable body = %#v", variableBody)
+	}
+
+	listResp, err := http.Get(server.URL + "/api/w/ws-a/variables")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listResp.Body.Close()
+	var variables []struct {
+		AppKey   string `json:"app_key"`
+		Path     string `json:"path"`
+		Value    string `json:"value"`
+		IsSecret bool   `json:"is_secret"`
+	}
+	if err := json.NewDecoder(listResp.Body).Decode(&variables); err != nil {
+		t.Fatal(err)
+	}
+	secretHidden := false
+	for _, variable := range variables {
+		if variable.Path == "config/token" && variable.AppKey == "" && variable.IsSecret && variable.Value == "" {
+			secretHidden = true
+		}
+	}
+	if !secretHidden {
+		t.Fatalf("variables list did not hide secret value: %#v", variables)
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, server.URL+"/api/w/ws-a/variables/p/config/token?app=echo", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	deleteResp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer deleteResp.Body.Close()
+	if deleteResp.StatusCode != http.StatusNoContent {
+		t.Fatalf("delete variable status = %d, want %d", deleteResp.StatusCode, http.StatusNoContent)
+	}
+
+	setResourceResp, err := http.Post(server.URL+"/api/w/ws-a/resources", "application/json", bytes.NewBufferString(`{"path":"browser/profile","value":{"headless":true},"resource_type":"json"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer setResourceResp.Body.Close()
+	if setResourceResp.StatusCode != http.StatusOK {
+		t.Fatalf("set resource status = %d, want %d", setResourceResp.StatusCode, http.StatusOK)
+	}
+	getResourceResp, err := http.Get(server.URL + "/api/w/ws-a/resources/get/p/browser/profile")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer getResourceResp.Body.Close()
+	body, err := io.ReadAll(getResourceResp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var resource map[string]bool
+	if err := json.Unmarshal(body, &resource); err != nil {
+		t.Fatalf("resource body is not JSON object: %v", err)
+	}
+	if !resource["headless"] {
+		t.Fatalf("resource body = %q", body)
+	}
+}
+
 func TestCanonicalJobRunStatusAndResultAPI(t *testing.T) {
 	tempDir := t.TempDir()
 	store := state.NewLocalStore(filepath.Join(tempDir, "state.json"))
 	fileCatalog := catalog.NewFileCatalog(filepath.Join(tempDir, "catalog.json"))
 	if err := fileCatalog.UpsertDeployment(context.Background(), contract.Deployment{
 		Workspace:   "ws-a",
-		GitSourceID: "source-a",
+		GitSourceID: "1",
 		App:         "echo",
 		Commit:      "commit-a",
 		Actions: map[string]contract.Action{
@@ -313,7 +421,7 @@ func TestCanonicalJobRunStatusAndResultAPI(t *testing.T) {
 	}
 	if statusBody["id"] != runResponse.JobID || statusBody["state"] != "queued" || statusBody["app_key"] != "echo" ||
 		statusBody["action_key"] != "echo" || statusBody["trigger_kind"] != "api" || statusBody["entrypoint"] != "main.ts" ||
-		statusBody["git_source_id"] != "source-a" || statusBody["timeout_s"] != float64(45) {
+		statusBody["git_source_id"] != float64(1) || statusBody["timeout_s"] != float64(45) {
 		t.Fatalf("job status = %#v", statusBody)
 	}
 
@@ -401,7 +509,7 @@ func TestCanonicalJobRunStatusAndResultAPI(t *testing.T) {
 			ID          string `json:"id"`
 			AppKey      string `json:"app_key"`
 			ActionKey   string `json:"action_key"`
-			GitSourceID string `json:"git_source_id"`
+			GitSourceID int64  `json:"git_source_id"`
 			Status      string `json:"status"`
 			Completed   bool   `json:"completed"`
 		} `json:"items"`
@@ -415,7 +523,7 @@ func TestCanonicalJobRunStatusAndResultAPI(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(listBody.Items) != 1 || listBody.Items[0].ID != runResponse.JobID ||
-		listBody.Items[0].GitSourceID != "source-a" ||
+		listBody.Items[0].GitSourceID != 1 ||
 		listBody.Items[0].Status != "success" || !listBody.Items[0].Completed {
 		t.Fatalf("list body = %#v", listBody)
 	}
@@ -789,7 +897,7 @@ func TestCanonicalSampleGitSourceRegistersAndSyncs(t *testing.T) {
 	}
 	var body struct {
 		Source struct {
-			ID          string `json:"id"`
+			ID          int64  `json:"id"`
 			WorkspaceID string `json:"workspace_id"`
 			Name        string `json:"name"`
 			Kind        string `json:"kind"`
@@ -804,7 +912,7 @@ func TestCanonicalSampleGitSourceRegistersAndSyncs(t *testing.T) {
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatal(err)
 	}
-	if body.Source.ID != "sample-hello" || body.Source.Name != "sample-hello" ||
+	if body.Source.ID <= 0 || body.Source.Name != "sample-hello" ||
 		body.Source.WorkspaceID != "ws-a" || body.Source.Kind != "managed" || body.Source.RepoURL == "" {
 		t.Fatalf("sample source = %#v", body.Source)
 	}
@@ -992,10 +1100,11 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 	}
 	defer registerResp.Body.Close()
 	if registerResp.StatusCode != http.StatusCreated {
-		t.Fatalf("register status = %d, want %d", registerResp.StatusCode, http.StatusCreated)
+		body, _ := io.ReadAll(registerResp.Body)
+		t.Fatalf("register status = %d, want %d: %s", registerResp.StatusCode, http.StatusCreated, body)
 	}
 	var registered struct {
-		ID          string    `json:"id"`
+		ID          int64     `json:"id"`
 		WorkspaceID string    `json:"workspace_id"`
 		Name        string    `json:"name"`
 		RepoURL     string    `json:"repo_url"`
@@ -1005,11 +1114,12 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 	if err := json.NewDecoder(registerResp.Body).Decode(&registered); err != nil {
 		t.Fatal(err)
 	}
-	if registered.ID != "source-a" || registered.Name != "source-a" || registered.WorkspaceID != "ws-a" ||
+	if registered.ID <= 0 || registered.Name != "source-a" || registered.WorkspaceID != "ws-a" ||
 		registered.RepoURL != filepath.ToSlash(repoDir) || registered.CredsRef != "WINDFORCE_LITE_GIT_TOKEN" ||
 		registered.CreatedAt.IsZero() {
 		t.Fatalf("registered source = %#v", registered)
 	}
+	registeredID := fmt.Sprint(registered.ID)
 
 	duplicateResp, err := http.Post(server.URL+"/api/w/ws-a/git_sources", "application/json", bytes.NewReader(registerBody))
 	if err != nil {
@@ -1047,7 +1157,7 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 		t.Fatalf("sources = %#v", sources)
 	}
 
-	syncResp, err := http.Post(server.URL+"/api/w/ws-a/git_sources/source-a/sync", "", nil)
+	syncResp, err := http.Post(server.URL+"/api/w/ws-a/git_sources/"+registeredID+"/sync", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1110,7 +1220,7 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 	var summary struct {
 		Apps []struct {
 			AppKey            string   `json:"app_key"`
-			GitSourceID       string   `json:"git_source_id"`
+			GitSourceID       int64    `json:"git_source_id"`
 			ActionsCount      int64    `json:"actions_count"`
 			EffectiveRouteTag string   `json:"effective_route_tag"`
 			Capabilities      []string `json:"required_capabilities"`
@@ -1120,7 +1230,7 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(summary.Apps) != 1 || summary.Apps[0].AppKey != "echo" ||
-		summary.Apps[0].GitSourceID != "source-a" || summary.Apps[0].ActionsCount != 1 ||
+		summary.Apps[0].GitSourceID != registered.ID || summary.Apps[0].ActionsCount != 1 ||
 		summary.Apps[0].EffectiveRouteTag != "browser" || !reflect.DeepEqual(summary.Apps[0].Capabilities, []string{"browser"}) {
 		t.Fatalf("summary = %#v", summary)
 	}
@@ -1170,7 +1280,7 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 	var appBody struct {
 		App struct {
 			AppKey               string    `json:"app_key"`
-			GitSourceID          string    `json:"git_source_id"`
+			GitSourceID          int64     `json:"git_source_id"`
 			Entrypoint           string    `json:"entrypoint"`
 			ScriptLang           string    `json:"script_lang"`
 			TimeoutS             int32     `json:"timeout_s"`
@@ -1189,7 +1299,7 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 	if err := json.NewDecoder(appResp.Body).Decode(&appBody); err != nil {
 		t.Fatal(err)
 	}
-	if appBody.App.AppKey != "echo" || appBody.App.GitSourceID != "source-a" ||
+	if appBody.App.AppKey != "echo" || appBody.App.GitSourceID != registered.ID ||
 		appBody.App.Entrypoint != "main.ts" || appBody.App.ScriptLang != "typescript" ||
 		appBody.App.TimeoutS != 120 || appBody.App.MaxConcurrent == nil || *appBody.App.MaxConcurrent != 2 ||
 		!reflect.DeepEqual(appBody.App.RequiredCapabilities, []string{"browser"}) || appBody.App.EffectiveRouteTag != "browser" ||
@@ -1327,7 +1437,7 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 	}
 	var sourceBody struct {
 		AppKey      string            `json:"app_key"`
-		GitSourceID string            `json:"git_source_id"`
+		GitSourceID int64             `json:"git_source_id"`
 		CommitSha   string            `json:"commit_sha"`
 		Files       map[string]string `json:"files"`
 		Skipped     []string          `json:"skipped"`
@@ -1335,7 +1445,7 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 	if err := json.NewDecoder(sourceResp.Body).Decode(&sourceBody); err != nil {
 		t.Fatal(err)
 	}
-	if sourceBody.AppKey != "echo" || sourceBody.GitSourceID != "source-a" || sourceBody.CommitSha == "" ||
+	if sourceBody.AppKey != "echo" || sourceBody.GitSourceID != registered.ID || sourceBody.CommitSha == "" ||
 		!bytes.Contains([]byte(sourceBody.Files["windforce.json"]), []byte(`"app": "echo"`)) ||
 		!bytes.Contains([]byte(sourceBody.Files["input.schema.json"]), []byte(`"message"`)) ||
 		len(sourceBody.Skipped) != 1 || sourceBody.Skipped[0] != "logo.bin" {
@@ -1455,12 +1565,22 @@ func TestCanonicalGitSourceProbePatchAndDelete(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	var registered struct {
+		ID int64 `json:"id"`
+	}
+	if err := json.NewDecoder(registerResp.Body).Decode(&registered); err != nil {
+		t.Fatal(err)
+	}
 	_ = registerResp.Body.Close()
 	if registerResp.StatusCode != http.StatusCreated {
 		t.Fatalf("register status = %d, want %d", registerResp.StatusCode, http.StatusCreated)
 	}
+	if registered.ID <= 0 {
+		t.Fatalf("registered = %#v", registered)
+	}
+	registeredID := fmt.Sprint(registered.ID)
 
-	emptyPatchReq, err := http.NewRequest(http.MethodPatch, server.URL+"/api/w/ws-a/git_sources/source-a", nil)
+	emptyPatchReq, err := http.NewRequest(http.MethodPatch, server.URL+"/api/w/ws-a/git_sources/"+registeredID, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1481,7 +1601,7 @@ func TestCanonicalGitSourceProbePatchAndDelete(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	patchReq, err := http.NewRequest(http.MethodPatch, server.URL+"/api/w/ws-a/git_sources/source-a", bytes.NewReader(patchBody))
+	patchReq, err := http.NewRequest(http.MethodPatch, server.URL+"/api/w/ws-a/git_sources/"+registeredID, bytes.NewReader(patchBody))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1495,7 +1615,7 @@ func TestCanonicalGitSourceProbePatchAndDelete(t *testing.T) {
 		t.Fatalf("patch status = %d, want %d", patchResp.StatusCode, http.StatusOK)
 	}
 	var patched struct {
-		ID       string `json:"id"`
+		ID       int64  `json:"id"`
 		Name     string `json:"name"`
 		Branch   string `json:"branch"`
 		CredsRef string `json:"creds_ref"`
@@ -1503,14 +1623,14 @@ func TestCanonicalGitSourceProbePatchAndDelete(t *testing.T) {
 	if err := json.NewDecoder(patchResp.Body).Decode(&patched); err != nil {
 		t.Fatal(err)
 	}
-	if patched.ID != "source-b" || patched.Name != "source-b" || patched.Branch != "feature" || patched.CredsRef != "WINDFORCE_LITE_GIT_TOKEN" {
+	if patched.ID != registered.ID || patched.Name != "source-b" || patched.Branch != "feature" || patched.CredsRef != "WINDFORCE_LITE_GIT_TOKEN" {
 		t.Fatalf("patched = %#v", patched)
 	}
 	if _, err := registry.Get(context.Background(), "ws-a", "source-a"); !errors.Is(err, gitsource.ErrGitSourceNotFound) {
 		t.Fatalf("old source lookup err = %v, want not found", err)
 	}
 
-	deleteReq, err := http.NewRequest(http.MethodDelete, server.URL+"/api/w/ws-a/git_sources/source-b", nil)
+	deleteReq, err := http.NewRequest(http.MethodDelete, server.URL+"/api/w/ws-a/git_sources/"+registeredID, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1522,7 +1642,7 @@ func TestCanonicalGitSourceProbePatchAndDelete(t *testing.T) {
 	if deleteResp.StatusCode != http.StatusNoContent {
 		t.Fatalf("delete status = %d, want %d", deleteResp.StatusCode, http.StatusNoContent)
 	}
-	deleteAgainReq, err := http.NewRequest(http.MethodDelete, server.URL+"/api/w/ws-a/git_sources/source-b", nil)
+	deleteAgainReq, err := http.NewRequest(http.MethodDelete, server.URL+"/api/w/ws-a/git_sources/"+registeredID, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

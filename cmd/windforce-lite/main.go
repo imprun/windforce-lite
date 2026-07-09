@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -172,6 +173,7 @@ func runServer(args []string, mode string) int {
 	migrate := flags.Bool("migrate", false, "run state backend schema migration before starting")
 	triggerTokenEnv := flags.String("trigger-token-env", "", "environment variable that contains the trigger bearer token")
 	adminTokenEnv := flags.String("admin-token-env", "", "environment variable that contains the admin/API bearer token")
+	baseURL := flags.String("base-url", "", "public API base URL injected into job ctx helpers")
 	storeDir := flags.String("store", defaultStoreDir(), "bundle store directory")
 	catalogPath := flags.String("catalog", defaultCatalogPath(), "catalog JSON path")
 	gitSourcesPath := flags.String("git-sources", defaultGitSourcesPath(), "registered git sources JSON path")
@@ -193,6 +195,11 @@ func runServer(args []string, mode string) int {
 	defer closeState()
 	fileCatalog := catalog.NewFileCatalog(*catalogPath)
 	gitSources := gitsource.NewFileRegistry(*gitSourcesPath)
+	adminToken := tokenFromEnv(*adminTokenEnv)
+	runtimeBaseURL := strings.TrimSpace(*baseURL)
+	if runtimeBaseURL == "" && mode == "standalone" {
+		runtimeBaseURL = localBaseURL(*addr)
+	}
 	handler := server.New(server.Config{
 		Store:         stateStore,
 		Catalog:       fileCatalog,
@@ -201,7 +208,7 @@ func runServer(args []string, mode string) int {
 		EnableTrigger: mode == "trigger" || mode == "standalone",
 		EnableAPI:     mode == "api" || mode == "standalone",
 		TriggerToken:  tokenFromEnv(*triggerTokenEnv),
-		AdminToken:    tokenFromEnv(*adminTokenEnv),
+		AdminToken:    adminToken,
 		Wait:          *wait,
 	})
 
@@ -211,6 +218,8 @@ func runServer(args []string, mode string) int {
 			Runner: runtime.Runner{
 				Store:     bundle.NewLocalStore(*storeDir),
 				CacheRoot: *cacheRoot,
+				BaseURL:   runtimeBaseURL,
+				APIToken:  adminToken,
 			},
 			WorkerID: *workerID,
 			Tags:     parseTags(*workerTags),
@@ -240,6 +249,8 @@ func runWorker(args []string) int {
 	migrate := flags.Bool("migrate", false, "run state backend schema migration before starting")
 	storeDir := flags.String("store", defaultStoreDir(), "bundle store directory")
 	cacheRoot := flags.String("cache", defaultCacheDir(), "runtime cache directory")
+	baseURL := flags.String("base-url", "", "public API base URL injected into job ctx helpers")
+	apiTokenEnv := flags.String("api-token-env", "", "environment variable that contains the API bearer token for ctx helpers")
 	poll := flags.Duration("poll", 500*time.Millisecond, "job poll interval")
 	leaseTTL := flags.Duration("lease", 30*time.Second, "job lease TTL")
 	workerID := flags.String("worker-id", "", "worker identity")
@@ -260,6 +271,8 @@ func runWorker(args []string) int {
 		Runner: runtime.Runner{
 			Store:     bundle.NewLocalStore(*storeDir),
 			CacheRoot: *cacheRoot,
+			BaseURL:   strings.TrimSpace(*baseURL),
+			APIToken:  tokenFromEnv(*apiTokenEnv),
 		},
 		WorkerID: *workerID,
 		Tags:     parseTags(*workerTags),
@@ -308,6 +321,27 @@ func tokenFromEnv(name string) string {
 		return ""
 	}
 	return os.Getenv(name)
+}
+
+func localBaseURL(addr string) string {
+	addr = strings.TrimSpace(addr)
+	if strings.HasPrefix(addr, "http://") || strings.HasPrefix(addr, "https://") {
+		return strings.TrimRight(addr, "/")
+	}
+	host, port, err := net.SplitHostPort(addr)
+	if err == nil {
+		if host == "" || host == "0.0.0.0" || host == "::" || host == "[::]" {
+			host = "127.0.0.1"
+		}
+		if strings.Contains(host, ":") && !strings.HasPrefix(host, "[") {
+			host = "[" + host + "]"
+		}
+		return "http://" + host + ":" + port
+	}
+	if strings.HasPrefix(addr, ":") {
+		return "http://127.0.0.1" + addr
+	}
+	return "http://" + strings.TrimRight(addr, "/")
 }
 
 func parseTags(value string) []string {

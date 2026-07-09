@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -170,7 +171,7 @@ type JobListItem struct {
 	CompletedAt    *time.Time `json:"completed_at"`
 	DurationMs     int64      `json:"duration_ms"`
 	Worker         *string    `json:"worker"`
-	GitSourceID    *string    `json:"git_source_id"`
+	GitSourceID    *int64     `json:"git_source_id"`
 	CommitSha      *string    `json:"commit_sha"`
 	Entrypoint     string     `json:"entrypoint"`
 	Tag            string     `json:"tag"`
@@ -206,6 +207,21 @@ type JobSummary struct {
 	ByApp          []JobSummaryAppBreakdown `json:"by_app"`
 }
 
+type Variable struct {
+	AppKey      string `json:"app_key"`
+	Path        string `json:"path"`
+	Value       string `json:"value"`
+	IsSecret    bool   `json:"is_secret"`
+	Description string `json:"description"`
+}
+
+type Resource struct {
+	Path         string          `json:"path"`
+	Value        json.RawMessage `json:"value"`
+	ResourceType string          `json:"resource_type"`
+	Description  string          `json:"description"`
+}
+
 type RunEvent struct {
 	ID        int64           `json:"id"`
 	RunID     string          `json:"runId,omitempty"`
@@ -229,6 +245,8 @@ type Snapshot struct {
 	Events     []RunEvent                            `json:"events"`
 	JobLogs    map[string]JobLog                     `json:"jobLogs"`
 	JobState   map[string]map[string]json.RawMessage `json:"jobState"`
+	Variables  map[string]map[string]Variable        `json:"variables"`
+	Resources  map[string]map[string]Resource        `json:"resources"`
 }
 
 type Store interface {
@@ -243,6 +261,12 @@ type Store interface {
 	GetLogs(ctx context.Context, workspaceID string, jobID string) (string, bool, error)
 	GetState(ctx context.Context, workspaceID string, statePath string) (json.RawMessage, bool, error)
 	SetState(ctx context.Context, workspaceID string, statePath string, value json.RawMessage) error
+	ListVariables(ctx context.Context, workspaceID string) ([]Variable, error)
+	SetVariable(ctx context.Context, workspaceID string, appKey string, path string, value string, isSecret bool, description string) error
+	GetVariable(ctx context.Context, workspaceID string, appKey string, path string) (Variable, bool, error)
+	DeleteVariable(ctx context.Context, workspaceID string, appKey string, path string) error
+	SetResource(ctx context.Context, workspaceID string, path string, value json.RawMessage, resourceType string, description string) error
+	GetResource(ctx context.Context, workspaceID string, path string) (Resource, bool, error)
 	ClaimJob(ctx context.Context, workerID string, leaseTTL time.Duration) (Job, Lease, error)
 	ClaimJobForTags(ctx context.Context, workerID string, tags []string, leaseTTL time.Duration) (Job, Lease, error)
 	CompleteJobSucceeded(ctx context.Context, lease Lease, result contract.JobResult) error
@@ -545,6 +569,99 @@ func (s *LocalStore) SetState(ctx context.Context, workspaceID string, statePath
 		snapshot.JobState[workspaceID][statePath] = cloneRaw(value)
 		return nil
 	})
+}
+
+func (s *LocalStore) ListVariables(ctx context.Context, workspaceID string) ([]Variable, error) {
+	snapshot, err := s.Load(ctx)
+	if err != nil {
+		return nil, err
+	}
+	workspaceID = contract.NormalizeWorkspace(workspaceID)
+	variables := make([]Variable, 0, len(snapshot.Variables[workspaceID]))
+	for _, variable := range snapshot.Variables[workspaceID] {
+		variables = append(variables, variable)
+	}
+	sort.Slice(variables, func(i, j int) bool {
+		if variables[i].AppKey != variables[j].AppKey {
+			return variables[i].AppKey < variables[j].AppKey
+		}
+		return variables[i].Path < variables[j].Path
+	})
+	return variables, nil
+}
+
+func (s *LocalStore) SetVariable(ctx context.Context, workspaceID string, appKey string, path string, value string, isSecret bool, description string) error {
+	workspaceID = contract.NormalizeWorkspace(workspaceID)
+	return s.update(ctx, func(snapshot *Snapshot, now time.Time) error {
+		if snapshot.Variables[workspaceID] == nil {
+			snapshot.Variables[workspaceID] = map[string]Variable{}
+		}
+		snapshot.Variables[workspaceID][variableKey(appKey, path)] = Variable{
+			AppKey:      appKey,
+			Path:        path,
+			Value:       value,
+			IsSecret:    isSecret,
+			Description: description,
+		}
+		return nil
+	})
+}
+
+func (s *LocalStore) GetVariable(ctx context.Context, workspaceID string, appKey string, path string) (Variable, bool, error) {
+	snapshot, err := s.Load(ctx)
+	if err != nil {
+		return Variable{}, false, err
+	}
+	workspaceID = contract.NormalizeWorkspace(workspaceID)
+	variables := snapshot.Variables[workspaceID]
+	if appKey != "" {
+		if variable, ok := variables[variableKey(appKey, path)]; ok {
+			return variable, true, nil
+		}
+	}
+	variable, ok := variables[variableKey("", path)]
+	return variable, ok, nil
+}
+
+func (s *LocalStore) DeleteVariable(ctx context.Context, workspaceID string, appKey string, path string) error {
+	workspaceID = contract.NormalizeWorkspace(workspaceID)
+	return s.update(ctx, func(snapshot *Snapshot, now time.Time) error {
+		delete(snapshot.Variables[workspaceID], variableKey(appKey, path))
+		return nil
+	})
+}
+
+func (s *LocalStore) SetResource(ctx context.Context, workspaceID string, path string, value json.RawMessage, resourceType string, description string) error {
+	if len(value) == 0 {
+		value = json.RawMessage("{}")
+	}
+	if !json.Valid(value) {
+		return errors.New("resource value is not valid JSON")
+	}
+	workspaceID = contract.NormalizeWorkspace(workspaceID)
+	return s.update(ctx, func(snapshot *Snapshot, now time.Time) error {
+		if snapshot.Resources[workspaceID] == nil {
+			snapshot.Resources[workspaceID] = map[string]Resource{}
+		}
+		snapshot.Resources[workspaceID][path] = Resource{
+			Path:         path,
+			Value:        cloneRaw(value),
+			ResourceType: resourceType,
+			Description:  description,
+		}
+		return nil
+	})
+}
+
+func (s *LocalStore) GetResource(ctx context.Context, workspaceID string, path string) (Resource, bool, error) {
+	snapshot, err := s.Load(ctx)
+	if err != nil {
+		return Resource{}, false, err
+	}
+	workspaceID = contract.NormalizeWorkspace(workspaceID)
+	resource, ok := snapshot.Resources[workspaceID][path]
+	resource.Value = cloneRaw(resource.Value)
+	return resource, ok, nil
 }
 
 func (s *LocalStore) ClaimJob(ctx context.Context, workerID string, leaseTTL time.Duration) (Job, Lease, error) {
@@ -975,6 +1092,16 @@ func ensureSnapshot(snapshot *Snapshot) {
 	if snapshot.JobState == nil {
 		snapshot.JobState = map[string]map[string]json.RawMessage{}
 	}
+	if snapshot.Variables == nil {
+		snapshot.Variables = map[string]map[string]Variable{}
+	}
+	if snapshot.Resources == nil {
+		snapshot.Resources = map[string]map[string]Resource{}
+	}
+}
+
+func variableKey(appKey string, path string) string {
+	return appKey + "\x00" + path
 }
 
 func requeueExpiredJobs(snapshot *Snapshot, now time.Time) {
@@ -1212,7 +1339,7 @@ func newJobListItem(workspaceID string, job Job, run Run) JobListItem {
 		CompletedAt:    completedAt,
 		DurationMs:     durationMs,
 		Worker:         worker,
-		GitSourceID:    stringPtr(job.Payload.GitSourceID),
+		GitSourceID:    numericStringPtr(job.Payload.GitSourceID),
 		CommitSha:      stringPtr(job.Payload.Commit),
 		Entrypoint:     job.Payload.ActionSpec.Entrypoint,
 		Tag:            jobTag(job),
@@ -1373,6 +1500,14 @@ func stringPtr(value string) *string {
 		return nil
 	}
 	return &value
+}
+
+func numericStringPtr(value string) *int64 {
+	parsed, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
+	if err != nil || parsed <= 0 {
+		return nil
+	}
+	return &parsed
 }
 
 func eventPayload(correlationID string, values map[string]any) map[string]any {
