@@ -931,6 +931,9 @@ func TestCanonicalControlPlaneOpenAPIExposesSchemaDiscovery(t *testing.T) {
 	if paths["/api/w/{workspace}/apps/{app}/openapi.json"] == nil {
 		t.Fatalf("app invocation openapi path missing: %#v", paths)
 	}
+	if paths["/api/w/{workspace}/deployments/{deploymentId}"] != nil {
+		t.Fatalf("unsupported deployment status route should not be advertised: %#v", paths["/api/w/{workspace}/deployments/{deploymentId}"])
+	}
 	for _, path := range []string{
 		"/api/w/{workspace}/state",
 		"/api/w/{workspace}/variables",
@@ -955,6 +958,9 @@ func TestCanonicalControlPlaneOpenAPIExposesSchemaDiscovery(t *testing.T) {
 
 	components := body["components"].(map[string]any)
 	schemas := components["schemas"].(map[string]any)
+	if schemas["Deployment"] != nil {
+		t.Fatalf("unsupported deployment status schema should not be advertised: %#v", schemas["Deployment"])
+	}
 	gitSource := schemas["GitSource"].(map[string]any)
 	gitSourceProperties := gitSource["properties"].(map[string]any)
 	for _, field := range []string{"kind", "last_synced_commit", "last_synced_at", "created_at"} {

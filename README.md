@@ -230,7 +230,6 @@ Implemented control-plane endpoints:
 - `GET /api/w/{workspace}/apps/{app}/openapi.json` (app invocation OpenAPI generated from materialized action schemas)
 - `GET /api/w/{workspace}/apps/{app}/actions/{action}` (canonical action detail including materialized `input_schema` and `output_schema`)
 - `PATCH /api/w/{workspace}/apps/{app}/actions/{action}`
-- `GET /api/w/{workspace}/deployments/{deploymentID}` (canonical deployment status lookup; app metadata is under `/apps/{app}`)
 - `GET /api/w/{workspace}/worker-tags`
 - `POST /api/w/{workspace}/jobs/run/{app}/{action}`
 - `POST /api/w/{workspace}/jobs/run/{app}/{action}/wait?timeout_ms={ms}`
@@ -285,6 +284,11 @@ adapters may translate trigger ingress and response envelopes, but they do not
 publish separate schema routes or own schema discovery. The workspace
 `control-openapi` command documents that control-plane contract, while the app
 `openapi` command returns invocation OpenAPI generated from the action schemas.
+Lite deployment/source sync history is exposed through
+`GET /api/w/{workspace}/apps/{app}/history`. The full Windforce draft
+deployment status route, `GET /api/w/{workspace}/deployments/{deploymentID}`,
+depends on the full deploy control-plane state table and is not part of the
+lite basic control plane.
 
 The full Windforce control plane derives job actor provenance from the
 authenticated principal. Lite deployments that use only the admin token can pass

@@ -249,16 +249,6 @@ func buildControlPlaneOpenAPI(baseURL string, workspaceID string) map[string]any
 				}, "400", "401", "403", "404"),
 			},
 		},
-		"/api/w/{workspace}/deployments/{deploymentId}": map[string]any{
-			"get": map[string]any{
-				"operationId": "getDeployment",
-				"summary":     "Get deployment status",
-				"parameters":  []any{oapiWorkspaceParam(workspaceID), oapiPathParam("deploymentId", "Deployment id.")},
-				"responses": withErrors(map[string]any{
-					"200": oapiResponse("Deployment status.", oapiSchemaRef("Deployment")),
-				}, "401", "403", "404"),
-			},
-		},
 		"/api/w/{workspace}/worker-tags": map[string]any{
 			"get": map[string]any{
 				"operationId": "listWorkerTags",
@@ -939,16 +929,6 @@ func controlPlaneSchemas() map[string]any {
 		"RequeueResponse": map[string]any{
 			"type":       "object",
 			"properties": map[string]any{"requeued": oapiIntegerSchema()},
-		},
-		"Deployment": map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"id":         oapiStringSchema(),
-				"app_key":    oapiStringSchema(),
-				"commit_sha": oapiStringSchema(),
-				"created_at": oapiDateTimeSchema(),
-			},
-			"additionalProperties": true,
 		},
 		"WorkerTagsResponse": map[string]any{
 			"type": "object",
