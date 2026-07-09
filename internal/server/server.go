@@ -255,6 +255,10 @@ func (h *Handler) handleAPI(w http.ResponseWriter, r *http.Request) bool {
 		h.handleCanonicalDeployment(w, r, parts[2], parts[4])
 		return true
 	}
+	if len(parts) == 4 && parts[0] == "api" && parts[1] == "w" && parts[3] == "worker-tags" && r.Method == http.MethodGet {
+		h.handleCanonicalWorkerTags(w, r, parts[2])
+		return true
+	}
 	if len(parts) == 5 && parts[0] == "api" && parts[1] == "w" && parts[3] == "jobs" && r.Method == http.MethodGet {
 		h.handleJobStatus(w, r, parts[2], parts[4])
 		return true
@@ -900,6 +904,18 @@ func (h *Handler) handleCanonicalDeployment(w http.ResponseWriter, r *http.Reque
 	writeJSON(w, http.StatusOK, deployment)
 }
 
+func (h *Handler) handleCanonicalWorkerTags(w http.ResponseWriter, r *http.Request, workspaceID string) {
+	snapshot, ok := h.loadCatalogSnapshot(w, r)
+	if !ok {
+		return
+	}
+	tags := map[string]struct{}{}
+	for range canonicalDeployments(snapshot, workspaceID) {
+		tags[defaultRouteTag()] = struct{}{}
+	}
+	writeJSON(w, http.StatusOK, newCanonicalWorkerTagsView(tags))
+}
+
 func (h *Handler) loadGitSourceSnapshot(w http.ResponseWriter, r *http.Request) (gitsourcepkg.Snapshot, bool) {
 	loader, ok := h.gitSources.(interface {
 		Load(context.Context) (gitsourcepkg.Snapshot, error)
@@ -1111,6 +1127,18 @@ type canonicalActionView struct {
 	EffectiveRouteTag     string          `json:"effective_route_tag"`
 }
 
+type canonicalWorkerTagsView struct {
+	Tags         []canonicalTagLiveness `json:"tags"`
+	DedicatedTag *string                `json:"dedicated_tag"`
+}
+
+type canonicalTagLiveness struct {
+	Tag          string   `json:"tag"`
+	LiveWorkers  int64    `json:"live_workers"`
+	Capabilities []string `json:"capabilities"`
+	Workers      []any    `json:"workers"`
+}
+
 func canonicalDeployments(snapshot catalogpkg.Snapshot, workspaceID string) []contract.Deployment {
 	workspaceID = contract.NormalizeWorkspace(workspaceID)
 	deployments := make([]contract.Deployment, 0, len(snapshot.Deployments))
@@ -1319,6 +1347,35 @@ func canonicalTimeoutSeconds(timeoutMs int64) *int32 {
 
 func defaultRouteTag() string {
 	return "default"
+}
+
+func newCanonicalWorkerTagsView(tags map[string]struct{}) canonicalWorkerTagsView {
+	if tags == nil {
+		tags = map[string]struct{}{}
+	}
+	if len(tags) == 0 {
+		tags[defaultRouteTag()] = struct{}{}
+	}
+	keys := make([]string, 0, len(tags))
+	for tag := range tags {
+		tag = strings.TrimSpace(tag)
+		if tag == "" {
+			continue
+		}
+		keys = append(keys, tag)
+	}
+	sort.Strings(keys)
+	items := make([]canonicalTagLiveness, 0, len(keys))
+	for _, tag := range keys {
+		items = append(items, canonicalTagLiveness{
+			Tag:          tag,
+			Capabilities: []string{},
+			Workers:      []any{},
+		})
+	}
+	return canonicalWorkerTagsView{
+		Tags: items,
+	}
 }
 
 const (

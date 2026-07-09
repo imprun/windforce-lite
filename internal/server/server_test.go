@@ -775,6 +775,61 @@ func TestCanonicalGitSourceProbePatchAndDelete(t *testing.T) {
 	}
 }
 
+func TestCanonicalWorkerTagsAPI(t *testing.T) {
+	tempDir := t.TempDir()
+	fileCatalog := catalog.NewFileCatalog(filepath.Join(tempDir, "catalog.json"))
+	if err := fileCatalog.UpsertDeployment(context.Background(), contract.Deployment{
+		Workspace:   "ws-a",
+		GitSourceID: "source-a",
+		App:         "echo",
+		Commit:      "commit-a",
+		Actions: map[string]contract.Action{
+			"echo": {Action: "echo", Command: []string{"helper"}},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := fileCatalog.UpsertDeployment(context.Background(), contract.Deployment{
+		Workspace:   "ws-b",
+		GitSourceID: "source-b",
+		App:         "other",
+		Commit:      "commit-b",
+		Actions: map[string]contract.Action{
+			"other": {Action: "other", Command: []string{"helper"}},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	server := httptest.NewServer(New(Config{Catalog: fileCatalog, EnableAPI: true}))
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/api/w/ws-a/worker-tags")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("worker-tags status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	var body struct {
+		Tags []struct {
+			Tag          string   `json:"tag"`
+			LiveWorkers  int64    `json:"live_workers"`
+			Capabilities []string `json:"capabilities"`
+			Workers      []any    `json:"workers"`
+		} `json:"tags"`
+		DedicatedTag *string `json:"dedicated_tag"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Tags) != 1 || body.Tags[0].Tag != "default" || body.Tags[0].LiveWorkers != 0 ||
+		len(body.Tags[0].Capabilities) != 0 || len(body.Tags[0].Workers) != 0 || body.DedicatedTag != nil {
+		t.Fatalf("worker-tags body = %#v", body)
+	}
+}
+
 type fakeTriggerAdapter struct{}
 
 func (fakeTriggerAdapter) Name() string {
