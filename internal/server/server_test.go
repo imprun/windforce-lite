@@ -1394,7 +1394,7 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 		t.Fatalf("openapi version = %#v", openAPIBody["openapi"])
 	}
 	infoDescription := openAPIBody["info"].(map[string]any)["description"].(string)
-	if !bytes.Contains([]byte(infoDescription), []byte(`status "failure"`)) ||
+	if !bytes.Contains([]byte(infoDescription), []byte(`status "failed"`)) ||
 		!bytes.Contains([]byte(infoDescription), []byte("enqueue-time errors")) {
 		t.Fatalf("openapi info description = %q", infoDescription)
 	}
@@ -1409,7 +1409,7 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 		t.Fatalf("openapi request schema missing message: %#v", requestSchema)
 	}
 	statusEnum := runWait["responses"].(map[string]any)["200"].(map[string]any)["content"].(map[string]any)["application/json"].(map[string]any)["schema"].(map[string]any)["properties"].(map[string]any)["status"].(map[string]any)["enum"].([]any)
-	if fmt.Sprint(statusEnum) != "[success failure canceled]" {
+	if fmt.Sprint(statusEnum) != "[completed failed canceled]" {
 		t.Fatalf("openapi status enum = %#v", statusEnum)
 	}
 	if paths["/api/w/ws-a/jobs/run/echo/echo"] == nil || paths["/api/w/ws-a/jobs/webhook/echo/echo"] == nil ||
