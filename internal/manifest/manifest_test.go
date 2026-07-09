@@ -190,6 +190,26 @@ func TestParseRejectsMissingEntrypoint(t *testing.T) {
 	}
 }
 
+func TestParseRejectsUnsupportedFlows(t *testing.T) {
+	_, err := Parse([]byte(`{
+		"app": "echo",
+		"entrypoint": "main.ts",
+		"actions": {
+			"run": {}
+		},
+		"flows": {
+			"main": {
+				"steps": [
+					{"key": "run", "action": "run"}
+				]
+			}
+		}
+	}`))
+	if err == nil || !strings.Contains(err.Error(), "does not support flows") {
+		t.Fatalf("Parse error = %v, want unsupported flows validation", err)
+	}
+}
+
 func TestParseIgnoresNonCanonicalManifestFields(t *testing.T) {
 	tagOverride := "operator-owned"
 	app, err := Parse([]byte(`{

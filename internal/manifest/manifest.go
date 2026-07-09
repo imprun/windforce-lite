@@ -25,12 +25,19 @@ func Load(dir string) (contract.App, error) {
 }
 
 func Parse(data []byte) (contract.App, error) {
-	var app contract.App
-	if err := json.Unmarshal(data, &app); err != nil {
+	var parsed struct {
+		contract.App
+		Flows map[string]json.RawMessage `json:"flows"`
+	}
+	if err := json.Unmarshal(data, &parsed); err != nil {
 		return contract.App{}, fmt.Errorf("parse %s: %w", FileName, err)
 	}
+	app := parsed.App
 	if !contract.ValidAppKey(app.App) {
 		return contract.App{}, fmt.Errorf("invalid app key %q in %s", app.App, FileName)
+	}
+	if len(parsed.Flows) > 0 {
+		return contract.App{}, fmt.Errorf("app %s declares flows in %s, but windforce-lite does not support flows", app.App, FileName)
 	}
 	app.Runtime = ""
 	if strings.TrimSpace(app.Entrypoint) == "" {
