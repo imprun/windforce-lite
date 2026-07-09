@@ -65,6 +65,52 @@ func TestProcessorCompletesQueuedRun(t *testing.T) {
 	}
 }
 
+func TestProcessorStoresFailedActionOutputAndLogsSeparately(t *testing.T) {
+	processor, stateStore, run := newProcessorTestHarness(t, "fail")
+
+	processed, err := processor.ProcessOne(context.Background())
+	if err != nil {
+		t.Fatalf("ProcessOne returned error: %v", err)
+	}
+	if !processed {
+		t.Fatalf("ProcessOne processed no job")
+	}
+
+	completed, err := stateStore.GetRun(context.Background(), run.ID)
+	if err != nil {
+		t.Fatalf("GetRun returned error: %v", err)
+	}
+	if completed.State != state.RunFailed {
+		t.Fatalf("run state = %s, want %s", completed.State, state.RunFailed)
+	}
+	if completed.Result == nil {
+		t.Fatalf("completed result is nil")
+	}
+	if completed.Result.ExitCode != 7 {
+		t.Fatalf("exit code = %d, want 7", completed.Result.ExitCode)
+	}
+	if completed.Result.Stdout != "" || completed.Result.Stderr != "" {
+		t.Fatalf("failed result should not expose logs: %#v", completed.Result)
+	}
+	var output struct {
+		Name    string `json:"name"`
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(completed.Result.Output, &output); err != nil {
+		t.Fatalf("failed output is not JSON: %v", err)
+	}
+	if output.Name != "TargetError" || output.Message != "target rejected" {
+		t.Fatalf("failed output = %s", completed.Result.Output)
+	}
+	logs, exists, err := stateStore.GetLogs(context.Background(), "workspace-a", completed.Result.JobID)
+	if err != nil {
+		t.Fatalf("GetLogs returned error: %v", err)
+	}
+	if !exists || !strings.Contains(logs, "failure stdout") || !strings.Contains(logs, "failure stderr") {
+		t.Fatalf("logs = %q, exists = %v", logs, exists)
+	}
+}
+
 func TestProcessorCreatesHumanTask(t *testing.T) {
 	processor, stateStore, run := newProcessorTestHarness(t, "human")
 
@@ -173,6 +219,15 @@ func TestWorkerHelperProcess(t *testing.T) {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(2)
 		}
+	case "fail":
+		output := []byte(`{"name":"TargetError","message":"target rejected"}`)
+		if err := os.WriteFile(os.Getenv("WF_RESULT_JSON"), output, 0o644); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(2)
+		}
+		fmt.Println("failure stdout")
+		fmt.Fprintln(os.Stderr, "failure stderr")
+		os.Exit(7)
 	default:
 		os.Exit(2)
 	}

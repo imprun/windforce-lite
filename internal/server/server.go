@@ -2474,6 +2474,9 @@ func jobResult(job state.Job, run state.Run) (string, json.RawMessage, bool) {
 		}
 		return status, mustRaw(map[string]string{"name": "Canceled", "message": message}), true
 	default:
+		if run.Result != nil && len(run.Result.Output) > 0 {
+			return "failure", rawOrNull(run.Result.Output), true
+		}
 		message := runErrorMessage(run)
 		if message == "" {
 			message = "job failed"

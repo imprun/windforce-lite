@@ -541,6 +541,63 @@ func TestCanonicalJobRunStatusAndResultAPI(t *testing.T) {
 		t.Fatalf("failed filter status = %d, want %d", failedFilterResp.StatusCode, http.StatusBadRequest)
 	}
 
+	failResp, err := http.Post(server.URL+"/api/w/ws-a/jobs/run/echo/echo", "application/json", bytes.NewBufferString(`{"message":"fail"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer failResp.Body.Close()
+	if failResp.StatusCode != http.StatusCreated {
+		t.Fatalf("failed run enqueue status = %d, want %d", failResp.StatusCode, http.StatusCreated)
+	}
+	var failRunResponse struct {
+		JobID string `json:"job_id"`
+	}
+	if err := json.NewDecoder(failResp.Body).Decode(&failRunResponse); err != nil {
+		t.Fatal(err)
+	}
+	failedClaim, failedLease, err := store.ClaimJob(context.Background(), "worker-a", 0)
+	if err != nil {
+		t.Fatalf("ClaimJob for failed run returned error: %v", err)
+	}
+	if failedClaim.ID != failRunResponse.JobID {
+		t.Fatalf("claimed failed job = %q, want %q", failedClaim.ID, failRunResponse.JobID)
+	}
+	if err := store.CompleteJobFailed(context.Background(), failedLease, contract.JobResult{
+		JobID:      failedClaim.ID,
+		App:        "echo",
+		Action:     "echo",
+		Output:     json.RawMessage(`{"name":"TargetError","message":"target rejected"}`),
+		ExitCode:   7,
+		DurationMs: 34,
+	}); err != nil {
+		t.Fatalf("CompleteJobFailed returned error: %v", err)
+	}
+	failedResultResp, err := http.Get(server.URL + "/api/w/ws-a/jobs/" + failRunResponse.JobID + "/result")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer failedResultResp.Body.Close()
+	if failedResultResp.StatusCode != http.StatusOK {
+		t.Fatalf("failed result status = %d, want %d", failedResultResp.StatusCode, http.StatusOK)
+	}
+	var failedResultBody struct {
+		Status string          `json:"status"`
+		Result json.RawMessage `json:"result"`
+	}
+	if err := json.NewDecoder(failedResultResp.Body).Decode(&failedResultBody); err != nil {
+		t.Fatal(err)
+	}
+	var failedResult struct {
+		Name    string `json:"name"`
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(failedResultBody.Result, &failedResult); err != nil {
+		t.Fatal(err)
+	}
+	if failedResultBody.Status != "failure" || failedResult.Name != "TargetError" || failedResult.Message != "target rejected" {
+		t.Fatalf("failed result body = %#v result=%s", failedResultBody, failedResultBody.Result)
+	}
+
 	summaryResp, err := http.Get(server.URL + "/api/w/ws-a/jobs/summary?recent_seconds=3600")
 	if err != nil {
 		t.Fatal(err)
