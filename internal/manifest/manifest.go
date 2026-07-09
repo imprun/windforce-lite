@@ -52,9 +52,6 @@ func Parse(data []byte) (contract.App, error) {
 	if app.ScriptLang == "" {
 		app.ScriptLang = "typescript"
 	}
-	if !supportedScriptLang(app.ScriptLang) {
-		return contract.App{}, fmt.Errorf("app %s scriptLang %q is not supported by windforce-lite", app.App, app.ScriptLang)
-	}
 	if app.TimeoutS == 0 {
 		app.TimeoutS = contract.DefaultTimeoutS
 	}
@@ -121,15 +118,6 @@ func applyAppDefaults(app contract.App, action *contract.Action) {
 		} else if app.TimeoutS > 0 {
 			action.TimeoutMs = int64(app.TimeoutS) * 1000
 		}
-	}
-}
-
-func supportedScriptLang(scriptLang string) bool {
-	switch scriptLang {
-	case "typescript", "python":
-		return true
-	default:
-		return false
 	}
 }
 

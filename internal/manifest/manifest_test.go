@@ -94,17 +94,16 @@ func TestParseAppliesCanonicalDefaultTimeout(t *testing.T) {
 	}
 }
 
-func TestParseRejectsUnsupportedLiteScriptLang(t *testing.T) {
+func TestParsePreservesScriptLangForRuntimeDispatch(t *testing.T) {
 	for _, test := range []struct {
 		name       string
 		scriptLang string
-		want       string
 	}{
-		{name: "go", scriptLang: "go", want: `app echo scriptLang "go" is not supported by windforce-lite`},
-		{name: "whitespace", scriptLang: " typescript ", want: `app echo scriptLang " typescript " is not supported by windforce-lite`},
+		{name: "go", scriptLang: "go"},
+		{name: "whitespace", scriptLang: " typescript "},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := Parse([]byte(`{
+			app, err := Parse([]byte(`{
 				"app": "echo",
 				"entrypoint": "main.go",
 				"scriptLang": "` + test.scriptLang + `",
@@ -112,8 +111,11 @@ func TestParseRejectsUnsupportedLiteScriptLang(t *testing.T) {
 					"run": {}
 				}
 			}`))
-			if err == nil || err.Error() != test.want {
-				t.Fatalf("Parse error = %v, want %q", err, test.want)
+			if err != nil {
+				t.Fatalf("Parse returned error: %v", err)
+			}
+			if app.ScriptLang != test.scriptLang || app.Actions["run"].Runtime != test.scriptLang {
+				t.Fatalf("scriptLang/runtime = %q/%q, want %q", app.ScriptLang, app.Actions["run"].Runtime, test.scriptLang)
 			}
 		})
 	}
