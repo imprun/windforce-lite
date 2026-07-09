@@ -948,16 +948,9 @@ func (h *Handler) handleCanonicalRequeueApp(w http.ResponseWriter, r *http.Reque
 	var request struct {
 		Action string `json:"action"`
 	}
-	body, err := readJSONBody(r)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+	if err := readOptionalJSON(r, &request); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
 		return
-	}
-	if len(bytes.TrimSpace(body)) > 0 {
-		if err := json.Unmarshal(body, &request); err != nil {
-			writeError(w, http.StatusBadRequest, "request body must be a JSON object")
-			return
-		}
 	}
 	action := strings.TrimSpace(request.Action)
 	var actionFilter *string
