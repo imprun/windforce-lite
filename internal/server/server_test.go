@@ -931,6 +931,27 @@ func TestCanonicalControlPlaneOpenAPIExposesSchemaDiscovery(t *testing.T) {
 	if paths["/api/w/{workspace}/apps/{app}/openapi.json"] == nil {
 		t.Fatalf("app invocation openapi path missing: %#v", paths)
 	}
+	for _, path := range []string{
+		"/api/w/{workspace}/state",
+		"/api/w/{workspace}/variables",
+		"/api/w/{workspace}/variables/get/p/{path}",
+		"/api/w/{workspace}/variables/p/{path}",
+		"/api/w/{workspace}/resources",
+		"/api/w/{workspace}/resources/get/p/{path}",
+		"/api/w/{workspace}/jobs/run/{app}/{action}",
+		"/api/w/{workspace}/jobs/run/{app}/{action}/wait",
+		"/api/w/{workspace}/jobs/webhook/{app}/{action}",
+		"/api/w/{workspace}/jobs",
+		"/api/w/{workspace}/jobs/summary",
+		"/api/w/{workspace}/jobs/{jobId}",
+		"/api/w/{workspace}/jobs/{jobId}/result",
+		"/api/w/{workspace}/jobs/{jobId}/logs",
+		"/api/w/{workspace}/jobs/{jobId}/cancel",
+	} {
+		if paths[path] == nil {
+			t.Fatalf("control-plane path %s missing: %#v", path, paths)
+		}
+	}
 
 	components := body["components"].(map[string]any)
 	schemas := components["schemas"].(map[string]any)
@@ -980,6 +1001,40 @@ func TestCanonicalControlPlaneOpenAPIExposesSchemaDiscovery(t *testing.T) {
 	appDetailActions := appDetail["properties"].(map[string]any)["actions"].(map[string]any)
 	if appDetailActions["items"].(map[string]any)["$ref"] != "#/components/schemas/Action" {
 		t.Fatalf("app detail actions schema = %#v", appDetailActions)
+	}
+	for _, schemaName := range []string{
+		"JSONValue",
+		"PathResponse",
+		"Variable",
+		"SetVariableRequest",
+		"VariableValueResponse",
+		"SetResourceRequest",
+		"JobInput",
+		"JobHandleResponse",
+		"JobPendingResponse",
+		"JobWaitResultResponse",
+		"JobResultResponse",
+		"JobStatus",
+		"JobListItem",
+		"JobListResponse",
+		"JobSummary",
+		"CancelJobRequest",
+		"CancelResult",
+	} {
+		if schemas[schemaName] == nil {
+			t.Fatalf("schema %s missing", schemaName)
+		}
+	}
+	jobStatus := schemas["JobStatus"].(map[string]any)["properties"].(map[string]any)
+	for _, field := range []string{"input_schema", "output_schema", "canceled_by", "canceled_reason"} {
+		if jobStatus[field] == nil {
+			t.Fatalf("job status schema missing %s: %#v", field, jobStatus)
+		}
+	}
+	jobLogs := paths["/api/w/{workspace}/jobs/{jobId}/logs"].(map[string]any)["get"].(map[string]any)
+	logContent := jobLogs["responses"].(map[string]any)["200"].(map[string]any)["content"].(map[string]any)
+	if logContent["text/plain"] == nil {
+		t.Fatalf("job logs response must be text/plain: %#v", logContent)
 	}
 }
 

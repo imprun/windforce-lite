@@ -269,6 +269,224 @@ func buildControlPlaneOpenAPI(baseURL string, workspaceID string) map[string]any
 				}, "401", "403"),
 			},
 		},
+		"/api/w/{workspace}/state": map[string]any{
+			"get": map[string]any{
+				"operationId": "getState",
+				"summary":     "Get a ctx.state value",
+				"parameters": []any{
+					oapiWorkspaceParam(workspaceID),
+					oapiQueryParam("path", "State path.", oapiStringSchema(), true),
+				},
+				"responses": withErrors(map[string]any{
+					"200": oapiResponse("Stored JSON value or null.", oapiSchemaRef("JSONValue")),
+				}, "400", "401", "403"),
+			},
+			"post": map[string]any{
+				"operationId": "setState",
+				"summary":     "Set a ctx.state value",
+				"parameters": []any{
+					oapiWorkspaceParam(workspaceID),
+					oapiQueryParam("path", "State path.", oapiStringSchema(), true),
+				},
+				"requestBody": oapiJSONBody(oapiSchemaRef("JSONValue"), true),
+				"responses": withErrors(map[string]any{
+					"200": oapiResponse("Stored path.", oapiSchemaRef("PathResponse")),
+				}, "400", "401", "403"),
+			},
+		},
+		"/api/w/{workspace}/variables": map[string]any{
+			"get": map[string]any{
+				"operationId": "listVariables",
+				"summary":     "List workspace variables",
+				"parameters":  []any{oapiWorkspaceParam(workspaceID)},
+				"responses": withErrors(map[string]any{
+					"200": oapiResponse("Variables. Secret values are redacted in list responses.", map[string]any{"type": "array", "items": oapiSchemaRef("Variable")}),
+				}, "401", "403"),
+			},
+			"post": map[string]any{
+				"operationId": "setVariable",
+				"summary":     "Set a workspace or app-scoped variable",
+				"parameters":  []any{oapiWorkspaceParam(workspaceID)},
+				"requestBody": oapiJSONBody(oapiSchemaRef("SetVariableRequest"), true),
+				"responses": withErrors(map[string]any{
+					"200": oapiResponse("Stored variable key.", oapiSchemaRef("VariableSetResponse")),
+				}, "400", "401", "403"),
+			},
+		},
+		"/api/w/{workspace}/variables/get/p/{path}": map[string]any{
+			"get": map[string]any{
+				"operationId": "getVariable",
+				"summary":     "Get a variable by path",
+				"description": "The {path} segment represents the remaining path after /variables/get/p/ and may contain slashes.",
+				"parameters": []any{
+					oapiWorkspaceParam(workspaceID),
+					oapiPathParam("path", "Variable path."),
+					oapiQueryParam("app", "Optional app key for app-scoped lookup.", oapiStringSchema(), false),
+				},
+				"responses": withErrors(map[string]any{
+					"200": oapiResponse("Variable value.", oapiSchemaRef("VariableValueResponse")),
+				}, "401", "403", "404"),
+			},
+		},
+		"/api/w/{workspace}/variables/p/{path}": map[string]any{
+			"delete": map[string]any{
+				"operationId": "deleteVariable",
+				"summary":     "Delete a variable by path",
+				"description": "The {path} segment represents the remaining path after /variables/p/ and may contain slashes.",
+				"parameters": []any{
+					oapiWorkspaceParam(workspaceID),
+					oapiPathParam("path", "Variable path."),
+					oapiQueryParam("app", "Optional app key for app-scoped deletion.", oapiStringSchema(), false),
+				},
+				"responses": withErrors(map[string]any{
+					"204": map[string]any{"description": "Deleted."},
+				}, "401", "403"),
+			},
+		},
+		"/api/w/{workspace}/resources": map[string]any{
+			"post": map[string]any{
+				"operationId": "setResource",
+				"summary":     "Set a JSON resource",
+				"parameters":  []any{oapiWorkspaceParam(workspaceID)},
+				"requestBody": oapiJSONBody(oapiSchemaRef("SetResourceRequest"), true),
+				"responses": withErrors(map[string]any{
+					"200": oapiResponse("Stored resource path.", oapiSchemaRef("PathResponse")),
+				}, "400", "401", "403"),
+			},
+		},
+		"/api/w/{workspace}/resources/get/p/{path}": map[string]any{
+			"get": map[string]any{
+				"operationId": "getResource",
+				"summary":     "Get a JSON resource by path",
+				"description": "The {path} segment represents the remaining path after /resources/get/p/ and may contain slashes.",
+				"parameters":  []any{oapiWorkspaceParam(workspaceID), oapiPathParam("path", "Resource path.")},
+				"responses": withErrors(map[string]any{
+					"200": oapiResponse("Stored JSON value or null.", oapiSchemaRef("JSONValue")),
+				}, "401", "403", "404"),
+			},
+		},
+		"/api/w/{workspace}/jobs/run/{app}/{action}": map[string]any{
+			"post": map[string]any{
+				"operationId": "runJob",
+				"summary":     "Enqueue an action job",
+				"parameters":  []any{oapiWorkspaceParam(workspaceID), oapiPathParam("app", "App key."), oapiPathParam("action", "Action key.")},
+				"requestBody": oapiJSONBody(oapiSchemaRef("JobInput"), true),
+				"responses": withErrors(map[string]any{
+					"201": oapiResponse("Job enqueued.", oapiSchemaRef("JobHandleResponse")),
+				}, "400", "401", "403", "404", "409", "413"),
+			},
+		},
+		"/api/w/{workspace}/jobs/run/{app}/{action}/wait": map[string]any{
+			"post": map[string]any{
+				"operationId": "runJobAndWait",
+				"summary":     "Enqueue an action job and wait for completion",
+				"parameters": []any{
+					oapiWorkspaceParam(workspaceID),
+					oapiPathParam("app", "App key."),
+					oapiPathParam("action", "Action key."),
+					oapiQueryParam("timeout_ms", "Wait timeout in milliseconds. The server caps this at its maximum wait timeout.", oapiIntegerSchema(), false),
+				},
+				"requestBody": oapiJSONBody(oapiSchemaRef("JobInput"), true),
+				"responses": withErrors(map[string]any{
+					"200": oapiResponse("Finished job result.", oapiSchemaRef("JobWaitResultResponse")),
+					"202": oapiResponse("Job is still pending.", oapiSchemaRef("JobPendingResponse")),
+				}, "400", "401", "403", "404", "409", "413"),
+			},
+		},
+		"/api/w/{workspace}/jobs/webhook/{app}/{action}": map[string]any{
+			"post": map[string]any{
+				"operationId": "webhookJob",
+				"summary":     "Enqueue an action job from a raw webhook payload",
+				"description": "The raw request body is delivered to the action as trigger raw payload, with denylisted and size-capped request headers pinned on the job.",
+				"parameters":  []any{oapiWorkspaceParam(workspaceID), oapiPathParam("app", "App key."), oapiPathParam("action", "Action key.")},
+				"requestBody": map[string]any{
+					"required": false,
+					"content":  map[string]any{"*/*": map[string]any{"schema": map[string]any{}}},
+				},
+				"responses": withErrors(map[string]any{
+					"201": oapiResponse("Job enqueued.", oapiSchemaRef("JobHandleResponse")),
+				}, "400", "401", "403", "404", "409", "413"),
+			},
+		},
+		"/api/w/{workspace}/jobs": map[string]any{
+			"get": map[string]any{
+				"operationId": "listJobs",
+				"summary":     "List jobs",
+				"parameters": []any{
+					oapiWorkspaceParam(workspaceID),
+					oapiQueryParam("status", "Filter by queued, running, success, failure, canceled, completed, or all.", oapiStringSchema(), false),
+					oapiQueryParam("limit", "Page size from 1 to 500.", oapiIntegerSchema(), false),
+					oapiQueryParam("cursor", "Opaque cursor returned by the previous page.", oapiStringSchema(), false),
+					oapiQueryParam("app", "Optional app key filter.", oapiStringSchema(), false),
+					oapiQueryParam("action", "Optional action key filter.", oapiStringSchema(), false),
+					oapiQueryParam("trigger_kind", "Optional trigger kind filter.", oapiStringSchema(), false),
+					oapiQueryParam("since", "RFC3339 lower bound for created_at.", oapiStringSchema(), false),
+					oapiQueryParam("until", "RFC3339 upper bound for created_at.", oapiStringSchema(), false),
+				},
+				"responses": withErrors(map[string]any{
+					"200": oapiResponse("Job page.", oapiSchemaRef("JobListResponse")),
+				}, "400", "401", "403"),
+			},
+		},
+		"/api/w/{workspace}/jobs/summary": map[string]any{
+			"get": map[string]any{
+				"operationId": "getJobSummary",
+				"summary":     "Get job queue summary",
+				"parameters": []any{
+					oapiWorkspaceParam(workspaceID),
+					oapiQueryParam("recent_seconds", "Recent completion window from 1 to 604800 seconds.", oapiIntegerSchema(), false),
+				},
+				"responses": withErrors(map[string]any{
+					"200": oapiResponse("Queue summary.", oapiSchemaRef("JobSummary")),
+				}, "400", "401", "403"),
+			},
+		},
+		"/api/w/{workspace}/jobs/{jobId}": map[string]any{
+			"get": map[string]any{
+				"operationId": "getJob",
+				"summary":     "Get job status",
+				"parameters":  []any{oapiWorkspaceParam(workspaceID), oapiPathParam("jobId", "Job id.")},
+				"responses": withErrors(map[string]any{
+					"200": oapiResponse("Job status.", oapiSchemaRef("JobStatus")),
+				}, "401", "403", "404"),
+			},
+		},
+		"/api/w/{workspace}/jobs/{jobId}/result": map[string]any{
+			"get": map[string]any{
+				"operationId": "getJobResult",
+				"summary":     "Get or poll a job result",
+				"parameters":  []any{oapiWorkspaceParam(workspaceID), oapiPathParam("jobId", "Job id.")},
+				"responses": withErrors(map[string]any{
+					"200": oapiResponse("Finished job result.", oapiSchemaRef("JobResultResponse")),
+					"202": oapiResponse("Job is still pending.", oapiSchemaRef("JobPendingResponse")),
+				}, "401", "403", "404"),
+			},
+		},
+		"/api/w/{workspace}/jobs/{jobId}/logs": map[string]any{
+			"get": map[string]any{
+				"operationId": "getJobLogs",
+				"summary":     "Get job logs",
+				"parameters": []any{
+					oapiWorkspaceParam(workspaceID),
+					oapiPathParam("jobId", "Job id."),
+					oapiQueryParam("tail_bytes", "Optional non-negative byte count; capped by the server.", oapiIntegerSchema(), false),
+				},
+				"responses": withErrors(map[string]any{
+					"200": oapiTextResponse("Plaintext job logs."),
+				}, "400", "401", "403", "404"),
+			},
+		},
+		"/api/w/{workspace}/jobs/{jobId}/cancel": map[string]any{
+			"post": map[string]any{
+				"operationId": "cancelJob",
+				"summary":     "Cancel a job",
+				"parameters":  []any{oapiWorkspaceParam(workspaceID), oapiPathParam("jobId", "Job id.")},
+				"requestBody": oapiJSONBody(oapiSchemaRef("CancelJobRequest"), false),
+				"responses": withErrors(map[string]any{
+					"200": oapiResponse("Cancel result.", oapiSchemaRef("CancelResult")),
+				}, "400", "401", "403", "404"),
+			},
+		},
 	}
 
 	return map[string]any{
@@ -448,6 +666,15 @@ func oapiResponse(description string, schema any) map[string]any {
 	return map[string]any{
 		"description": description,
 		"content":     map[string]any{"application/json": map[string]any{"schema": schema}},
+	}
+}
+
+func oapiTextResponse(description string) map[string]any {
+	return map[string]any{
+		"description": description,
+		"content": map[string]any{
+			"text/plain": map[string]any{"schema": map[string]any{"type": "string"}},
+		},
 	}
 }
 
@@ -738,6 +965,222 @@ func controlPlaneSchemas() map[string]any {
 				"dedicated_tag": nullableString,
 			},
 		},
+		"JSONValue": map[string]any{
+			"description": "Any JSON value.",
+		},
+		"PathResponse": map[string]any{
+			"type":       "object",
+			"properties": map[string]any{"path": oapiStringSchema()},
+			"required":   []any{"path"},
+		},
+		"Variable": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"app_key":     oapiStringSchema(),
+				"path":        oapiStringSchema(),
+				"value":       oapiStringSchema(),
+				"is_secret":   oapiBooleanSchema(),
+				"description": oapiStringSchema(),
+			},
+			"required": []any{"app_key", "path", "value", "is_secret", "description"},
+		},
+		"SetVariableRequest": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"path":        oapiStringSchema(),
+				"value":       oapiStringSchema(),
+				"description": oapiStringSchema(),
+				"is_secret":   oapiBooleanSchema(),
+				"app_key":     oapiStringSchema(),
+			},
+			"required": []any{"path"},
+		},
+		"VariableSetResponse": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"path":    oapiStringSchema(),
+				"app_key": oapiStringSchema(),
+			},
+			"required": []any{"path", "app_key"},
+		},
+		"VariableValueResponse": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"path":      oapiStringSchema(),
+				"value":     oapiStringSchema(),
+				"is_secret": oapiBooleanSchema(),
+			},
+			"required": []any{"path", "value", "is_secret"},
+		},
+		"SetResourceRequest": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"path":          oapiStringSchema(),
+				"value":         oapiSchemaRef("JSONValue"),
+				"resource_type": oapiStringSchema(),
+				"description":   oapiStringSchema(),
+			},
+			"required": []any{"path"},
+		},
+		"JobInput": map[string]any{
+			"type":                 "object",
+			"description":          "Action input JSON object. The top-level __wf_enc key is reserved.",
+			"additionalProperties": true,
+		},
+		"JobHandleResponse": map[string]any{
+			"type":       "object",
+			"properties": map[string]any{"job_id": oapiStringSchema()},
+			"required":   []any{"job_id"},
+		},
+		"JobPendingResponse": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"job_id": oapiStringSchema(),
+				"status": oapiStringSchema(),
+			},
+			"required": []any{"status"},
+		},
+		"JobWaitResultResponse": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"job_id": oapiStringSchema(),
+				"status": oapiStringSchema(),
+				"result": oapiSchemaRef("JSONValue"),
+			},
+			"required": []any{"job_id", "status", "result"},
+		},
+		"JobResultResponse": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"status": oapiStringSchema(),
+				"result": oapiSchemaRef("JSONValue"),
+			},
+			"required": []any{"status", "result"},
+		},
+		"JobStatus": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"id":              oapiStringSchema(),
+				"workspace_id":    oapiStringSchema(),
+				"state":           oapiStringSchema(),
+				"status":          nullableString,
+				"worker":          nullableString,
+				"app_key":         nullableString,
+				"action_key":      nullableString,
+				"trigger_kind":    nullableString,
+				"kind":            nullableString,
+				"git_source_id":   nullableInteger,
+				"commit_sha":      nullableString,
+				"entrypoint":      nullableString,
+				"input_schema":    jsonSchema,
+				"output_schema":   jsonSchema,
+				"input":           oapiSchemaRef("JSONValue"),
+				"tag":             oapiStringSchema(),
+				"timeout_s":       oapiIntegerSchema(),
+				"created_by":      oapiStringSchema(),
+				"permissioned_as": oapiStringSchema(),
+				"created_at":      nullableDateTime,
+				"started_at":      nullableDateTime,
+				"completed_at":    nullableDateTime,
+				"duration_ms":     oapiIntegerSchema(),
+				"canceled_by":     nullableString,
+				"canceled_reason": nullableString,
+			},
+			"required": []any{"id", "workspace_id", "state"},
+		},
+		"JobListItem": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"id":              oapiStringSchema(),
+				"workspace_id":    oapiStringSchema(),
+				"app_key":         oapiStringSchema(),
+				"action_key":      oapiStringSchema(),
+				"trigger_kind":    oapiStringSchema(),
+				"status":          oapiStringSchema(),
+				"queued":          oapiBooleanSchema(),
+				"running":         oapiBooleanSchema(),
+				"completed":       oapiBooleanSchema(),
+				"created_at":      oapiDateTimeSchema(),
+				"started_at":      nullableDateTime,
+				"completed_at":    nullableDateTime,
+				"duration_ms":     oapiIntegerSchema(),
+				"worker":          nullableString,
+				"git_source_id":   nullableInteger,
+				"commit_sha":      nullableString,
+				"entrypoint":      oapiStringSchema(),
+				"tag":             oapiStringSchema(),
+				"created_by":      oapiStringSchema(),
+				"permissioned_as": oapiStringSchema(),
+				"canceled_by":     nullableString,
+				"canceled_reason": nullableString,
+				"error_snippet":   nullableString,
+			},
+			"required": []any{"id", "workspace_id", "app_key", "action_key", "trigger_kind", "status", "queued", "running", "completed", "created_at"},
+		},
+		"JobListResponse": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"items": map[string]any{"type": "array", "items": oapiSchemaRef("JobListItem")},
+				"pagination": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"limit":       oapiIntegerSchema(),
+						"count":       oapiIntegerSchema(),
+						"has_more":    oapiBooleanSchema(),
+						"next_cursor": oapiStringSchema(),
+					},
+					"required": []any{"limit", "count", "has_more"},
+				},
+			},
+			"required": []any{"items", "pagination"},
+		},
+		"JobSummaryCounts": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"queued_count":           oapiIntegerSchema(),
+				"running_count":          oapiIntegerSchema(),
+				"completed_count_recent": oapiIntegerSchema(),
+				"failed_count_recent":    oapiIntegerSchema(),
+				"canceled_count_recent":  oapiIntegerSchema(),
+			},
+		},
+		"JobSummary": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"queued_count":           oapiIntegerSchema(),
+				"running_count":          oapiIntegerSchema(),
+				"completed_count_recent": oapiIntegerSchema(),
+				"failed_count_recent":    oapiIntegerSchema(),
+				"canceled_count_recent":  oapiIntegerSchema(),
+				"oldest_queued_at":       nullableDateTime,
+				"by_tag": map[string]any{"type": "array", "items": map[string]any{
+					"allOf": []any{
+						oapiSchemaRef("JobSummaryCounts"),
+						map[string]any{"type": "object", "properties": map[string]any{"tag": oapiStringSchema()}},
+					},
+				}},
+				"by_app": map[string]any{"type": "array", "items": map[string]any{
+					"allOf": []any{
+						oapiSchemaRef("JobSummaryCounts"),
+						map[string]any{"type": "object", "properties": map[string]any{"app_key": oapiStringSchema()}},
+					},
+				}},
+			},
+		},
+		"CancelJobRequest": map[string]any{
+			"type":       "object",
+			"properties": map[string]any{"reason": oapiStringSchema()},
+		},
+		"CancelResult": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"found":             oapiBooleanSchema(),
+				"completed_now":     oapiBooleanSchema(),
+				"soft_canceled":     oapiBooleanSchema(),
+				"already_completed": oapiBooleanSchema(),
+			},
+			"required": []any{"found", "completed_now", "soft_canceled", "already_completed"},
+		},
 	}
 }
 
@@ -754,6 +1197,8 @@ var errCodeToComponent = map[string]string{
 	"401": "Unauthorized",
 	"403": "Forbidden",
 	"404": "NotFound",
+	"409": "Conflict",
+	"413": "RequestEntityTooLarge",
 	"422": "QuotaExceeded",
 }
 
@@ -774,11 +1219,13 @@ func openAPIErrorResponses() map[string]any {
 		}
 	}
 	return map[string]any{
-		"BadRequest":    body("Malformed body, invalid app/action key, or a reserved input key."),
-		"Unauthorized":  body("Missing or invalid API token."),
-		"Forbidden":     body("Not a member of the workspace, or the workspace is suspended/offboarded."),
-		"NotFound":      body("App or action not found."),
-		"QuotaExceeded": body("Workspace concurrency or daily-run quota reached."),
+		"BadRequest":            body("Malformed body, invalid app/action key, or a reserved input key."),
+		"Unauthorized":          body("Missing or invalid API token."),
+		"Forbidden":             body("Not a member of the workspace, or the workspace is suspended/offboarded."),
+		"NotFound":              body("App or action not found."),
+		"Conflict":              body("A conflicting operation or incompatible route state prevented the request."),
+		"RequestEntityTooLarge": body("Request body exceeds the server limit."),
+		"QuotaExceeded":         body("Workspace concurrency or daily-run quota reached."),
 	}
 }
 
