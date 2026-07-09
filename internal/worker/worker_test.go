@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -48,15 +49,16 @@ func TestProcessorCompletesQueuedRun(t *testing.T) {
 		t.Fatalf("logs = %q, exists = %v", logs, exists)
 	}
 	var output struct {
-		OK    bool `json:"ok"`
-		Input struct {
+		OK          bool   `json:"ok"`
+		WorkerGroup string `json:"worker_group"`
+		Input       struct {
 			Message string `json:"message"`
 		} `json:"input"`
 	}
 	if err := json.Unmarshal(completed.Output, &output); err != nil {
 		t.Fatalf("output is not JSON: %v", err)
 	}
-	if !output.OK || output.Input.Message != "hello" {
+	if !output.OK || output.Input.Message != "hello" || output.WorkerGroup != "test" {
 		t.Fatalf("output = %s", completed.Output)
 	}
 }
@@ -137,6 +139,7 @@ func newProcessorTestHarness(t *testing.T, helperMode string) (Processor, *state
 			CacheRoot: filepath.Join(tempDir, "cache"),
 		},
 		WorkerID: "worker-a",
+		Group:    "test",
 		LeaseTTL: time.Minute,
 	}, stateStore, run
 }
@@ -154,7 +157,7 @@ func TestWorkerHelperProcess(t *testing.T) {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(2)
 		}
-		output := []byte(`{"ok":true,"input":` + string(input) + `}`)
+		output := []byte(`{"ok":true,"worker_group":` + strconv.Quote(os.Getenv("WF_WORKER_GROUP")) + `,"input":` + string(input) + `}`)
 		if err := os.WriteFile(os.Getenv("WF_RESULT_JSON"), output, 0o644); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(2)

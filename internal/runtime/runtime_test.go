@@ -136,6 +136,7 @@ func TestRunnerJobEnvIncludesSDKCallbackEndpoint(t *testing.T) {
 		TriggerKind:    "api",
 		CreatedBy:      "runner@example.test",
 		PermissionedAs: "delegate@example.test",
+		WorkerGroup:    "test",
 	}, contract.Action{Action: "run"})
 
 	for _, want := range []string{
@@ -145,6 +146,7 @@ func TestRunnerJobEnvIncludesSDKCallbackEndpoint(t *testing.T) {
 		"WF_EMAIL=runner@example.test",
 		"WF_USERNAME=runner@example.test",
 		"WF_PERMISSIONED_AS=delegate@example.test",
+		"WF_WORKER_GROUP=test",
 	} {
 		if !containsEnv(env, want) {
 			t.Fatalf("env missing %q in %#v", want, env)

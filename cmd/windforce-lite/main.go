@@ -178,6 +178,7 @@ func runServer(args []string, mode string) int {
 	poll := flags.Duration("poll", 500*time.Millisecond, "standalone worker poll interval")
 	leaseTTL := flags.Duration("lease", 30*time.Second, "worker job lease TTL")
 	workerID := flags.String("worker-id", "", "worker identity for standalone processing")
+	workerGroup := flags.String("worker-group", "default", "worker group name exposed to action ctx")
 	workerTags := flags.String("tags", "", "comma-separated route tags this worker claims")
 	if err := flags.Parse(args); err != nil {
 		return 2
@@ -215,6 +216,7 @@ func runServer(args []string, mode string) int {
 				APIToken:  adminToken,
 			},
 			WorkerID: *workerID,
+			Group:    *workerGroup,
 			Tags:     parseTags(*workerTags),
 			LeaseTTL: *leaseTTL,
 		}
@@ -247,6 +249,7 @@ func runWorker(args []string) int {
 	poll := flags.Duration("poll", 500*time.Millisecond, "job poll interval")
 	leaseTTL := flags.Duration("lease", 30*time.Second, "job lease TTL")
 	workerID := flags.String("worker-id", "", "worker identity")
+	workerGroup := flags.String("worker-group", "default", "worker group name exposed to action ctx")
 	workerTags := flags.String("tags", "", "comma-separated route tags this worker claims")
 	once := flags.Bool("once", false, "process at most one queued job and exit")
 	if err := flags.Parse(args); err != nil {
@@ -268,6 +271,7 @@ func runWorker(args []string) int {
 			APIToken:  tokenFromEnv(*apiTokenEnv),
 		},
 		WorkerID: *workerID,
+		Group:    *workerGroup,
 		Tags:     parseTags(*workerTags),
 		LeaseTTL: *leaseTTL,
 	}
@@ -430,7 +434,7 @@ func printUsage(file *os.File) {
 	fmt.Fprintln(file, "  windforce-lite sync --repo <url> [--branch main] [--subpath <subdir>] [--store <dir>] [--catalog <path>]")
 	fmt.Fprintln(file, "  windforce-lite run --app <app> --action <action> [--input <path>] [--output <path>]")
 	fmt.Fprintln(file, "  windforce-lite api [--addr :8080] [--state-backend local|postgres] [--git-sources <path>]")
-	fmt.Fprintln(file, "  windforce-lite worker [--state-backend local|postgres] [--once]")
-	fmt.Fprintln(file, "  windforce-lite standalone [--addr :8080] [--state-backend local|postgres] [--git-sources <path>]")
+	fmt.Fprintln(file, "  windforce-lite worker [--state-backend local|postgres] [--worker-group default] [--once]")
+	fmt.Fprintln(file, "  windforce-lite standalone [--addr :8080] [--state-backend local|postgres] [--worker-group default] [--git-sources <path>]")
 	fmt.Fprintln(file, "  windforce-lite run-json [flags] -- <command> [args...]")
 }

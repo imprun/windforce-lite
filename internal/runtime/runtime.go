@@ -38,6 +38,7 @@ type RunRequest struct {
 	Env            []string
 	CreatedBy      string
 	PermissionedAs string
+	WorkerGroup    string
 	LogSink        func([]byte)
 }
 
@@ -300,6 +301,7 @@ func (r *Runner) jobEnv(req RunRequest, action contract.Action) []string {
 	tag := firstNonEmpty(req.Tag, contract.EffectiveRouteTagForAction(req.Deployment, action))
 	createdBy := firstNonEmpty(strings.TrimSpace(req.CreatedBy), "system")
 	permissionedAs := firstNonEmpty(strings.TrimSpace(req.PermissionedAs), createdBy)
+	workerGroup := firstNonEmpty(strings.TrimSpace(req.WorkerGroup), "default")
 	env := append(curatedHostEnv(), req.Env...)
 	add := func(key string, value string) {
 		env = append(env, key+"="+value)
@@ -315,6 +317,7 @@ func (r *Runner) jobEnv(req RunRequest, action contract.Action) []string {
 	add("WF_PERMISSIONED_AS", permissionedAs)
 	add("WF_STATE_PATH", req.Deployment.App+"/"+req.Action)
 	add("WF_TRIGGER_KIND", triggerKind)
+	add("WF_WORKER_GROUP", workerGroup)
 	if r.BaseURL != "" {
 		add("WF_BASE_URL", r.BaseURL)
 	}

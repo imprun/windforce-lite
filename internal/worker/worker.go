@@ -16,6 +16,7 @@ type Processor struct {
 	Store    state.Store
 	Runner   actionruntime.Runner
 	WorkerID string
+	Group    string
 	Tags     []string
 	LeaseTTL time.Duration
 }
@@ -53,6 +54,7 @@ func (p *Processor) ProcessOne(ctx context.Context) (bool, error) {
 		Env:            job.Payload.Env,
 		CreatedBy:      job.Payload.CreatedBy,
 		PermissionedAs: job.Payload.PermissionedAs,
+		WorkerGroup:    p.Group,
 		LogSink: func(chunk []byte) {
 			_ = p.Store.AppendLogs(context.Background(), job.ID, workspaceID, string(chunk))
 		},
