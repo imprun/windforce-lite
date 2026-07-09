@@ -1507,14 +1507,14 @@ func canonicalAppID(deployment contract.Deployment) string {
 }
 
 func canonicalDeploymentEntrypoint(deployment contract.Deployment) string {
-	return strings.TrimSpace(deployment.Entrypoint)
+	return deployment.Entrypoint
 }
 
 func canonicalDeploymentScriptLang(deployment contract.Deployment) string {
-	if strings.TrimSpace(deployment.ScriptLang) == "" {
+	if deployment.ScriptLang == "" {
 		return "typescript"
 	}
-	return strings.TrimSpace(deployment.ScriptLang)
+	return deployment.ScriptLang
 }
 
 func canonicalDeploymentTimeoutSeconds(deployment contract.Deployment) int32 {

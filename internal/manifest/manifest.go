@@ -49,7 +49,6 @@ func Parse(data []byte) (contract.App, error) {
 	if filepath.IsAbs(app.Entrypoint) || strings.HasPrefix(app.Entrypoint, "/") || strings.Contains(app.Entrypoint, "..") {
 		return contract.App{}, fmt.Errorf("app %s entrypoint %q must be a relative path inside the app", app.App, app.Entrypoint)
 	}
-	app.ScriptLang = strings.TrimSpace(app.ScriptLang)
 	if app.ScriptLang == "" {
 		app.ScriptLang = "typescript"
 	}

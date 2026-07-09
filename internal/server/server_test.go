@@ -3054,6 +3054,18 @@ func TestCanonicalAppAndActionTagOverrideAPI(t *testing.T) {
 	}
 }
 
+func TestCanonicalDeploymentModelPreservesStoredValues(t *testing.T) {
+	if got := canonicalDeploymentEntrypoint(contract.Deployment{Entrypoint: " main.ts "}); got != " main.ts " {
+		t.Fatalf("entrypoint = %q, want stored value", got)
+	}
+	if got := canonicalDeploymentScriptLang(contract.Deployment{}); got != "typescript" {
+		t.Fatalf("empty scriptLang = %q, want typescript", got)
+	}
+	if got := canonicalDeploymentScriptLang(contract.Deployment{ScriptLang: " python "}); got != " python " {
+		t.Fatalf("scriptLang = %q, want stored value", got)
+	}
+}
+
 func TestCanonicalJobRunPinsTagAndRequeueUsesCurrentEffectiveTag(t *testing.T) {
 	tempDir := t.TempDir()
 	fileCatalog := catalog.NewFileCatalog(filepath.Join(tempDir, "catalog.json"))
