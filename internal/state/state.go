@@ -1122,7 +1122,7 @@ func countJobSummary(counts *JobSummaryCounts, job Job, run Run, status string, 
 		if !completedAt.Before(cutoff) {
 			counts.CompletedCountRecent++
 			switch status {
-			case "failure":
+			case "failed":
 				counts.FailedCountRecent++
 			case "canceled":
 				counts.CanceledCountRecent++
@@ -1175,7 +1175,11 @@ func jobStatusMatches(filter string, status string) bool {
 	case "", "all":
 		return true
 	case "completed":
-		return status == "success" || status == "failure" || status == "canceled"
+		return status == "completed" || status == "failed" || status == "canceled"
+	case "success":
+		return status == "completed"
+	case "failure":
+		return status == "failed"
 	default:
 		return status == filter
 	}
@@ -1192,9 +1196,9 @@ func jobTerminalStatus(job Job, run Run) string {
 		return "running"
 	}
 	if job.State == JobSucceeded || run.State == RunSucceeded || run.State == RunWaitingHuman {
-		return "success"
+		return "completed"
 	}
-	return "failure"
+	return "failed"
 }
 
 func jobTriggerKind(job Job) string {
@@ -1251,7 +1255,7 @@ func canceledReason(run Run) *string {
 }
 
 func failureSnippet(status string, run Run) *string {
-	if status != "failure" {
+	if status != "failed" {
 		return nil
 	}
 	message := ""

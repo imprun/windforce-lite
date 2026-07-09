@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -257,11 +258,11 @@ func TestCanonicalJobRunStatusAndResultAPI(t *testing.T) {
 	if err := json.Unmarshal(doneBody.Result, &doneResult); err != nil {
 		t.Fatal(err)
 	}
-	if doneBody.Status != "success" || !doneResult.OK {
+	if doneBody.Status != "completed" || !doneResult.OK {
 		t.Fatalf("done result = %#v result=%s", doneBody, doneBody.Result)
 	}
 
-	listResp, err := http.Get(server.URL + "/api/w/ws-a/jobs?status=success&app=echo&limit=1")
+	listResp, err := http.Get(server.URL + "/api/w/ws-a/jobs?status=completed&app=echo&limit=1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -286,7 +287,7 @@ func TestCanonicalJobRunStatusAndResultAPI(t *testing.T) {
 	if err := json.NewDecoder(listResp.Body).Decode(&listBody); err != nil {
 		t.Fatal(err)
 	}
-	if len(listBody.Items) != 1 || listBody.Items[0].ID != runResponse.JobID || listBody.Items[0].Status != "success" || !listBody.Items[0].Completed {
+	if len(listBody.Items) != 1 || listBody.Items[0].ID != runResponse.JobID || listBody.Items[0].Status != "completed" || !listBody.Items[0].Completed {
 		t.Fatalf("list body = %#v", listBody)
 	}
 	if listBody.Pagination.Limit != 1 || listBody.Pagination.Count != 1 {
@@ -704,6 +705,10 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 	properties := requestSchema["properties"].(map[string]any)
 	if properties["message"] == nil {
 		t.Fatalf("openapi request schema missing message: %#v", requestSchema)
+	}
+	statusEnum := runWait["responses"].(map[string]any)["200"].(map[string]any)["content"].(map[string]any)["application/json"].(map[string]any)["schema"].(map[string]any)["properties"].(map[string]any)["status"].(map[string]any)["enum"].([]any)
+	if fmt.Sprint(statusEnum) != "[completed failed canceled]" {
+		t.Fatalf("openapi status enum = %#v", statusEnum)
 	}
 	if paths["/api/w/ws-a/jobs/run/echo/echo"] == nil || paths["/api/w/ws-a/jobs/webhook/echo/echo"] == nil ||
 		paths["/api/w/ws-a/jobs/{id}/result"] == nil {

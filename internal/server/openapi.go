@@ -223,8 +223,8 @@ func oapiStringSchema() map[string]any {
 func oapiStatusSchema() map[string]any {
 	return map[string]any{
 		"type":        "string",
-		"enum":        []any{"success", "failure", "canceled"},
-		"description": "Terminal action job status. A failed action surfaces as failure within a 200 response, not as an HTTP error.",
+		"enum":        []any{"completed", "failed", "canceled"},
+		"description": "Terminal run status. A failed action surfaces as failed within a 200 response, not as an HTTP error.",
 	}
 }
 

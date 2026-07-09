@@ -2274,7 +2274,7 @@ func jobResult(job state.Job, run state.Run) (string, json.RawMessage, bool) {
 	}
 	status := terminalJobStatus(job, run)
 	switch status {
-	case "success":
+	case "completed":
 		return status, rawOrNull(run.Output), true
 	case "canceled":
 		message := runErrorMessage(run)
@@ -2287,7 +2287,7 @@ func jobResult(job state.Job, run state.Run) (string, json.RawMessage, bool) {
 		if message == "" {
 			message = "job failed"
 		}
-		return "failure", mustRaw(map[string]string{"name": "Error", "message": message}), true
+		return "failed", mustRaw(map[string]string{"name": "Error", "message": message}), true
 	}
 }
 
@@ -2296,9 +2296,9 @@ func terminalJobStatus(job state.Job, run state.Run) string {
 		return "canceled"
 	}
 	if job.State == state.JobSucceeded || run.State == state.RunSucceeded || run.State == state.RunWaitingHuman {
-		return "success"
+		return "completed"
 	}
-	return "failure"
+	return "failed"
 }
 
 func runErrorMessage(run state.Run) string {
@@ -2470,7 +2470,7 @@ func parseJobListQuery(w http.ResponseWriter, r *http.Request, workspaceID strin
 
 func validJobStatusFilter(status string) bool {
 	switch status {
-	case "queued", "running", "success", "failure", "canceled", "completed", "all":
+	case "queued", "running", "success", "failure", "completed", "failed", "canceled", "all":
 		return true
 	default:
 		return false
