@@ -91,6 +91,9 @@ func Parse(data []byte) (contract.App, error) {
 		applyAppDefaults(app, &action)
 		app.Actions[name] = action
 	}
+	if len(app.Capabilities) == 0 && app.Tag == "" {
+		app.Tag = contract.DefaultRouteTag
+	}
 	return app, nil
 }
 

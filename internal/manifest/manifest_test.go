@@ -85,9 +85,32 @@ func TestParseAppliesCanonicalDefaultTimeout(t *testing.T) {
 	if app.TimeoutS != 300 {
 		t.Fatalf("app timeout = %d, want 300", app.TimeoutS)
 	}
+	if app.Tag != "default" {
+		t.Fatalf("app tag = %q, want default", app.Tag)
+	}
 	run := app.Actions["run"]
 	if run.TimeoutMs != 300000 {
 		t.Fatalf("run timeout ms = %d, want 300000", run.TimeoutMs)
+	}
+}
+
+func TestParseDefaultTagDoesNotConflictWithActionCapabilities(t *testing.T) {
+	app, err := Parse([]byte(`{
+		"app": "echo",
+		"entrypoint": "main.ts",
+		"actions": {
+			"run": {"capabilities": ["browser"]}
+		}
+	}`))
+	if err != nil {
+		t.Fatalf("Parse returned error: %v", err)
+	}
+	if app.Tag != "default" {
+		t.Fatalf("app tag = %q, want default", app.Tag)
+	}
+	caps := app.Actions["run"].Capabilities
+	if caps == nil || len(*caps) != 1 || (*caps)[0] != "browser" {
+		t.Fatalf("action capabilities = %#v", caps)
 	}
 }
 
