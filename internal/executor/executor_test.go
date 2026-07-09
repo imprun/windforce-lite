@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestRuntimeForGoUsesPreparedBinary(t *testing.T) {
@@ -177,6 +178,50 @@ def main(ctx):
 	}
 	if len(output.Input) != 0 {
 		t.Fatalf("input = %#v, want empty object", output.Input)
+	}
+}
+
+func TestRunTimeoutSynthesizesExecutionError(t *testing.T) {
+	requirePython(t)
+	entrypoint := filepath.Join(t.TempDir(), "main.py")
+	if err := os.WriteFile(entrypoint, []byte(`
+import time
+
+def main(ctx):
+    time.sleep(10)
+    return {"ok": True}
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := Run(context.Background(), RunParams{
+		ScriptLang:        "python",
+		BaseDir:           t.TempDir(),
+		EntrypointAbsPath: entrypoint,
+		Env: []string{
+			"WF_WORKSPACE=ws-a",
+			"WF_BASE_URL=http://127.0.0.1",
+			"WF_TOKEN=job-token",
+			"WF_APP=demo",
+			"WF_ACTION=echo",
+		},
+		Timeout: 200 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if !res.TimedOut {
+		t.Fatalf("TimedOut = false, result=%s logs=%s", res.Result, res.Logs)
+	}
+	if res.Success() {
+		t.Fatalf("Success = true for timed-out result")
+	}
+	var got map[string]string
+	if err := json.Unmarshal(res.Result, &got); err != nil {
+		t.Fatalf("timeout result is not JSON: %v", err)
+	}
+	if got["name"] != "ExecutionError" || got["message"] != "job timed out" {
+		t.Fatalf("timeout result = %#v, want ExecutionError/job timed out", got)
 	}
 }
 
