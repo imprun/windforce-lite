@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -75,6 +76,7 @@ type Handler struct {
 	adminToken      string
 	sampleRoot      string
 	wait            time.Duration
+	syncLocks       sync.Map
 }
 
 func New(config Config) http.Handler {
@@ -633,6 +635,13 @@ func (h *Handler) handleCanonicalGitSourceSync(w http.ResponseWriter, r *http.Re
 }
 
 func (h *Handler) syncGitSource(w http.ResponseWriter, r *http.Request, workspaceID string, source gitsourcepkg.Source) (contract.Deployment, bool) {
+	release, ok := h.acquireGitSourceOperation(workspaceID, source)
+	if !ok {
+		writeError(w, http.StatusConflict, "git source operation already in progress")
+		return contract.Deployment{}, false
+	}
+	defer release()
+
 	token, err := h.resolveGitSourceCreds(r.Context(), workspaceID, source.TokenEnv)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -660,6 +669,21 @@ func (h *Handler) syncGitSource(w http.ResponseWriter, r *http.Request, workspac
 		}
 	}
 	return deployment, true
+}
+
+func (h *Handler) acquireGitSourceOperation(workspaceID string, source gitsourcepkg.Source) (func(), bool) {
+	workspaceID = contract.NormalizeWorkspace(workspaceID)
+	sourceID := strings.TrimSpace(source.ID)
+	if sourceID == "" {
+		sourceID = strings.TrimSpace(source.Name)
+	}
+	key := workspaceID + "\x00" + sourceID
+	value, _ := h.syncLocks.LoadOrStore(key, &sync.Mutex{})
+	lock := value.(*sync.Mutex)
+	if !lock.TryLock() {
+		return nil, false
+	}
+	return lock.Unlock, true
 }
 
 func (h *Handler) resolveGitSourceCreds(ctx context.Context, workspaceID string, credsRef string) (string, error) {

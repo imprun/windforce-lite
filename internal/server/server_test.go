@@ -2334,6 +2334,47 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 	}
 }
 
+func TestCanonicalGitSourceSyncReturnsConflictWhenOperationInProgress(t *testing.T) {
+	tempDir := t.TempDir()
+	registry := gitsource.NewFileRegistry(filepath.Join(tempDir, "git-sources.json"))
+	source, err := registry.Create(context.Background(), gitsource.Source{
+		Workspace: "ws-a",
+		Name:      "source-a",
+		RepoURL:   "https://example.invalid/repo.git",
+		Branch:    "main",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := New(Config{
+		Syncer:     &syncer.Syncer{},
+		GitSources: registry,
+		EnableAPI:  true,
+	}).(*Handler)
+	release, ok := handler.acquireGitSourceOperation("ws-a", source)
+	if !ok {
+		t.Fatal("initial operation lock was not acquired")
+	}
+	defer release()
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	resp, err := http.Post(server.URL+"/api/w/ws-a/git_sources/"+source.ID+"/sync", "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var body struct {
+		Error string `json:"error"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusConflict || body.Error != "git source operation already in progress" {
+		t.Fatalf("sync conflict response = %d %#v, want 409 operation in progress", resp.StatusCode, body)
+	}
+}
+
 func TestCanonicalAppSourceStorageErrors(t *testing.T) {
 	for _, tc := range []struct {
 		name       string
