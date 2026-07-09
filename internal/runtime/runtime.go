@@ -363,9 +363,6 @@ func requestInput(req RunRequest) (json.RawMessage, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !json.Valid(input) {
-		return nil, errors.New("input file is not valid JSON")
-	}
 	return json.RawMessage(input), nil
 }
 

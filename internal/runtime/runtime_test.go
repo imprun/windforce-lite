@@ -115,6 +115,46 @@ func TestRunnerFetchesBundleAndRunsAction(t *testing.T) {
 		fileOutput.Header["X-Hub-Signature-256"] != "sha256=abc" {
 		t.Fatalf("output file = %s", outputFile)
 	}
+
+	if err := os.WriteFile(inputPath, []byte(`{`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result, err = runner.Run(context.Background(), RunRequest{
+		Deployment: contract.Deployment{
+			Workspace:   "workspace-a",
+			GitSourceID: "source-a",
+			App:         "echo",
+			Commit:      "commit-a",
+			Entrypoint:  "main.py",
+			ScriptLang:  "python",
+			Actions: map[string]contract.Action{
+				"echo": {
+					Action: "echo",
+				},
+			},
+		},
+		JobID:       "job-b",
+		WorkspaceID: "workspace-a",
+		Action:      "echo",
+		InputPath:   inputPath,
+		TriggerKind: "api",
+		Tag:         "default",
+	})
+	if err != nil {
+		t.Fatalf("Run with invalid input returned error: %v", err)
+	}
+	if result.ExitCode != 0 {
+		t.Fatalf("invalid input exit code = %d, output=%s, stderr=%s", result.ExitCode, result.Output, result.Stderr)
+	}
+	var fallbackOutput struct {
+		Input map[string]any `json:"input"`
+	}
+	if err := json.Unmarshal(result.Output, &fallbackOutput); err != nil {
+		t.Fatalf("fallback output is not JSON: %v", err)
+	}
+	if len(fallbackOutput.Input) != 0 {
+		t.Fatalf("fallback input = %#v, want empty object", fallbackOutput.Input)
+	}
 }
 
 func TestRunnerJobEnvIncludesSDKCallbackEndpoint(t *testing.T) {
