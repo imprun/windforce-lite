@@ -1374,13 +1374,20 @@ func newJobListItem(workspaceID string, job Job, run Run) JobListItem {
 		Worker:         worker,
 		GitSourceID:    numericStringPtr(job.Payload.GitSourceID),
 		CommitSha:      stringPtr(job.Payload.Commit),
-		Entrypoint:     job.Payload.ActionSpec.Entrypoint,
+		Entrypoint:     jobEntrypoint(job),
 		Tag:            jobTag(job),
 		CreatedBy:      firstNonEmpty(strings.TrimSpace(job.Payload.CreatedBy), strings.TrimSpace(run.CreatedBy), defaultActorSubject),
 		PermissionedAs: firstNonEmpty(strings.TrimSpace(job.Payload.PermissionedAs), strings.TrimSpace(run.PermissionedAs), strings.TrimSpace(job.Payload.CreatedBy), strings.TrimSpace(run.CreatedBy), defaultActorSubject),
 		CanceledReason: canceledReason(run),
 		ErrorSnippet:   failureSnippet(status, run),
 	}
+}
+
+func jobEntrypoint(job Job) string {
+	if entrypoint := strings.TrimSpace(job.Payload.Deployment.Entrypoint); entrypoint != "" {
+		return entrypoint
+	}
+	return strings.TrimSpace(job.Payload.ActionSpec.Entrypoint)
 }
 
 func jobStatusMatches(filter string, status string) bool {

@@ -163,6 +163,9 @@ func TestActionJobPreservesActorAudit(t *testing.T) {
 	if item.CreatedBy != "runner@example.test" || item.PermissionedAs != "delegate@example.test" {
 		t.Fatalf("list actor = %q/%q", item.CreatedBy, item.PermissionedAs)
 	}
+	if item.Entrypoint != "main.ts" {
+		t.Fatalf("list entrypoint = %q, want main.ts", item.Entrypoint)
+	}
 }
 
 func TestActionJobDefaultsActorAudit(t *testing.T) {
