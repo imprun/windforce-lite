@@ -30,6 +30,25 @@ type RunRequest struct {
 	Env        []string
 }
 
+const actionAdapterProtocolVersion = "windforce.action-adapter/v1"
+
+type actionAdapterRequest struct {
+	Version    string                     `json:"version"`
+	WorkDir    string                     `json:"workDir"`
+	Command    []string                   `json:"command,omitempty"`
+	InputPath  string                     `json:"inputPath"`
+	OutputPath string                     `json:"outputPath"`
+	App        string                     `json:"app"`
+	Action     string                     `json:"action"`
+	Runtime    string                     `json:"runtime,omitempty"`
+	Entrypoint string                     `json:"entrypoint,omitempty"`
+	TimeoutMs  int64                      `json:"timeoutMs,omitempty"`
+	Env        []string                   `json:"env,omitempty"`
+	ActionSpec contract.Action            `json:"actionSpec"`
+	Deployment contract.Deployment        `json:"deployment"`
+	Options    map[string]json.RawMessage `json:"options,omitempty"`
+}
+
 func (r *Runner) Run(ctx context.Context, req RunRequest) (contract.JobResult, error) {
 	if r.Store == nil {
 		return contract.JobResult{}, errors.New("bundle store is required")
@@ -47,8 +66,12 @@ func (r *Runner) Run(ctx context.Context, req RunRequest) (contract.JobResult, e
 	if !ok {
 		return contract.JobResult{}, fmt.Errorf("action %q not found in app %q", req.Action, req.Deployment.App)
 	}
-	if len(action.Command) == 0 {
+	adapterType := action.AdapterType()
+	if adapterType == contract.ActionAdapterJSONFile && len(action.Command) == 0 {
 		return contract.JobResult{}, fmt.Errorf("action %q has no command", req.Action)
+	}
+	if adapterType == contract.ActionAdapterCommand && (action.Adapter == nil || len(action.Adapter.Command) == 0) {
+		return contract.JobResult{}, fmt.Errorf("action %q has no adapter command", req.Action)
 	}
 
 	cacheRoot := r.CacheRoot
@@ -104,16 +127,53 @@ func (r *Runner) Run(ctx context.Context, req RunRequest) (contract.JobResult, e
 		timeout = time.Duration(action.TimeoutMs) * time.Millisecond
 	}
 
-	execResult, err := runner.RunJSONSubprocess(ctx, runner.JSONSubprocessRequest{
-		WorkDir:    sourceDir,
-		Command:    action.Command,
-		InputPath:  inputPath,
-		OutputPath: outputPath,
-		App:        req.Deployment.App,
-		Action:     req.Action,
-		Timeout:    timeout,
-		Env:        req.Env,
-	})
+	var execResult runner.JSONSubprocessResult
+	var execErr error
+	switch adapterType {
+	case contract.ActionAdapterJSONFile:
+		execResult, execErr = runner.RunJSONSubprocess(ctx, runner.JSONSubprocessRequest{
+			WorkDir:    sourceDir,
+			Command:    action.Command,
+			InputPath:  inputPath,
+			OutputPath: outputPath,
+			App:        req.Deployment.App,
+			Action:     req.Action,
+			Timeout:    timeout,
+			Env:        req.Env,
+		})
+	case contract.ActionAdapterCommand:
+		adapterRequestPath := filepath.Join(jobDir, "adapter-request.json")
+		adapterResultPath := filepath.Join(jobDir, "adapter-result.json")
+		adapterEnv := append([]string(nil), action.Adapter.Env...)
+		execResult, execErr = runner.RunActionAdapterSubprocess(ctx, runner.ActionAdapterSubprocessRequest{
+			WorkDir:     sourceDir,
+			Command:     action.Adapter.Command,
+			RequestPath: adapterRequestPath,
+			ResultPath:  adapterResultPath,
+			Request: actionAdapterRequest{
+				Version:    actionAdapterProtocolVersion,
+				WorkDir:    sourceDir,
+				Command:    append([]string(nil), action.Command...),
+				InputPath:  inputPath,
+				OutputPath: outputPath,
+				App:        req.Deployment.App,
+				Action:     req.Action,
+				Runtime:    action.Runtime,
+				Entrypoint: action.Entrypoint,
+				TimeoutMs:  timeout.Milliseconds(),
+				Env:        append([]string(nil), req.Env...),
+				ActionSpec: action,
+				Deployment: req.Deployment,
+				Options:    action.Adapter.Options,
+			},
+			App:     req.Deployment.App,
+			Action:  req.Action,
+			Timeout: timeout,
+			Env:     adapterEnv,
+		})
+	default:
+		return contract.JobResult{}, fmt.Errorf("unsupported action adapter %q", adapterType)
+	}
 
 	jobResult := contract.JobResult{
 		App:        req.Deployment.App,
@@ -123,9 +183,9 @@ func (r *Runner) Run(ctx context.Context, req RunRequest) (contract.JobResult, e
 		Stderr:     execResult.Stderr,
 		DurationMs: execResult.DurationMs,
 	}
-	if err != nil {
-		jobResult.Error = err.Error()
-		return jobResult, err
+	if execErr != nil {
+		jobResult.Error = execErr.Error()
+		return jobResult, execErr
 	}
 
 	output, readErr := os.ReadFile(outputPath)

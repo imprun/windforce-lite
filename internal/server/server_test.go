@@ -59,6 +59,9 @@ func TestTriggerCreatesRunAndAPIReadsIt(t *testing.T) {
 	if triggerResponse["runId"] != "task-a" || triggerResponse["state"] != string(state.RunQueued) {
 		t.Fatalf("trigger response = %#v", triggerResponse)
 	}
+	if triggerResponse["correlationId"] != "task-a" {
+		t.Fatalf("trigger correlation id = %#v", triggerResponse)
+	}
 
 	getResp, err := http.Get(server.URL + "/v1/runs/task-a")
 	if err != nil {
@@ -74,6 +77,9 @@ func TestTriggerCreatesRunAndAPIReadsIt(t *testing.T) {
 	}
 	if getResponse["runId"] != "task-a" {
 		t.Fatalf("GET response = %#v", getResponse)
+	}
+	if getResponse["correlationId"] != "task-a" {
+		t.Fatalf("GET correlation id = %#v", getResponse)
 	}
 
 	cancelResp, err := http.Post(server.URL+"/v1/runs/task-a/cancel", "application/json", bytes.NewBufferString(`{"reason":"test"}`))

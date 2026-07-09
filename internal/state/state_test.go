@@ -45,7 +45,11 @@ func exerciseStoreLifecycle(t *testing.T, store Store) {
 		},
 	}
 	run := NewRun("windforce", "run-a", "echo", "echo", deployment, json.RawMessage(`{"message":"hello"}`))
+	run.CorrelationID = "task-a"
 	job := NewActionJob(run, nil)
+	if job.Payload.CorrelationID != "task-a" {
+		t.Fatalf("job correlation id = %q, want task-a", job.Payload.CorrelationID)
+	}
 	if err := store.CreateRunAndEnqueue(context.Background(), run, job); err != nil {
 		t.Fatalf("CreateRunAndEnqueue returned error: %v", err)
 	}
@@ -77,6 +81,9 @@ func exerciseStoreLifecycle(t *testing.T, store Store) {
 	if waiting.State != RunWaitingHuman || waiting.TaskID != "human-a" {
 		t.Fatalf("waiting run = %#v", waiting)
 	}
+	if waiting.CorrelationID != "task-a" {
+		t.Fatalf("waiting correlation id = %q, want task-a", waiting.CorrelationID)
+	}
 
 	resumed, resumeJob, err := store.ResumeHumanTask(context.Background(), "human-a", json.RawMessage(`{"approved":true}`))
 	if err != nil {
@@ -84,6 +91,9 @@ func exerciseStoreLifecycle(t *testing.T, store Store) {
 	}
 	if resumed.State != RunResuming {
 		t.Fatalf("resumed state = %s, want %s", resumed.State, RunResuming)
+	}
+	if resumed.CorrelationID != "task-a" || resumeJob.Payload.CorrelationID != "task-a" {
+		t.Fatalf("resumed correlation id = %q, job = %q, want task-a", resumed.CorrelationID, resumeJob.Payload.CorrelationID)
 	}
 	input := string(resumeJob.Payload.Input)
 	if !strings.Contains(input, `"$resume"`) || !strings.Contains(input, `"approved":true`) {
@@ -103,6 +113,9 @@ func exerciseStoreLifecycle(t *testing.T, store Store) {
 	}
 	if retried.State != RunQueued {
 		t.Fatalf("retried state = %s, want %s", retried.State, RunQueued)
+	}
+	if retried.CorrelationID != "task-a" || retryJob.Payload.CorrelationID != "task-a" {
+		t.Fatalf("retried correlation id = %q, job = %q, want task-a", retried.CorrelationID, retryJob.Payload.CorrelationID)
 	}
 	var retryInput struct {
 		Message string `json:"message"`

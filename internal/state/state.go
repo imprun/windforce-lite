@@ -57,33 +57,35 @@ var (
 )
 
 type Run struct {
-	ID         string              `json:"id"`
-	Adapter    string              `json:"adapter,omitempty"`
-	App        string              `json:"app"`
-	Action     string              `json:"action"`
-	State      RunState            `json:"state"`
-	Deployment contract.Deployment `json:"deployment"`
-	Input      json.RawMessage     `json:"input,omitempty"`
-	Output     json.RawMessage     `json:"output,omitempty"`
-	Result     *contract.JobResult `json:"result,omitempty"`
-	Error      json.RawMessage     `json:"error,omitempty"`
-	TaskID     string              `json:"taskId,omitempty"`
-	Env        []string            `json:"env,omitempty"`
-	CreatedAt  time.Time           `json:"createdAt"`
-	UpdatedAt  time.Time           `json:"updatedAt"`
-	ExpiresAt  *time.Time          `json:"expiresAt,omitempty"`
+	ID            string              `json:"id"`
+	Adapter       string              `json:"adapter,omitempty"`
+	App           string              `json:"app"`
+	Action        string              `json:"action"`
+	State         RunState            `json:"state"`
+	Deployment    contract.Deployment `json:"deployment"`
+	Input         json.RawMessage     `json:"input,omitempty"`
+	Output        json.RawMessage     `json:"output,omitempty"`
+	Result        *contract.JobResult `json:"result,omitempty"`
+	Error         json.RawMessage     `json:"error,omitempty"`
+	TaskID        string              `json:"taskId,omitempty"`
+	CorrelationID string              `json:"correlationId,omitempty"`
+	Env           []string            `json:"env,omitempty"`
+	CreatedAt     time.Time           `json:"createdAt"`
+	UpdatedAt     time.Time           `json:"updatedAt"`
+	ExpiresAt     *time.Time          `json:"expiresAt,omitempty"`
 }
 
 type JobPayload struct {
-	Workspace   string              `json:"workspace,omitempty"`
-	GitSourceID string              `json:"gitSourceId,omitempty"`
-	Commit      string              `json:"commit,omitempty"`
-	App         string              `json:"app"`
-	Action      string              `json:"action"`
-	ActionSpec  contract.Action     `json:"actionSpec,omitempty"`
-	Input       json.RawMessage     `json:"input,omitempty"`
-	Deployment  contract.Deployment `json:"deployment"`
-	Env         []string            `json:"env,omitempty"`
+	Workspace     string              `json:"workspace,omitempty"`
+	GitSourceID   string              `json:"gitSourceId,omitempty"`
+	Commit        string              `json:"commit,omitempty"`
+	App           string              `json:"app"`
+	Action        string              `json:"action"`
+	ActionSpec    contract.Action     `json:"actionSpec,omitempty"`
+	Input         json.RawMessage     `json:"input,omitempty"`
+	Deployment    contract.Deployment `json:"deployment"`
+	CorrelationID string              `json:"correlationId,omitempty"`
+	Env           []string            `json:"env,omitempty"`
 }
 
 type Job struct {
@@ -203,15 +205,16 @@ func NewActionJob(run Run, input json.RawMessage) Job {
 		CreatedAt: now,
 		UpdatedAt: now,
 		Payload: JobPayload{
-			Workspace:   run.Deployment.SourceWorkspace(),
-			GitSourceID: run.Deployment.SourceGitSourceID(),
-			Commit:      run.Deployment.Commit,
-			App:         run.App,
-			Action:      run.Action,
-			ActionSpec:  actionSpec,
-			Input:       cloneRaw(input),
-			Deployment:  run.Deployment,
-			Env:         append([]string(nil), run.Env...),
+			Workspace:     run.Deployment.SourceWorkspace(),
+			GitSourceID:   run.Deployment.SourceGitSourceID(),
+			Commit:        run.Deployment.Commit,
+			App:           run.App,
+			Action:        run.Action,
+			ActionSpec:    actionSpec,
+			Input:         cloneRaw(input),
+			Deployment:    run.Deployment,
+			CorrelationID: run.CorrelationID,
+			Env:           append([]string(nil), run.Env...),
 		},
 	}
 }
@@ -248,10 +251,21 @@ func (s *LocalStore) CreateRunAndEnqueue(ctx context.Context, run Run, job Job) 
 		run.UpdatedAt = now
 		job.CreatedAt = nonZeroTime(job.CreatedAt, now)
 		job.UpdatedAt = now
+		if job.Payload.CorrelationID == "" {
+			job.Payload.CorrelationID = run.CorrelationID
+		}
 		snapshot.Runs[run.ID] = run
 		snapshot.Jobs[job.ID] = job
-		appendEvent(snapshot, run.ID, "run_created", map[string]string{"app": run.App, "action": run.Action}, now)
-		appendEvent(snapshot, run.ID, "job_enqueued", map[string]string{"jobId": job.ID}, now)
+		runCreated := map[string]string{"app": run.App, "action": run.Action}
+		if run.CorrelationID != "" {
+			runCreated["correlationId"] = run.CorrelationID
+		}
+		appendEvent(snapshot, run.ID, "run_created", runCreated, now)
+		jobEnqueued := map[string]string{"jobId": job.ID}
+		if run.CorrelationID != "" {
+			jobEnqueued["correlationId"] = run.CorrelationID
+		}
+		appendEvent(snapshot, run.ID, "job_enqueued", jobEnqueued, now)
 		return nil
 	})
 }
@@ -327,9 +341,9 @@ func (s *LocalStore) ClaimJob(ctx context.Context, workerID string, leaseTTL tim
 			run.State = RunRunning
 			run.UpdatedAt = now
 			snapshot.Runs[run.ID] = run
-			appendEvent(snapshot, run.ID, "run_running", map[string]string{"jobId": job.ID}, now)
+			appendEvent(snapshot, run.ID, "run_running", eventPayload(run.CorrelationID, map[string]any{"jobId": job.ID}), now)
 		}
-		appendEvent(snapshot, job.RunID, "job_claimed", map[string]any{"jobId": job.ID, "workerId": workerID, "attempt": job.Attempt}, now)
+		appendEvent(snapshot, job.RunID, "job_claimed", eventPayload(job.Payload.CorrelationID, map[string]any{"jobId": job.ID, "workerId": workerID, "attempt": job.Attempt}), now)
 
 		claimed = job
 		lease = Lease{JobID: job.ID, WorkerID: workerID, ExpiresAt: expiresAt, Attempt: job.Attempt, AcquiredAt: now}
@@ -359,7 +373,7 @@ func (s *LocalStore) CompleteJobSucceeded(ctx context.Context, lease Lease, resu
 		run.UpdatedAt = now
 		snapshot.Jobs[job.ID] = job
 		snapshot.Runs[run.ID] = run
-		appendEvent(snapshot, run.ID, "run_succeeded", map[string]string{"jobId": job.ID}, now)
+		appendEvent(snapshot, run.ID, "run_succeeded", eventPayload(run.CorrelationID, map[string]any{"jobId": job.ID}), now)
 		return nil
 	})
 }
@@ -383,7 +397,7 @@ func (s *LocalStore) CompleteJobFailed(ctx context.Context, lease Lease, result 
 		run.UpdatedAt = now
 		snapshot.Jobs[job.ID] = job
 		snapshot.Runs[run.ID] = run
-		appendEvent(snapshot, run.ID, "run_failed", map[string]any{"jobId": job.ID, "error": result.Error, "exitCode": result.ExitCode}, now)
+		appendEvent(snapshot, run.ID, "run_failed", eventPayload(run.CorrelationID, map[string]any{"jobId": job.ID, "error": result.Error, "exitCode": result.ExitCode}), now)
 		return nil
 	})
 }
@@ -419,7 +433,7 @@ func (s *LocalStore) CompleteJobWaitingHuman(ctx context.Context, lease Lease, r
 		snapshot.Jobs[job.ID] = job
 		snapshot.Runs[run.ID] = run
 		snapshot.HumanTasks[task.ID] = task
-		appendEvent(snapshot, run.ID, "human_task_created", map[string]string{"jobId": job.ID, "taskId": task.ID}, now)
+		appendEvent(snapshot, run.ID, "human_task_created", eventPayload(run.CorrelationID, map[string]any{"jobId": job.ID, "taskId": task.ID}), now)
 		return nil
 	})
 }
@@ -463,7 +477,7 @@ func (s *LocalStore) ResumeHumanTask(ctx context.Context, taskID string, resumeI
 		snapshot.HumanTasks[task.ID] = task
 		snapshot.Runs[run.ID] = run
 		snapshot.Jobs[job.ID] = job
-		appendEvent(snapshot, run.ID, "human_task_resumed", map[string]string{"taskId": task.ID, "jobId": job.ID}, now)
+		appendEvent(snapshot, run.ID, "human_task_resumed", eventPayload(run.CorrelationID, map[string]any{"taskId": task.ID, "jobId": job.ID}), now)
 		resumedRun = run
 		enqueuedJob = job
 		return nil
@@ -513,7 +527,7 @@ func (s *LocalStore) CancelRun(ctx context.Context, runID string, reason string)
 			snapshot.HumanTasks[id] = task
 		}
 		snapshot.Runs[runID] = run
-		appendEvent(snapshot, runID, "run_canceled", map[string]string{"reason": reason}, now)
+		appendEvent(snapshot, runID, "run_canceled", eventPayload(run.CorrelationID, map[string]any{"reason": reason}), now)
 		canceled = run
 		return nil
 	})
@@ -544,7 +558,7 @@ func (s *LocalStore) RetryRun(ctx context.Context, runID string) (Run, Job, erro
 		job.UpdatedAt = now
 		snapshot.Runs[run.ID] = run
 		snapshot.Jobs[job.ID] = job
-		appendEvent(snapshot, run.ID, "run_retried", map[string]string{"jobId": job.ID}, now)
+		appendEvent(snapshot, run.ID, "run_retried", eventPayload(run.CorrelationID, map[string]any{"jobId": job.ID}), now)
 		retried = run
 		enqueued = job
 		return nil
@@ -671,7 +685,7 @@ func requeueExpiredJobs(snapshot *Snapshot, now time.Time) {
 		job.LeaseExpiresAt = nil
 		job.UpdatedAt = now
 		snapshot.Jobs[id] = job
-		appendEvent(snapshot, job.RunID, "job_lease_expired", map[string]string{"jobId": job.ID}, now)
+		appendEvent(snapshot, job.RunID, "job_lease_expired", eventPayload(job.Payload.CorrelationID, map[string]any{"jobId": job.ID}), now)
 	}
 }
 
@@ -702,6 +716,16 @@ func appendEvent(snapshot *Snapshot, runID string, eventType string, payload any
 		Payload:   mustRaw(payload),
 		CreatedAt: now,
 	})
+}
+
+func eventPayload(correlationID string, values map[string]any) map[string]any {
+	if values == nil {
+		values = map[string]any{}
+	}
+	if correlationID != "" {
+		values["correlationId"] = correlationID
+	}
+	return values
 }
 
 func mergeResumeInput(original json.RawMessage, taskID string, resumeInput json.RawMessage) json.RawMessage {

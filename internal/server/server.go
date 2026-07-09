@@ -146,6 +146,7 @@ func (h *Handler) handleTrigger(w http.ResponseWriter, r *http.Request, route tr
 		runID = state.NewID("run")
 	}
 	run := state.NewRun(route.adapterName, runID, route.app, route.action, deployment, input)
+	run.CorrelationID = runID
 	run.Env = append([]string(nil), route.env...)
 	job := state.NewActionJob(run, input)
 	if err := h.store.CreateRunAndEnqueue(r.Context(), run, job); err != nil {
@@ -537,6 +538,9 @@ func runResponse(run state.Run) map[string]any {
 	}
 	if run.TaskID != "" {
 		response["humanTaskId"] = run.TaskID
+	}
+	if run.CorrelationID != "" {
+		response["correlationId"] = run.CorrelationID
 	}
 	if len(run.Output) > 0 {
 		response["output"] = json.RawMessage(run.Output)

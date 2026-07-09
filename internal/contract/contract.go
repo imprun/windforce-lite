@@ -9,6 +9,9 @@ import (
 const (
 	DefaultWorkspace   = "default"
 	DefaultGitSourceID = "local"
+
+	ActionAdapterJSONFile = "json-file"
+	ActionAdapterCommand  = "command"
 )
 
 // App is the deployable source bundle described by windforce.json.
@@ -20,13 +23,26 @@ type App struct {
 
 // Action is one executable unit inside an app.
 type Action struct {
-	Action       string   `json:"action"`
-	Runtime      string   `json:"runtime,omitempty"`
-	Entrypoint   string   `json:"entrypoint,omitempty"`
-	Command      []string `json:"command,omitempty"`
-	InputSchema  string   `json:"inputSchema,omitempty"`
-	OutputSchema string   `json:"outputSchema,omitempty"`
-	TimeoutMs    int64    `json:"timeoutMs,omitempty"`
+	Action       string         `json:"action"`
+	Runtime      string         `json:"runtime,omitempty"`
+	Entrypoint   string         `json:"entrypoint,omitempty"`
+	Command      []string       `json:"command,omitempty"`
+	Adapter      *ActionAdapter `json:"adapter,omitempty"`
+	InputSchema  string         `json:"inputSchema,omitempty"`
+	OutputSchema string         `json:"outputSchema,omitempty"`
+	TimeoutMs    int64          `json:"timeoutMs,omitempty"`
+}
+
+// ActionAdapter selects the contract between windforce-lite and an action script.
+//
+// The zero value is the built-in json-file adapter. The command adapter invokes
+// an external adapter subprocess, letting solution-specific script contracts live
+// outside the core runtime.
+type ActionAdapter struct {
+	Type    string                     `json:"type,omitempty"`
+	Command []string                   `json:"command,omitempty"`
+	Env     []string                   `json:"env,omitempty"`
+	Options map[string]json.RawMessage `json:"options,omitempty"`
 }
 
 // Deployment is the active source bundle selected by the catalog.
@@ -61,6 +77,17 @@ type JobResult struct {
 	Stderr     string          `json:"stderr,omitempty"`
 	DurationMs int64           `json:"durationMs"`
 	Error      string          `json:"error,omitempty"`
+}
+
+func (a Action) AdapterType() string {
+	if a.Adapter == nil {
+		return ActionAdapterJSONFile
+	}
+	value := strings.TrimSpace(a.Adapter.Type)
+	if value == "" {
+		return ActionAdapterJSONFile
+	}
+	return value
 }
 
 func NormalizeWorkspace(value string) string {

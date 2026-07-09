@@ -63,15 +63,60 @@ Every app source has a `windforce.json` file:
     "echo": {
       "runtime": "go",
       "command": ["go", "run", "./action.go"],
+      "adapter": { "type": "json-file" },
       "timeoutMs": 30000
     }
   }
 }
 ```
 
-`command` is executed from the fetched app source directory.
+`command` is executed from the fetched app source directory. If `adapter` is
+omitted, windforce-lite uses the built-in `json-file` adapter.
 
-## JSON subprocess contract
+## Action adapters
+
+An action adapter defines the contract between windforce-lite and the action
+script. Built-in adapter types:
+
+- `json-file`: runs `command` directly with file-based JSON IO.
+- `command`: runs an external adapter command. The external adapter receives a
+  Windforce adapter request and decides how to call the real script.
+
+Example external adapter:
+
+```json
+{
+  "app": "legacy-app",
+  "actions": {
+    "run": {
+      "command": ["legacy-runtime", "run"],
+      "adapter": {
+        "type": "command",
+        "command": ["legacy-windforce-adapter"],
+        "options": {
+          "mode": "compat"
+        }
+      }
+    }
+  }
+}
+```
+
+The `command` adapter process receives:
+
+- `WINDFORCE_ADAPTER_REQUEST_JSON`: request JSON file path
+- `WINDFORCE_ADAPTER_RESULT_JSON`: result JSON file path
+- `WINDFORCE_APP`: app name
+- `WINDFORCE_ACTION`: action name
+
+The request JSON includes `version`, `workDir`, `command`, `inputPath`,
+`outputPath`, `app`, `action`, `runtime`, `entrypoint`, `timeoutMs`, `env`,
+`actionSpec`, `deployment`, and `options`. The adapter should write the action
+output JSON to `outputPath`, then write a result JSON compatible with
+`JobResult` subprocess fields: `exitCode`, `stdout`, `stderr`, and
+`durationMs`.
+
+## JSON file adapter contract
 
 The runner passes file paths through environment variables:
 

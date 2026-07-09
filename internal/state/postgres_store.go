@@ -16,7 +16,7 @@ import (
 
 const runColumns = `
 	id, adapter, app, action, state, deployment, input, output, result, error,
-	task_id, env, created_at, updated_at, expires_at
+	task_id, correlation_id, env, created_at, updated_at, expires_at
 `
 
 const jobColumns = `
@@ -68,6 +68,7 @@ CREATE TABLE IF NOT EXISTS runs (
     result JSONB,
     error JSONB,
     task_id TEXT,
+    correlation_id TEXT,
     env JSONB,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -111,6 +112,7 @@ CREATE TABLE IF NOT EXISTS run_events (
 );
 
 ALTER TABLE runs ADD COLUMN IF NOT EXISTS result JSONB;
+ALTER TABLE runs ADD COLUMN IF NOT EXISTS correlation_id TEXT;
 ALTER TABLE runs ADD COLUMN IF NOT EXISTS env JSONB;
 
 CREATE INDEX IF NOT EXISTS jobs_claim_idx
@@ -124,6 +126,10 @@ CREATE INDEX IF NOT EXISTS jobs_lease_idx
 CREATE INDEX IF NOT EXISTS human_tasks_pending_idx
     ON human_tasks (created_at)
     WHERE state = 'pending';
+
+CREATE INDEX IF NOT EXISTS runs_correlation_id_idx
+    ON runs (correlation_id)
+    WHERE correlation_id IS NOT NULL;
 `)
 	return err
 }
@@ -135,15 +141,18 @@ func (s *PostgresStore) CreateRunAndEnqueue(ctx context.Context, run Run, job Jo
 		run.UpdatedAt = now
 		job.CreatedAt = nonZeroTime(job.CreatedAt, now)
 		job.UpdatedAt = now
+		if job.Payload.CorrelationID == "" {
+			job.Payload.CorrelationID = run.CorrelationID
+		}
 
 		if _, err := tx.Exec(ctx, `
 INSERT INTO runs (
 	id, adapter, app, action, state, deployment, input, output, result, error,
-	task_id, env, created_at, updated_at, expires_at
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+	task_id, correlation_id, env, created_at, updated_at, expires_at
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
 `, run.ID, run.Adapter, run.App, run.Action, string(run.State), mustRaw(run.Deployment), requiredRaw(run.Input),
 			nullableRaw(run.Output), nullableResult(run.Result), nullableRaw(run.Error), nullableString(run.TaskID),
-			nullableStrings(run.Env), run.CreatedAt, run.UpdatedAt, run.ExpiresAt); err != nil {
+			nullableString(run.CorrelationID), nullableStrings(run.Env), run.CreatedAt, run.UpdatedAt, run.ExpiresAt); err != nil {
 			return err
 		}
 		if _, err := tx.Exec(ctx, `
@@ -155,10 +164,12 @@ INSERT INTO jobs (
 			nullableString(job.LeaseOwner), job.LeaseExpiresAt, job.CreatedAt, job.UpdatedAt); err != nil {
 			return err
 		}
-		if err := insertEvent(ctx, tx, run.ID, "run_created", map[string]string{"app": run.App, "action": run.Action}); err != nil {
+		runCreated := eventPayload(run.CorrelationID, map[string]any{"app": run.App, "action": run.Action})
+		if err := insertEvent(ctx, tx, run.ID, "run_created", runCreated); err != nil {
 			return err
 		}
-		return insertEvent(ctx, tx, run.ID, "job_enqueued", map[string]string{"jobId": job.ID})
+		jobEnqueued := eventPayload(run.CorrelationID, map[string]any{"jobId": job.ID})
+		return insertEvent(ctx, tx, run.ID, "job_enqueued", jobEnqueued)
 	})
 }
 
@@ -227,7 +238,7 @@ WHERE id=$3 AND state IN ($4, $5)
 `, string(RunRunning), now, job.RunID, string(RunQueued), string(RunResuming)); err != nil {
 			return err
 		}
-		if err := insertEvent(ctx, tx, job.RunID, "job_claimed", map[string]any{"jobId": job.ID, "workerId": workerID, "attempt": job.Attempt}); err != nil {
+		if err := insertEvent(ctx, tx, job.RunID, "job_claimed", eventPayload(job.Payload.CorrelationID, map[string]any{"jobId": job.ID, "workerId": workerID, "attempt": job.Attempt})); err != nil {
 			return err
 		}
 		claimed = job
@@ -257,7 +268,7 @@ WHERE id=$5
 `, string(RunSucceeded), nullableRaw(result.Output), mustRaw(result), now, run.ID); err != nil {
 			return err
 		}
-		return insertEvent(ctx, tx, run.ID, "run_succeeded", map[string]string{"jobId": job.ID})
+		return insertEvent(ctx, tx, run.ID, "run_succeeded", eventPayload(run.CorrelationID, map[string]any{"jobId": job.ID}))
 	})
 }
 
@@ -281,7 +292,7 @@ WHERE id=$5
 `, string(RunFailed), mustRaw(result), mustRaw(map[string]any{"message": result.Error, "exitCode": result.ExitCode}), now, run.ID); err != nil {
 			return err
 		}
-		return insertEvent(ctx, tx, run.ID, "run_failed", map[string]any{"jobId": job.ID, "error": result.Error, "exitCode": result.ExitCode})
+		return insertEvent(ctx, tx, run.ID, "run_failed", eventPayload(run.CorrelationID, map[string]any{"jobId": job.ID, "error": result.Error, "exitCode": result.ExitCode}))
 	})
 }
 
@@ -321,7 +332,7 @@ WHERE id=$5
 `, string(RunWaitingHuman), mustRaw(result), task.ID, now, run.ID); err != nil {
 			return err
 		}
-		return insertEvent(ctx, tx, run.ID, "human_task_created", map[string]string{"jobId": job.ID, "taskId": task.ID})
+		return insertEvent(ctx, tx, run.ID, "human_task_created", eventPayload(run.CorrelationID, map[string]any{"jobId": job.ID, "taskId": task.ID}))
 	})
 }
 
@@ -387,7 +398,7 @@ INSERT INTO jobs (
 			nullableString(job.LeaseOwner), job.LeaseExpiresAt, job.CreatedAt, job.UpdatedAt); err != nil {
 			return err
 		}
-		if err := insertEvent(ctx, tx, run.ID, "human_task_resumed", map[string]string{"taskId": task.ID, "jobId": job.ID}); err != nil {
+		if err := insertEvent(ctx, tx, run.ID, "human_task_resumed", eventPayload(run.CorrelationID, map[string]any{"taskId": task.ID, "jobId": job.ID})); err != nil {
 			return err
 		}
 		resumedRun = run
@@ -446,7 +457,7 @@ WHERE run_id=$2 AND state=$3
 `, string(HumanTaskExpired), run.ID, string(HumanTaskPending)); err != nil {
 			return err
 		}
-		if err := insertEvent(ctx, tx, run.ID, "run_canceled", map[string]string{"reason": reason}); err != nil {
+		if err := insertEvent(ctx, tx, run.ID, "run_canceled", eventPayload(run.CorrelationID, map[string]any{"reason": reason})); err != nil {
 			return err
 		}
 		canceled = run
@@ -497,7 +508,7 @@ INSERT INTO jobs (
 			nullableString(job.LeaseOwner), job.LeaseExpiresAt, job.CreatedAt, job.UpdatedAt); err != nil {
 			return err
 		}
-		if err := insertEvent(ctx, tx, run.ID, "run_retried", map[string]string{"jobId": job.ID}); err != nil {
+		if err := insertEvent(ctx, tx, run.ID, "run_retried", eventPayload(run.CorrelationID, map[string]any{"jobId": job.ID})); err != nil {
 			return err
 		}
 		retried = run
@@ -529,11 +540,12 @@ func scanRun(row rowScanner) (Run, error) {
 	var deployment json.RawMessage
 	var result json.RawMessage
 	var taskID sql.NullString
+	var correlationID sql.NullString
 	var expiresAt sql.NullTime
 	var env json.RawMessage
 	if err := row.Scan(
 		&run.ID, &run.Adapter, &run.App, &run.Action, &stateValue, &deployment, &run.Input,
-		&run.Output, &result, &run.Error, &taskID, &env, &run.CreatedAt, &run.UpdatedAt, &expiresAt,
+		&run.Output, &result, &run.Error, &taskID, &correlationID, &env, &run.CreatedAt, &run.UpdatedAt, &expiresAt,
 	); err != nil {
 		return Run{}, err
 	}
@@ -550,6 +562,9 @@ func scanRun(row rowScanner) (Run, error) {
 	}
 	if taskID.Valid {
 		run.TaskID = taskID.String
+	}
+	if correlationID.Valid {
+		run.CorrelationID = correlationID.String
 	}
 	if expiresAt.Valid {
 		run.ExpiresAt = &expiresAt.Time
