@@ -1381,6 +1381,8 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 		InputSchema  json.RawMessage `json:"input_schema"`
 		OutputSchema json.RawMessage `json:"output_schema"`
 		Input        json.RawMessage `json:"input"`
+		CommitSha    string          `json:"commit_sha"`
+		Entrypoint   string          `json:"entrypoint"`
 		Tag          string          `json:"tag"`
 	}
 	if err := json.NewDecoder(statusResp.Body).Decode(&statusBody); err != nil {
@@ -1389,6 +1391,8 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 	if !bytes.Contains(statusBody.InputSchema, []byte(`"message"`)) ||
 		!bytes.Contains(statusBody.OutputSchema, []byte(`"ok"`)) ||
 		!bytes.Contains(statusBody.Input, []byte(`"hello"`)) ||
+		statusBody.CommitSha != syncBody.Commit ||
+		statusBody.Entrypoint != "main.ts" ||
 		statusBody.Tag != "browser" {
 		t.Fatalf("status body schemas/input = input_schema:%s output_schema:%s input:%s", statusBody.InputSchema, statusBody.OutputSchema, statusBody.Input)
 	}
@@ -1513,6 +1517,68 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 	}
 	if deploymentError["error"] != "deployment not found" {
 		t.Fatalf("deployment error = %#v", deploymentError)
+	}
+
+	if err := os.WriteFile(filepath.Join(repoDir, "windforce.json"), []byte(`{
+		"app": "echo",
+		"entrypoint": "main.v2.ts",
+		"scriptLang": "typescript",
+		"timeout": 240,
+		"tag": "batch",
+		"actions": {
+			"echo": {
+				"inputSchema": "input.schema.json",
+				"outputSchema": "output.schema.json"
+			}
+		}
+	}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repoDir, "input.schema.json"), []byte(`{"type":"object","properties":{"changed":{"type":"number"}}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runTestGit(t, repoDir, "add", "windforce.json", "input.schema.json")
+	runTestGit(t, repoDir, "commit", "-m", "resync changes catalog")
+	resyncResp, err := http.Post(server.URL+"/api/w/ws-a/git_sources/"+registeredID+"/sync", "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resyncResp.Body.Close()
+	if resyncResp.StatusCode != http.StatusOK {
+		t.Fatalf("resync status = %d, want %d", resyncResp.StatusCode, http.StatusOK)
+	}
+	var resyncBody struct {
+		Commit string `json:"commit"`
+	}
+	if err := json.NewDecoder(resyncResp.Body).Decode(&resyncBody); err != nil {
+		t.Fatal(err)
+	}
+	if resyncBody.Commit == "" || resyncBody.Commit == syncBody.Commit {
+		t.Fatalf("resync commit = %q, initial = %q", resyncBody.Commit, syncBody.Commit)
+	}
+	pinnedResp, err := http.Get(server.URL + "/api/w/ws-a/jobs/" + runBody.JobID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pinnedResp.Body.Close()
+	if pinnedResp.StatusCode != http.StatusOK {
+		t.Fatalf("pinned status = %d, want %d", pinnedResp.StatusCode, http.StatusOK)
+	}
+	var pinned struct {
+		CommitSha   string          `json:"commit_sha"`
+		Entrypoint  string          `json:"entrypoint"`
+		InputSchema json.RawMessage `json:"input_schema"`
+		Tag         string          `json:"tag"`
+	}
+	if err := json.NewDecoder(pinnedResp.Body).Decode(&pinned); err != nil {
+		t.Fatal(err)
+	}
+	if pinned.CommitSha != syncBody.Commit ||
+		pinned.Entrypoint != "main.ts" ||
+		pinned.Tag != "browser" ||
+		!bytes.Contains(pinned.InputSchema, []byte(`"message"`)) ||
+		bytes.Contains(pinned.InputSchema, []byte(`"changed"`)) {
+		t.Fatalf("queued job pins changed after resync: %#v input_schema=%s", pinned, pinned.InputSchema)
 	}
 }
 

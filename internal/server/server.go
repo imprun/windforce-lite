@@ -2374,6 +2374,8 @@ type jobStatusResponse struct {
 	OutputSchema json.RawMessage `json:"output_schema,omitempty"`
 	Tag          string          `json:"tag,omitempty"`
 	TimeoutS     int32           `json:"timeout_s,omitempty"`
+	CreatedBy    string          `json:"created_by,omitempty"`
+	PermissionedAs string        `json:"permissioned_as,omitempty"`
 	Input        json.RawMessage `json:"input,omitempty"`
 	CreatedAt    *time.Time      `json:"created_at,omitempty"`
 	StartedAt    *time.Time      `json:"started_at,omitempty"`
@@ -2418,11 +2420,13 @@ func newJobStatus(workspaceID string, job state.Job, run state.Run) jobStatusRes
 		Kind:         stringPtr(kind),
 		GitSourceID:  canonicalGitSourceIDPtr(job.Payload.GitSourceID),
 		CommitSha:    stringPtr(commit),
-		Entrypoint:   stringPtr(job.Payload.ActionSpec.Entrypoint),
+		Entrypoint:   stringPtr(jobStatusEntrypoint(job)),
 		InputSchema:  cloneRaw(job.Payload.InputSchema),
 		OutputSchema: cloneRaw(job.Payload.OutputSchema),
 		Tag:          tag,
 		TimeoutS:     timeoutSeconds(job.Payload.ActionSpec.TimeoutMs),
+		CreatedBy:    firstNonEmpty(strings.TrimSpace(job.Payload.CreatedBy), strings.TrimSpace(run.CreatedBy)),
+		PermissionedAs: firstNonEmpty(strings.TrimSpace(job.Payload.PermissionedAs), strings.TrimSpace(run.PermissionedAs), strings.TrimSpace(job.Payload.CreatedBy), strings.TrimSpace(run.CreatedBy)),
 		Input:        cloneRaw(job.Payload.Input),
 		CreatedAt:    &job.CreatedAt,
 		StartedAt:    startedAt,
@@ -2432,6 +2436,13 @@ func newJobStatus(workspaceID string, job state.Job, run state.Run) jobStatusRes
 		response.DurationMs = run.Result.DurationMs
 	}
 	return response
+}
+
+func jobStatusEntrypoint(job state.Job) string {
+	if entrypoint := strings.TrimSpace(job.Payload.Deployment.Entrypoint); entrypoint != "" {
+		return entrypoint
+	}
+	return strings.TrimSpace(job.Payload.ActionSpec.Entrypoint)
 }
 
 func jobStatusTriggerKind(job state.Job, run state.Run) string {
