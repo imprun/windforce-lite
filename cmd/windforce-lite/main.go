@@ -122,6 +122,7 @@ func runAction(args []string) int {
 	bunPath := flags.String("bun-path", "", "bun executable path")
 	pythonPath := flags.String("python-path", "", "python executable path")
 	goPath := flags.String("go-path", "", "go executable path")
+	prepareTimeout := flags.Duration("prepare-timeout", 0, "source prepare timeout; defaults to 5m")
 	timeout := flags.Duration("timeout", 0, "action timeout override")
 	if err := flags.Parse(args); err != nil {
 		return 2
@@ -139,11 +140,12 @@ func runAction(args []string) int {
 	}
 
 	r := runtime.Runner{
-		Store:      bundle.NewLocalStore(*storeDir),
-		CacheRoot:  *cacheRoot,
-		BunPath:    *bunPath,
-		PythonPath: *pythonPath,
-		GoPath:     *goPath,
+		Store:          bundle.NewLocalStore(*storeDir),
+		CacheRoot:      *cacheRoot,
+		BunPath:        *bunPath,
+		PythonPath:     *pythonPath,
+		GoPath:         *goPath,
+		PrepareTimeout: *prepareTimeout,
 	}
 	result, err := r.Run(context.Background(), runtime.RunRequest{
 		Deployment: deployment,
@@ -184,6 +186,7 @@ func runServer(args []string, mode string) int {
 	bunPath := flags.String("bun-path", "", "bun executable path")
 	pythonPath := flags.String("python-path", "", "python executable path")
 	goPath := flags.String("go-path", "", "go executable path")
+	prepareTimeout := flags.Duration("prepare-timeout", 0, "source prepare timeout; defaults to 5m")
 	poll := flags.Duration("poll", 500*time.Millisecond, "standalone worker poll interval")
 	leaseTTL := flags.Duration("lease", 30*time.Second, "worker job lease TTL")
 	workerID := flags.String("worker-id", "", "worker identity for standalone processing")
@@ -220,13 +223,14 @@ func runServer(args []string, mode string) int {
 		processor := worker.Processor{
 			Store: stateStore,
 			Runner: runtime.Runner{
-				Store:      bundle.NewLocalStore(*storeDir),
-				CacheRoot:  *cacheRoot,
-				BaseURL:    runtimeBaseURL,
-				APIToken:   adminToken,
-				BunPath:    *bunPath,
-				PythonPath: *pythonPath,
-				GoPath:     *goPath,
+				Store:          bundle.NewLocalStore(*storeDir),
+				CacheRoot:      *cacheRoot,
+				BaseURL:        runtimeBaseURL,
+				APIToken:       adminToken,
+				BunPath:        *bunPath,
+				PythonPath:     *pythonPath,
+				GoPath:         *goPath,
+				PrepareTimeout: *prepareTimeout,
 			},
 			WorkerID:        *workerID,
 			Group:           *workerGroup,
@@ -261,6 +265,7 @@ func runWorker(args []string) int {
 	bunPath := flags.String("bun-path", "", "bun executable path")
 	pythonPath := flags.String("python-path", "", "python executable path")
 	goPath := flags.String("go-path", "", "go executable path")
+	prepareTimeout := flags.Duration("prepare-timeout", 0, "source prepare timeout; defaults to 5m")
 	baseURL := flags.String("base-url", "", "public API base URL injected into job ctx helpers")
 	apiTokenEnv := flags.String("api-token-env", "", "environment variable that contains the API bearer token for ctx helpers")
 	poll := flags.Duration("poll", 500*time.Millisecond, "job poll interval")
@@ -283,13 +288,14 @@ func runWorker(args []string) int {
 	processor := worker.Processor{
 		Store: stateStore,
 		Runner: runtime.Runner{
-			Store:      bundle.NewLocalStore(*storeDir),
-			CacheRoot:  *cacheRoot,
-			BaseURL:    strings.TrimSpace(*baseURL),
-			APIToken:   tokenFromEnv(*apiTokenEnv),
-			BunPath:    *bunPath,
-			PythonPath: *pythonPath,
-			GoPath:     *goPath,
+			Store:          bundle.NewLocalStore(*storeDir),
+			CacheRoot:      *cacheRoot,
+			BaseURL:        strings.TrimSpace(*baseURL),
+			APIToken:       tokenFromEnv(*apiTokenEnv),
+			BunPath:        *bunPath,
+			PythonPath:     *pythonPath,
+			GoPath:         *goPath,
+			PrepareTimeout: *prepareTimeout,
 		},
 		WorkerID:        *workerID,
 		Group:           *workerGroup,
@@ -454,9 +460,9 @@ func printUsage(file *os.File) {
 	fmt.Fprintln(file, "  windforce-lite version")
 	fmt.Fprintln(file, "  windforce-lite sync --source <dir> [--subpath <subdir>] [--store <dir>] [--catalog <path>]")
 	fmt.Fprintln(file, "  windforce-lite sync --repo <url> [--branch main] [--subpath <subdir>] [--store <dir>] [--catalog <path>]")
-	fmt.Fprintln(file, "  windforce-lite run --app <app> --action <action> [--input <path>] [--output <path>] [--bun-path <path>] [--python-path <path>] [--go-path <path>]")
+	fmt.Fprintln(file, "  windforce-lite run --app <app> --action <action> [--input <path>] [--output <path>] [--bun-path <path>] [--python-path <path>] [--go-path <path>] [--prepare-timeout 5m]")
 	fmt.Fprintln(file, "  windforce-lite api [--addr :8080] [--state-backend local|postgres] [--git-sources <path>]")
-	fmt.Fprintln(file, "  windforce-lite worker [--state-backend local|postgres] [--worker-group default] [--egress-proxy host:port] [--bun-path <path>] [--python-path <path>] [--go-path <path>] [--once]")
-	fmt.Fprintln(file, "  windforce-lite standalone [--addr :8080] [--state-backend local|postgres] [--worker-group default] [--egress-proxy host:port] [--git-sources <path>] [--bun-path <path>] [--python-path <path>] [--go-path <path>]")
+	fmt.Fprintln(file, "  windforce-lite worker [--state-backend local|postgres] [--worker-group default] [--egress-proxy host:port] [--bun-path <path>] [--python-path <path>] [--go-path <path>] [--prepare-timeout 5m] [--once]")
+	fmt.Fprintln(file, "  windforce-lite standalone [--addr :8080] [--state-backend local|postgres] [--worker-group default] [--egress-proxy host:port] [--git-sources <path>] [--bun-path <path>] [--python-path <path>] [--go-path <path>] [--prepare-timeout 5m]")
 	fmt.Fprintln(file, "  windforce-lite run-json [flags] -- <command> [args...]")
 }
