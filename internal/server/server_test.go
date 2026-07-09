@@ -653,6 +653,47 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 		t.Fatalf("app body = %#v", appBody)
 	}
 
+	openAPIReq, err := http.NewRequest(http.MethodGet, server.URL+"/api/w/ws-a/apps/echo/openapi.json", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	openAPIReq.Header.Set("X-Forwarded-Proto", "https")
+	openAPIReq.Header.Set("X-Forwarded-Host", "api.example.test")
+	openAPIResp, err := http.DefaultClient.Do(openAPIReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer openAPIResp.Body.Close()
+	if openAPIResp.StatusCode != http.StatusOK {
+		t.Fatalf("openapi status = %d, want %d", openAPIResp.StatusCode, http.StatusOK)
+	}
+	var openAPIBody map[string]any
+	if err := json.NewDecoder(openAPIResp.Body).Decode(&openAPIBody); err != nil {
+		t.Fatal(err)
+	}
+	if openAPIBody["openapi"] != "3.1.0" {
+		t.Fatalf("openapi version = %#v", openAPIBody["openapi"])
+	}
+	if serverURL := openAPIBody["servers"].([]any)[0].(map[string]any)["url"]; serverURL != "https://api.example.test" {
+		t.Fatalf("openapi server url = %#v", serverURL)
+	}
+	paths := openAPIBody["paths"].(map[string]any)
+	runWait := paths["/api/w/ws-a/jobs/run/echo/echo/wait"].(map[string]any)["post"].(map[string]any)
+	requestSchema := runWait["requestBody"].(map[string]any)["content"].(map[string]any)["application/json"].(map[string]any)["schema"].(map[string]any)
+	properties := requestSchema["properties"].(map[string]any)
+	if properties["message"] == nil {
+		t.Fatalf("openapi request schema missing message: %#v", requestSchema)
+	}
+	if paths["/api/w/ws-a/jobs/run/echo/echo"] == nil || paths["/api/w/ws-a/jobs/webhook/echo/echo"] == nil ||
+		paths["/api/w/ws-a/jobs/{id}/result"] == nil {
+		t.Fatalf("openapi paths missing: %#v", paths)
+	}
+	webhook := paths["/api/w/ws-a/jobs/webhook/echo/echo"].(map[string]any)["post"].(map[string]any)
+	webhookSchema := webhook["requestBody"].(map[string]any)["content"].(map[string]any)["*/*"].(map[string]any)["schema"].(map[string]any)
+	if len(webhookSchema) != 0 {
+		t.Fatalf("webhook schema should be permissive: %#v", webhookSchema)
+	}
+
 	sourceResp, err := http.Get(server.URL + "/api/w/ws-a/apps/echo/source")
 	if err != nil {
 		t.Fatal(err)
