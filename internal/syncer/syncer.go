@@ -88,7 +88,7 @@ func (s *Syncer) Sync(ctx context.Context, src Source) (contract.Deployment, err
 	}
 	if !exists {
 		if err := s.Store.Materialize(ctx, workspace, gitSourceID, commit, sourceDir); err != nil {
-			return contract.Deployment{}, err
+			return contract.Deployment{}, fmt.Errorf("materialize: %w", err)
 		}
 	}
 

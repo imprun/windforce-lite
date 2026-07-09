@@ -325,12 +325,12 @@ func TestParseRejectsEscapingEntrypoint(t *testing.T) {
 		{
 			name: "app entrypoint",
 			body: `{"app":"echo","entrypoint":"../main.ts","actions":{"run":{}}}`,
-			want: "app echo entrypoint path",
+			want: `app echo entrypoint "../main.ts" must be a relative path inside the app`,
 		},
 		{
 			name: "absolute app entrypoint",
 			body: `{"app":"echo","entrypoint":"/main.ts","actions":{"run":{}}}`,
-			want: "app echo entrypoint path",
+			want: `app echo entrypoint "/main.ts" must be a relative path inside the app`,
 		},
 	}
 	for _, test := range tests {

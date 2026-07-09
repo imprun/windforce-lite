@@ -2,6 +2,7 @@ package syncer
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -27,6 +28,31 @@ func (c *checkingCatalog) UpsertDeployment(ctx context.Context, deployment contr
 	if !exists {
 		c.t.Fatalf("catalog updated before bundle materialized")
 	}
+	c.called = true
+	return nil
+}
+
+type failingMaterializeStore struct {
+	err error
+}
+
+func (s *failingMaterializeStore) Exists(context.Context, string, string, string) (bool, error) {
+	return false, nil
+}
+
+func (s *failingMaterializeStore) Materialize(context.Context, string, string, string, string) error {
+	return s.err
+}
+
+func (s *failingMaterializeStore) FetchTo(context.Context, string, string, string, string) error {
+	return errors.New("unexpected FetchTo")
+}
+
+type recordingCatalog struct {
+	called bool
+}
+
+func (c *recordingCatalog) UpsertDeployment(context.Context, contract.Deployment) error {
 	c.called = true
 	return nil
 }
@@ -165,6 +191,39 @@ func TestSyncMaterializesBeforeCatalogUpdate(t *testing.T) {
 	if deployment.UpdatedAt == nil || deployment.Actions["echo"].UpdatedAt == nil ||
 		!deployment.Actions["echo"].UpdatedAt.Equal(*deployment.UpdatedAt) {
 		t.Fatalf("canonical updatedAt was not pinned: deployment=%v action=%v", deployment.UpdatedAt, deployment.Actions["echo"].UpdatedAt)
+	}
+}
+
+func TestSyncWrapsMaterializeErrorBeforeCatalogUpdate(t *testing.T) {
+	tempDir := t.TempDir()
+	sourceDir := filepath.Join(tempDir, "source")
+	if err := os.MkdirAll(sourceDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sourceDir, "windforce.json"), []byte(`{
+		"app": "echo",
+		"entrypoint": "main.ts",
+		"actions": {"echo": {}}
+	}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	store := &failingMaterializeStore{err: errors.New("copy failed")}
+	catalog := &recordingCatalog{}
+	syncer := Syncer{Store: store, Catalog: catalog}
+
+	_, err := syncer.Sync(context.Background(), Source{
+		Workspace:   "workspace-a",
+		GitSourceID: "source-a",
+		App:         "echo",
+		Commit:      "commit-a",
+		LocalDir:    sourceDir,
+	})
+	if err == nil || err.Error() != "materialize: copy failed" {
+		t.Fatalf("Sync error = %v, want materialize wrapper", err)
+	}
+	if catalog.called {
+		t.Fatalf("catalog updated after materialize failure")
 	}
 }
 
