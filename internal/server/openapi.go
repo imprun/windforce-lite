@@ -542,7 +542,7 @@ func buildAppOpenAPI(baseURL string, workspaceID string, deployment contract.Dep
 				"description": "Runs the action and blocks up to the wait timeout. 200 carries the finished result; 202 means it is still running — poll GET .../jobs/{id}/result with the returned job_id.",
 				"requestBody": oapiJSONBody(inputSchema, true),
 				"responses": withErrors(map[string]any{
-					"200": oapiResponse("Finished run — status is \"success\" or \"failure\"; result holds the action output, or the failure detail when failed.", map[string]any{
+					"200": oapiResponse("Finished run — status is \"completed\" or \"failed\"; result holds the action output, or the failure detail when failed.", map[string]any{
 						"type": "object",
 						"properties": map[string]any{
 							"job_id": oapiStringSchema(),
@@ -595,7 +595,7 @@ func buildAppOpenAPI(baseURL string, workspaceID string, deployment contract.Dep
 				"description": "job_id returned by an async run",
 			}},
 			"responses": map[string]any{
-				"200": oapiResponse("Finished run — status \"success\" or \"failure\"; result holds the output, or the failure detail when failed.", map[string]any{
+				"200": oapiResponse("Finished run — status \"completed\" or \"failed\"; result holds the output, or the failure detail when failed.", map[string]any{
 					"type": "object",
 					"properties": map[string]any{
 						"status": oapiStatusSchema(),
@@ -622,7 +622,7 @@ func buildAppOpenAPI(baseURL string, workspaceID string, deployment contract.Dep
 		"info": map[string]any{
 			"title":       deployment.App + " API",
 			"version":     version,
-			"description": "Auto-generated from windforce action input/output schemas. Actions are invoked over HTTP; the run API is asynchronous (enqueue + poll, ADR-0007). A run that fails is reported as status \"failure\" inside a 200 response (not an HTTP error) — HTTP 4xx covers only enqueue-time errors (auth, quota, bad request). Actions without a declared schema accept/return an unconstrained JSON body.",
+			"description": "Auto-generated from windforce action input/output schemas. Actions are invoked over HTTP; the run API is asynchronous (enqueue + poll, ADR-0007). A run that FAILS is reported as status \"failed\" inside a 200 response (not an HTTP error) — HTTP 4xx covers only enqueue-time errors (auth, quota, bad request). Actions without a declared schema accept/return an unconstrained JSON body.",
 		},
 		"servers":  []any{map[string]any{"url": baseURL}},
 		"security": []any{map[string]any{"bearerAuth": []any{}}},
@@ -1195,8 +1195,8 @@ func controlPlaneSchemas() map[string]any {
 func oapiStatusSchema() map[string]any {
 	return map[string]any{
 		"type":        "string",
-		"enum":        []any{"success", "failure", "canceled"},
-		"description": "Terminal run status. A failed action surfaces as \"failure\" within a 200 response, not an HTTP error — inspect result for the failure detail.",
+		"enum":        []any{"completed", "failed", "canceled"},
+		"description": "Terminal run status. A failed action surfaces as \"failed\" within a 200 response, not an HTTP error — inspect result for the failure detail.",
 	}
 }
 
