@@ -170,7 +170,7 @@ type JobListItem struct {
 	CompletedAt    *time.Time `json:"completed_at"`
 	DurationMs     int64      `json:"duration_ms"`
 	Worker         *string    `json:"worker"`
-	GitSourceID    *int64     `json:"git_source_id"`
+	GitSourceID    *string    `json:"git_source_id"`
 	CommitSha      *string    `json:"commit_sha"`
 	Entrypoint     string     `json:"entrypoint"`
 	Tag            string     `json:"tag"`
@@ -1164,6 +1164,7 @@ func newJobListItem(workspaceID string, job Job, run Run) JobListItem {
 		CompletedAt:    completedAt,
 		DurationMs:     durationMs,
 		Worker:         worker,
+		GitSourceID:    stringPtr(job.Payload.GitSourceID),
 		CommitSha:      stringPtr(job.Payload.Commit),
 		Entrypoint:     job.Payload.ActionSpec.Entrypoint,
 		Tag:            jobTag(job),

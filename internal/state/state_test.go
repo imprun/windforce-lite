@@ -205,7 +205,7 @@ func exerciseStoreLifecycle(t *testing.T, store Store) {
 	}
 	foundCanceledRetry := false
 	for _, item := range items {
-		if item.ID == retryJob.ID && item.Completed && item.Status == "canceled" {
+		if item.ID == retryJob.ID && item.Completed && item.Status == "canceled" && item.GitSourceID != nil && *item.GitSourceID == "echo" {
 			foundCanceledRetry = true
 			break
 		}

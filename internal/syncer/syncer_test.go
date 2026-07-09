@@ -38,6 +38,7 @@ func TestSyncMaterializesBeforeCatalogUpdate(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(sourceDir, "windforce.json"), []byte(`{
 		"app": "echo",
 		"entrypoint": "main.ts",
+		"scriptLang": "typescript",
 		"timeout": 120,
 		"tag": "app-main",
 		"actions": {
@@ -76,6 +77,9 @@ func TestSyncMaterializesBeforeCatalogUpdate(t *testing.T) {
 	}
 	if deployment.Tag != "app-main" || deployment.Actions["echo"].Tag == nil || *deployment.Actions["echo"].Tag != "action-fast" {
 		t.Fatalf("route tags were not loaded from manifest: %#v", deployment)
+	}
+	if deployment.Entrypoint != "main.ts" || deployment.ScriptLang != "typescript" || deployment.TimeoutS != 120 {
+		t.Fatalf("canonical app metadata was not pinned: %#v", deployment)
 	}
 	if deployment.Actions["echo"].Entrypoint != "main.ts" || deployment.Actions["echo"].TimeoutMs != 120000 {
 		t.Fatalf("canonical app defaults were not pinned: %#v", deployment.Actions["echo"])

@@ -1358,6 +1358,7 @@ func newCanonicalAppModel(deployment contract.Deployment) canonicalAppModel {
 		Entrypoint:           canonicalDeploymentEntrypoint(deployment),
 		Tag:                  effectiveRouteTag(deployment.Tag, nil, nil, nil),
 		TagOverride:          cloneStringPtr(deployment.TagOverride),
+		TimeoutS:             canonicalDeploymentTimeoutSeconds(deployment),
 		ScriptLang:           canonicalDeploymentScriptLang(deployment),
 		RequiredCapabilities: []string{},
 	}
@@ -1508,6 +1509,9 @@ func canonicalAppID(deployment contract.Deployment) string {
 }
 
 func canonicalDeploymentEntrypoint(deployment contract.Deployment) string {
+	if strings.TrimSpace(deployment.Entrypoint) != "" {
+		return strings.TrimSpace(deployment.Entrypoint)
+	}
 	keys := make([]string, 0, len(deployment.Actions))
 	for key := range deployment.Actions {
 		keys = append(keys, key)
@@ -1522,6 +1526,9 @@ func canonicalDeploymentEntrypoint(deployment contract.Deployment) string {
 }
 
 func canonicalDeploymentScriptLang(deployment contract.Deployment) string {
+	if value := firstNonEmpty(deployment.Runtime, deployment.ScriptLang); value != "" {
+		return value
+	}
 	keys := make([]string, 0, len(deployment.Actions))
 	for key := range deployment.Actions {
 		keys = append(keys, key)
@@ -1533,6 +1540,13 @@ func canonicalDeploymentScriptLang(deployment contract.Deployment) string {
 		}
 	}
 	return ""
+}
+
+func canonicalDeploymentTimeoutSeconds(deployment contract.Deployment) int32 {
+	if deployment.TimeoutS > 0 {
+		return deployment.TimeoutS
+	}
+	return 0
 }
 
 func canonicalTimeoutSeconds(timeoutMs int64) *int32 {

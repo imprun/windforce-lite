@@ -311,11 +311,12 @@ func TestCanonicalJobRunStatusAndResultAPI(t *testing.T) {
 	}
 	var listBody struct {
 		Items []struct {
-			ID        string `json:"id"`
-			AppKey    string `json:"app_key"`
-			ActionKey string `json:"action_key"`
-			Status    string `json:"status"`
-			Completed bool   `json:"completed"`
+			ID          string `json:"id"`
+			AppKey      string `json:"app_key"`
+			ActionKey   string `json:"action_key"`
+			GitSourceID string `json:"git_source_id"`
+			Status      string `json:"status"`
+			Completed   bool   `json:"completed"`
 		} `json:"items"`
 		Pagination struct {
 			Limit   int  `json:"limit"`
@@ -326,7 +327,9 @@ func TestCanonicalJobRunStatusAndResultAPI(t *testing.T) {
 	if err := json.NewDecoder(listResp.Body).Decode(&listBody); err != nil {
 		t.Fatal(err)
 	}
-	if len(listBody.Items) != 1 || listBody.Items[0].ID != runResponse.JobID || listBody.Items[0].Status != "success" || !listBody.Items[0].Completed {
+	if len(listBody.Items) != 1 || listBody.Items[0].ID != runResponse.JobID ||
+		listBody.Items[0].GitSourceID != "source-a" ||
+		listBody.Items[0].Status != "success" || !listBody.Items[0].Completed {
 		t.Fatalf("list body = %#v", listBody)
 	}
 	if listBody.Pagination.Limit != 1 || listBody.Pagination.Count != 1 {
@@ -638,6 +641,9 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 	}
 	if err := os.WriteFile(filepath.Join(repoDir, "windforce.json"), []byte(`{
 		"app": "echo",
+		"entrypoint": "main.ts",
+		"scriptLang": "typescript",
+		"timeout": 120,
 		"actions": {
 			"echo": {
 				"command": ["helper"],
@@ -832,11 +838,13 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 		ActionKey    string          `json:"action_key"`
 		InputSchema  json.RawMessage `json:"input_schema"`
 		OutputSchema json.RawMessage `json:"output_schema"`
+		TimeoutS     int32           `json:"timeout_s"`
 	}
 	if err := json.NewDecoder(actionResp.Body).Decode(&actionBody); err != nil {
 		t.Fatal(err)
 	}
 	if actionBody.AppKey != "echo" || actionBody.ActionKey != "echo" ||
+		actionBody.TimeoutS != 120 ||
 		!bytes.Contains(actionBody.InputSchema, []byte(`"message"`)) || !bytes.Contains(actionBody.OutputSchema, []byte(`"ok"`)) {
 		t.Fatalf("action body = %#v input=%s output=%s", actionBody, actionBody.InputSchema, actionBody.OutputSchema)
 	}
@@ -862,6 +870,9 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 		App struct {
 			AppKey      string `json:"app_key"`
 			GitSourceID string `json:"git_source_id"`
+			Entrypoint  string `json:"entrypoint"`
+			ScriptLang  string `json:"script_lang"`
+			TimeoutS    int32  `json:"timeout_s"`
 		} `json:"app"`
 		Actions []struct {
 			ActionKey   string          `json:"action_key"`
@@ -872,6 +883,7 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 		t.Fatal(err)
 	}
 	if appBody.App.AppKey != "echo" || appBody.App.GitSourceID != "source-a" ||
+		appBody.App.Entrypoint != "main.ts" || appBody.App.ScriptLang != "typescript" || appBody.App.TimeoutS != 120 ||
 		len(appBody.Actions) != 1 || appBody.Actions[0].ActionKey != "echo" ||
 		!bytes.Contains(appBody.Actions[0].InputSchema, []byte(`"message"`)) {
 		t.Fatalf("app body = %#v", appBody)

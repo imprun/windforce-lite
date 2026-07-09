@@ -64,6 +64,10 @@ type Deployment struct {
 	Version      string            `json:"version,omitempty"`
 	Tag          string            `json:"tag,omitempty"`
 	TagOverride  *string           `json:"tagOverride,omitempty"`
+	Entrypoint   string            `json:"entrypoint,omitempty"`
+	Runtime      string            `json:"runtime,omitempty"`
+	ScriptLang   string            `json:"scriptLang,omitempty"`
+	TimeoutS     int32             `json:"timeout,omitempty"`
 	Commit       string            `json:"commit"`
 	BundleDigest string            `json:"bundleDigest,omitempty"`
 	ObjectURI    string            `json:"objectUri"`
