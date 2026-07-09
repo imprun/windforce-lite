@@ -556,6 +556,14 @@ func exerciseStoreLifecycle(t *testing.T, store Store) {
 	if !cancelResult.Found || !cancelResult.CompletedNow || cancelResult.SoftCanceled || cancelResult.AlreadyCompleted {
 		t.Fatalf("cancel result = %#v", cancelResult)
 	}
+	_, canceledRetryRun, found, err := store.GetJob(context.Background(), "default", retryJob.ID)
+	if err != nil {
+		t.Fatalf("GetJob canceled retry returned error: %v", err)
+	}
+	if !found || canceledRetryRun.Result == nil {
+		t.Fatalf("canceled retry result missing: found:%v run:%#v", found, canceledRetryRun)
+	}
+	assertCanceledOutput(t, canceledRetryRun.Result.Output, cancelBeforeExecutionMessage)
 	canceledAgain, err := store.CancelJob(context.Background(), "default", retryJob.ID, "operator@example.test", "")
 	if err != nil {
 		t.Fatalf("CancelJob second call returned error: %v", err)
@@ -606,6 +614,10 @@ func exerciseStoreLifecycle(t *testing.T, store Store) {
 	if completedSoftJob.CanceledBy == nil || *completedSoftJob.CanceledBy != "operator@example.test" {
 		t.Fatalf("completed soft-canceled canceled_by = %v", completedSoftJob.CanceledBy)
 	}
+	if completedSoftRun.Result == nil {
+		t.Fatalf("completed soft-canceled result is nil")
+	}
+	assertCanceledOutput(t, completedSoftRun.Result.Output, cancelDuringExecutionMessage)
 
 	items, err := store.ListJobs(context.Background(), JobListQuery{
 		WorkspaceID: "default",
@@ -639,5 +651,19 @@ func exerciseStoreLifecycle(t *testing.T, store Store) {
 	}
 	if summary.CanceledCountRecent < 1 || len(summary.ByApp) == 0 || summary.ByApp[0].AppKey != "echo" {
 		t.Fatalf("summary = %#v", summary)
+	}
+}
+
+func assertCanceledOutput(t *testing.T, output json.RawMessage, message string) {
+	t.Helper()
+	var body struct {
+		Name    string `json:"name"`
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(output, &body); err != nil {
+		t.Fatalf("canceled output is not JSON: %v", err)
+	}
+	if body.Name != "Canceled" || body.Message != message {
+		t.Fatalf("canceled output = %s, want Canceled/%q", output, message)
 	}
 }

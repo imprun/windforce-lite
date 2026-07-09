@@ -1187,13 +1187,7 @@ func completeCanceledJobPostgres(ctx context.Context, tx pgx.Tx, job Job, run Ru
 		message = "job canceled"
 	}
 	run.State = RunCanceled
-	run.Result = &contract.JobResult{
-		JobID:    job.ID,
-		App:      run.App,
-		Action:   run.Action,
-		ExitCode: -1,
-		Error:    message,
-	}
+	run.Result = canceledJobResult(job, run, message)
 	run.Error = mustRaw(map[string]string{
 		"message":        message,
 		"canceledBy":     by,

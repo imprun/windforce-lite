@@ -1254,13 +1254,7 @@ func applyCanceledJob(snapshot *Snapshot, job Job, run Run, by string, reason st
 	job.CanceledReason = &reason
 	job.UpdatedAt = now
 	run.State = RunCanceled
-	run.Result = &contract.JobResult{
-		JobID:    job.ID,
-		App:      run.App,
-		Action:   run.Action,
-		ExitCode: -1,
-		Error:    message,
-	}
+	run.Result = canceledJobResult(job, run, message)
 	run.Error = mustRaw(map[string]string{
 		"message":        message,
 		"canceledBy":     by,
@@ -1270,6 +1264,17 @@ func applyCanceledJob(snapshot *Snapshot, job Job, run Run, by string, reason st
 	snapshot.Jobs[job.ID] = job
 	snapshot.Runs[run.ID] = run
 	appendEvent(snapshot, run.ID, "run_canceled", eventPayload(run.CorrelationID, map[string]any{"jobId": job.ID, "by": by, "reason": reason}), now)
+}
+
+func canceledJobResult(job Job, run Run, message string) *contract.JobResult {
+	return &contract.JobResult{
+		JobID:    job.ID,
+		App:      run.App,
+		Action:   run.Action,
+		Output:   mustRaw(map[string]string{"name": "Canceled", "message": message}),
+		ExitCode: -1,
+		Error:    message,
+	}
 }
 
 type jobRunRecord struct {
