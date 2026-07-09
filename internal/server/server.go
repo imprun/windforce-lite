@@ -1146,6 +1146,7 @@ type canonicalSyncResult struct {
 	Commit  string   `json:"commit"`
 	App     string   `json:"app"`
 	Actions []string `json:"actions"`
+	Flows   []string `json:"flows,omitempty"`
 }
 
 func newCanonicalSyncResult(deployment contract.Deployment) canonicalSyncResult {

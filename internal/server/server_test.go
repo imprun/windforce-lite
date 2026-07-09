@@ -989,6 +989,10 @@ func TestCanonicalControlPlaneOpenAPIExposesSchemaDiscovery(t *testing.T) {
 	if sampleSyncProperties["source"] == nil || sampleSyncProperties["sync_result"] == nil {
 		t.Fatalf("sample sync response schema properties = %#v", sampleSyncProperties)
 	}
+	syncResultProperties := schemas["GitSourceSyncResult"].(map[string]any)["properties"].(map[string]any)
+	if syncResultProperties["flows"] == nil {
+		t.Fatalf("sync result schema must preserve canonical optional flows field: %#v", syncResultProperties)
+	}
 	appSummary := schemas["AppSummary"].(map[string]any)["properties"].(map[string]any)
 	for _, field := range []string{"actions_count", "schedules_count", "flows_count"} {
 		if appSummary[field] == nil {

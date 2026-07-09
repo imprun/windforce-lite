@@ -813,6 +813,7 @@ func controlPlaneSchemas() map[string]any {
 				"commit":  oapiStringSchema(),
 				"app":     oapiStringSchema(),
 				"actions": stringArray,
+				"flows":   stringArray,
 			},
 			"required": []any{"commit", "app", "actions"},
 		},
