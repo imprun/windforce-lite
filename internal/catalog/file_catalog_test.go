@@ -26,4 +26,14 @@ func TestFileCatalogUpsertAndGet(t *testing.T) {
 	if got.Commit != "commit-a" {
 		t.Fatalf("commit = %q", got.Commit)
 	}
+	snapshot, err := catalog.Load(context.Background())
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if len(snapshot.History) != 1 {
+		t.Fatalf("history count = %d, want 1", len(snapshot.History))
+	}
+	if snapshot.History[0].Commit != "commit-a" || snapshot.History[0].Status != "deployed" {
+		t.Fatalf("history item = %#v", snapshot.History[0])
+	}
 }

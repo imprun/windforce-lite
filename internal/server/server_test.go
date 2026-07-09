@@ -596,6 +596,53 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 		!bytes.Contains(appBody.Actions[0].InputSchema, []byte(`"message"`)) {
 		t.Fatalf("app body = %#v", appBody)
 	}
+
+	sourceResp, err := http.Get(server.URL + "/api/w/ws-a/apps/echo/source")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sourceResp.Body.Close()
+	if sourceResp.StatusCode != http.StatusOK {
+		t.Fatalf("source status = %d, want %d", sourceResp.StatusCode, http.StatusOK)
+	}
+	var sourceBody struct {
+		AppKey    string            `json:"app_key"`
+		CommitSha string            `json:"commit_sha"`
+		Files     map[string]string `json:"files"`
+		Skipped   []string          `json:"skipped"`
+	}
+	if err := json.NewDecoder(sourceResp.Body).Decode(&sourceBody); err != nil {
+		t.Fatal(err)
+	}
+	if sourceBody.AppKey != "echo" || sourceBody.CommitSha == "" ||
+		!bytes.Contains([]byte(sourceBody.Files["windforce.json"]), []byte(`"app": "echo"`)) ||
+		!bytes.Contains([]byte(sourceBody.Files["input.schema.json"]), []byte(`"message"`)) ||
+		len(sourceBody.Skipped) != 0 {
+		t.Fatalf("source body = %#v", sourceBody)
+	}
+
+	historyResp, err := http.Get(server.URL + "/api/w/ws-a/apps/echo/history")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer historyResp.Body.Close()
+	if historyResp.StatusCode != http.StatusOK {
+		t.Fatalf("history status = %d, want %d", historyResp.StatusCode, http.StatusOK)
+	}
+	var history []struct {
+		ID           string `json:"id"`
+		CommitSha    string `json:"commit_sha"`
+		Source       string `json:"source"`
+		GitSourceKey string `json:"git_source_key"`
+		Status       string `json:"status"`
+	}
+	if err := json.NewDecoder(historyResp.Body).Decode(&history); err != nil {
+		t.Fatal(err)
+	}
+	if len(history) != 1 || history[0].ID == "" || history[0].CommitSha != syncBody.Commit ||
+		history[0].Source != "external_sync" || history[0].GitSourceKey != "source-a" || history[0].Status != "deployed" {
+		t.Fatalf("history = %#v", history)
+	}
 }
 
 type fakeTriggerAdapter struct{}

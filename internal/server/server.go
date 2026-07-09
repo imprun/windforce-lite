@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	catalogpkg "github.com/imprun/windforce-lite/internal/catalog"
 	"github.com/imprun/windforce-lite/internal/contract"
@@ -219,6 +220,14 @@ func (h *Handler) handleAPI(w http.ResponseWriter, r *http.Request) bool {
 	}
 	if len(parts) == 4 && parts[0] == "api" && parts[1] == "w" && parts[3] == "apps" && r.Method == http.MethodGet {
 		h.handleCanonicalApps(w, r, parts[2])
+		return true
+	}
+	if len(parts) == 6 && parts[0] == "api" && parts[1] == "w" && parts[3] == "apps" && parts[5] == "source" && r.Method == http.MethodGet {
+		h.handleCanonicalAppSource(w, r, parts[2], parts[4])
+		return true
+	}
+	if len(parts) == 6 && parts[0] == "api" && parts[1] == "w" && parts[3] == "apps" && parts[5] == "history" && r.Method == http.MethodGet {
+		h.handleCanonicalAppHistory(w, r, parts[2], parts[4])
 		return true
 	}
 	if len(parts) == 5 && parts[0] == "api" && parts[1] == "w" && parts[3] == "apps" && r.Method == http.MethodGet {
@@ -700,6 +709,61 @@ func (h *Handler) handleCanonicalApp(w http.ResponseWriter, r *http.Request, wor
 	})
 }
 
+func (h *Handler) handleCanonicalAppSource(w http.ResponseWriter, r *http.Request, workspaceID string, app string) {
+	deployment, ok := h.getCanonicalDeployment(w, r, workspaceID, app, "app not found: "+app)
+	if !ok {
+		return
+	}
+	if h.syncer == nil || h.syncer.Store == nil {
+		writeError(w, http.StatusInternalServerError, "source storage not configured")
+		return
+	}
+	sourceDir, err := os.MkdirTemp("", "windforce-lite-app-source-")
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	defer os.RemoveAll(sourceDir)
+	if err := h.syncer.Store.FetchTo(r.Context(), sourceDir, deployment.SourceWorkspace(), deployment.SourceGitSourceID(), deployment.Commit); err != nil {
+		writeError(w, http.StatusNotFound, "source commit is not materialized - re-sync the app")
+		return
+	}
+	files, skipped, err := readCanonicalSourceFiles(sourceDir)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"app_key":       deployment.App,
+		"git_source_id": nil,
+		"commit_sha":    deployment.Commit,
+		"files":         files,
+		"skipped":       skipped,
+	})
+}
+
+func (h *Handler) handleCanonicalAppHistory(w http.ResponseWriter, r *http.Request, workspaceID string, app string) {
+	snapshot, ok := h.loadCatalogSnapshot(w, r)
+	if !ok {
+		return
+	}
+	workspaceID = contract.NormalizeWorkspace(workspaceID)
+	items := make([]canonicalAppHistoryItem, 0, len(snapshot.History))
+	for _, item := range snapshot.History {
+		if contract.NormalizeWorkspace(item.Workspace) != workspaceID || item.App != app {
+			continue
+		}
+		items = append(items, newCanonicalAppHistoryItem(item))
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].CreatedAt.Equal(items[j].CreatedAt) {
+			return items[i].ID > items[j].ID
+		}
+		return items[i].CreatedAt.After(items[j].CreatedAt)
+	})
+	writeJSON(w, http.StatusOK, items)
+}
+
 func (h *Handler) handleCanonicalAction(w http.ResponseWriter, r *http.Request, workspaceID string, app string, actionKey string) {
 	deployment, ok := h.getCanonicalDeployment(w, r, workspaceID, app, "app not found: "+app)
 	if !ok {
@@ -839,6 +903,18 @@ type canonicalAppSummaryView struct {
 	FlowsCount     int64 `json:"flows_count"`
 }
 
+type canonicalAppHistoryItem struct {
+	ID           string    `json:"id"`
+	CommitSha    string    `json:"commit_sha"`
+	Entrypoint   string    `json:"entrypoint"`
+	Source       string    `json:"source"`
+	GitSourceKey string    `json:"git_source_key,omitempty"`
+	DeploymentID *string   `json:"deployment_id,omitempty"`
+	Message      *string   `json:"message,omitempty"`
+	CreatedAt    time.Time `json:"created_at"`
+	Status       string    `json:"status,omitempty"`
+}
+
 type canonicalActionView struct {
 	ID                    string          `json:"id"`
 	WorkspaceID           string          `json:"workspace_id"`
@@ -872,6 +948,18 @@ func newCanonicalAppSummaryView(deployment contract.Deployment) canonicalAppSumm
 	return canonicalAppSummaryView{
 		canonicalAppView: newCanonicalAppView(deployment),
 		ActionsCount:     int64(len(deployment.Actions)),
+	}
+}
+
+func newCanonicalAppHistoryItem(item catalogpkg.DeploymentHistory) canonicalAppHistoryItem {
+	return canonicalAppHistoryItem{
+		ID:           item.ID,
+		CommitSha:    item.Commit,
+		Entrypoint:   item.Entrypoint,
+		Source:       firstNonEmpty(item.Source, "external_sync"),
+		GitSourceKey: item.GitSourceID,
+		CreatedAt:    item.CreatedAt,
+		Status:       item.Status,
 	}
 }
 
@@ -1049,6 +1137,51 @@ func canonicalTimeoutSeconds(timeoutMs int64) *int32 {
 
 func defaultRouteTag() string {
 	return "default"
+}
+
+const (
+	sourceFileCapBytes  = 512 * 1024
+	sourceTotalCapBytes = 8 * 1024 * 1024
+)
+
+func readCanonicalSourceFiles(root string) (map[string]string, []string, error) {
+	files := map[string]string{}
+	skipped := []string{}
+	total := 0
+	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil || entry.IsDir() {
+			return walkErr
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		rel = filepath.ToSlash(rel)
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		if info.Size() > sourceFileCapBytes || total+int(info.Size()) > sourceTotalCapBytes {
+			skipped = append(skipped, rel)
+			return nil
+		}
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		if !utf8.Valid(content) {
+			skipped = append(skipped, rel)
+			return nil
+		}
+		files[rel] = string(content)
+		total += len(content)
+		return nil
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	sort.Strings(skipped)
+	return files, skipped, nil
 }
 
 func (h *Handler) handleJobList(w http.ResponseWriter, r *http.Request, workspaceID string) {
