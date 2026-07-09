@@ -55,6 +55,7 @@ func (c *FileCatalog) UpsertDeployment(ctx context.Context, deployment contract.
 	if snapshot.Deployments == nil {
 		snapshot.Deployments = map[string]contract.Deployment{}
 	}
+	deployment = normalizeDeploymentDefaults(deployment)
 	deployment = ensureDeploymentUpdatedAt(deployment, time.Now().UTC())
 	snapshot.Deployments[deploymentKey(deployment.SourceWorkspace(), deployment.App)] = deployment
 	snapshot.History = append(snapshot.History, newDeploymentHistory(deployment))
@@ -177,6 +178,19 @@ func ensureDeploymentUpdatedAt(deployment contract.Deployment, updatedAt time.Ti
 			action.UpdatedAt = timePtr(updatedAt)
 			deployment.Actions[key] = action
 		}
+	}
+	return deployment
+}
+
+func normalizeDeploymentDefaults(deployment contract.Deployment) contract.Deployment {
+	if deployment.Tag == "" {
+		deployment.Tag = contract.DefaultRouteTag
+	}
+	if deployment.TimeoutS == 0 {
+		deployment.TimeoutS = contract.DefaultTimeoutS
+	}
+	if deployment.ScriptLang == "" {
+		deployment.ScriptLang = "typescript"
 	}
 	return deployment
 }

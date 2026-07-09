@@ -32,6 +32,9 @@ func TestFileCatalogUpsertAndGet(t *testing.T) {
 	if got.Commit != "commit-a" {
 		t.Fatalf("commit = %q", got.Commit)
 	}
+	if got.Tag != "default" || got.TimeoutS != 300 || got.ScriptLang != "typescript" {
+		t.Fatalf("defaults = tag:%q timeout:%d scriptLang:%q", got.Tag, got.TimeoutS, got.ScriptLang)
+	}
 	if got.UpdatedAt == nil {
 		t.Fatalf("deployment updatedAt was not set")
 	}
@@ -47,6 +50,11 @@ func TestFileCatalogUpsertAndGet(t *testing.T) {
 	}
 	if snapshot.History[0].Commit != "commit-a" || snapshot.History[0].Status != "deployed" {
 		t.Fatalf("history item = %#v", snapshot.History[0])
+	}
+	if snapshot.History[0].Deployment.Tag != "default" ||
+		snapshot.History[0].Deployment.TimeoutS != 300 ||
+		snapshot.History[0].Deployment.ScriptLang != "typescript" {
+		t.Fatalf("history deployment defaults = %#v", snapshot.History[0].Deployment)
 	}
 	if !regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`).MatchString(snapshot.History[0].ID) {
 		t.Fatalf("history id = %q, want UUID app version id", snapshot.History[0].ID)
