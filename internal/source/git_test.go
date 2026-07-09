@@ -9,25 +9,28 @@ import (
 	"testing"
 )
 
-func TestAuthURLUsesGitLabTokenForHTTP(t *testing.T) {
-	got := authURL("http://gitlab.scraping.co.kr/gitlab/group/project.git", "secret-token")
-	want := "http://oauth2:secret-token@gitlab.scraping.co.kr/gitlab/group/project.git"
+func TestAuthURLInjectsTokenForHTTPS(t *testing.T) {
+	got := authURL("https://git.example.test/group/project.git", "secret-token")
+	want := "https://x-access-token:secret-token@git.example.test/group/project.git"
 	if got != want {
 		t.Fatalf("authURL() = %q, want %q", got, want)
 	}
 }
 
-func TestAuthURLKeepsNonHTTPRepos(t *testing.T) {
-	got := authURL("ssh://git@gitlab.scraping.co.kr/group/project.git", "secret-token")
-	want := "ssh://git@gitlab.scraping.co.kr/group/project.git"
-	if got != want {
-		t.Fatalf("authURL() = %q, want %q", got, want)
+func TestAuthURLKeepsNonHTTPSRepos(t *testing.T) {
+	for _, repoURL := range []string{
+		"http://git.example.test/group/project.git",
+		"ssh://git@git.example.test/group/project.git",
+	} {
+		if got := authURL(repoURL, "secret-token"); got != repoURL {
+			t.Fatalf("authURL(%q) = %q, want original URL", repoURL, got)
+		}
 	}
 }
 
 func TestRedactRemovesCredentials(t *testing.T) {
-	got := redact("clone http://oauth2:secret-token@gitlab.scraping.co.kr/gitlab/group/project.git")
-	want := "clone http://[REDACTED]@gitlab.scraping.co.kr/gitlab/group/project.git"
+	got := redact("clone https://x-access-token:secret-token@git.example.test/group/project.git")
+	want := "clone https://[REDACTED]@git.example.test/group/project.git"
 	if got != want {
 		t.Fatalf("redact() = %q, want %q", got, want)
 	}
