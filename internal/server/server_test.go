@@ -879,6 +879,63 @@ func TestCanonicalControlPlaneRejectsInvalidAppAndActionKeys(t *testing.T) {
 	}
 }
 
+func TestCanonicalControlPlaneNotFoundMessagesMatchCanonicalAPI(t *testing.T) {
+	tempDir := t.TempDir()
+	fileCatalog := catalog.NewFileCatalog(filepath.Join(tempDir, "catalog.json"))
+	if err := fileCatalog.UpsertDeployment(context.Background(), contract.Deployment{
+		Workspace:   "ws-a",
+		GitSourceID: "1",
+		App:         "echo",
+		Entrypoint:  "main.ts",
+		Commit:      "commit-a",
+		Actions: map[string]contract.Action{
+			"echo": {Action: "echo"},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(New(Config{
+		Store:     state.NewLocalStore(filepath.Join(tempDir, "state.json")),
+		Catalog:   fileCatalog,
+		EnableAPI: true,
+	}))
+	defer server.Close()
+
+	for _, tc := range []struct {
+		method string
+		path   string
+		body   string
+		want   string
+	}{
+		{http.MethodGet, "/api/w/ws-a/apps/missing", "", "app not found"},
+		{http.MethodGet, "/api/w/ws-a/apps/missing/source", "", "app not found"},
+		{http.MethodPatch, "/api/w/ws-a/apps/missing", `{"tag_override":null}`, "app not found"},
+		{http.MethodPost, "/api/w/ws-a/apps/missing/requeue", `{}`, "app not found"},
+		{http.MethodGet, "/api/w/ws-a/apps/echo/actions/missing", "", "action not found"},
+		{http.MethodPatch, "/api/w/ws-a/apps/echo/actions/missing", `{"tag_override":null}`, "action not found"},
+	} {
+		req, err := http.NewRequest(tc.method, server.URL+tc.path, bytes.NewBufferString(tc.body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var body struct {
+			Error string `json:"error"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+			_ = resp.Body.Close()
+			t.Fatal(err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusNotFound || body.Error != tc.want {
+			t.Fatalf("%s %s = %d %#v, want 404 %q", tc.method, tc.path, resp.StatusCode, body, tc.want)
+		}
+	}
+}
+
 func TestLegacyV1ControlPlaneRoutesAreNotExposed(t *testing.T) {
 	tempDir := t.TempDir()
 	fileCatalog := catalog.NewFileCatalog(filepath.Join(tempDir, "catalog.json"))

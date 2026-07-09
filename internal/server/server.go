@@ -692,7 +692,7 @@ func (h *Handler) handleCanonicalApp(w http.ResponseWriter, r *http.Request, wor
 		writeError(w, http.StatusBadRequest, "invalid app key")
 		return
 	}
-	deployment, ok := h.getCanonicalDeployment(w, r, workspaceID, app, "app not found: "+app)
+	deployment, ok := h.getCanonicalDeployment(w, r, workspaceID, app, "app not found")
 	if !ok {
 		return
 	}
@@ -714,7 +714,7 @@ func (h *Handler) handleCanonicalAppSource(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusBadRequest, "invalid app key")
 		return
 	}
-	deployment, ok := h.getCanonicalDeployment(w, r, workspaceID, app, "app not found: "+app)
+	deployment, ok := h.getCanonicalDeployment(w, r, workspaceID, app, "app not found")
 	if !ok {
 		return
 	}
@@ -786,13 +786,13 @@ func (h *Handler) handleCanonicalAction(w http.ResponseWriter, r *http.Request, 
 		writeError(w, http.StatusBadRequest, "invalid app/action key")
 		return
 	}
-	deployment, ok := h.getCanonicalDeployment(w, r, workspaceID, app, "app not found: "+app)
+	deployment, ok := h.getCanonicalDeployment(w, r, workspaceID, app, "app not found")
 	if !ok {
 		return
 	}
 	action, exists := deployment.Actions[actionKey]
 	if !exists {
-		writeError(w, http.StatusNotFound, "action not found: "+app+"/"+actionKey)
+		writeError(w, http.StatusNotFound, "action not found")
 		return
 	}
 	schemaReader := h.newCanonicalSchemaReader(r.Context(), deployment)
@@ -823,7 +823,7 @@ func (h *Handler) handleCanonicalPatchApp(w http.ResponseWriter, r *http.Request
 	}
 	deployment, err := patcher.SetAppTagOverride(r.Context(), workspaceID, app, tagOverride)
 	if errors.Is(err, catalogpkg.ErrDeploymentNotFound) {
-		writeError(w, http.StatusNotFound, "app not found: "+app)
+		writeError(w, http.StatusNotFound, "app not found")
 		return
 	}
 	if err != nil {
@@ -851,18 +851,18 @@ func (h *Handler) handleCanonicalPatchAction(w http.ResponseWriter, r *http.Requ
 	}
 	action, err := patcher.SetActionTagOverride(r.Context(), workspaceID, app, actionKey, tagOverride)
 	if errors.Is(err, catalogpkg.ErrDeploymentNotFound) {
-		writeError(w, http.StatusNotFound, "app not found: "+app)
+		writeError(w, http.StatusNotFound, "app not found")
 		return
 	}
 	if errors.Is(err, catalogpkg.ErrActionNotFound) {
-		writeError(w, http.StatusNotFound, "action not found: "+app+"/"+actionKey)
+		writeError(w, http.StatusNotFound, "action not found")
 		return
 	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	deployment, ok := h.getCanonicalDeployment(w, r, workspaceID, app, "app not found: "+app)
+	deployment, ok := h.getCanonicalDeployment(w, r, workspaceID, app, "app not found")
 	if !ok {
 		return
 	}
@@ -885,7 +885,7 @@ func (h *Handler) handleCanonicalRequeueApp(w http.ResponseWriter, r *http.Reque
 		writeError(w, http.StatusServiceUnavailable, "state store is not configured")
 		return
 	}
-	deployment, ok := h.getCanonicalDeployment(w, r, workspaceID, app, "app not found: "+app)
+	deployment, ok := h.getCanonicalDeployment(w, r, workspaceID, app, "app not found")
 	if !ok {
 		return
 	}
