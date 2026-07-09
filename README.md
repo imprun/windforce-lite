@@ -217,17 +217,12 @@ tests and scripted smoke checks.
 `worker --tags default,app-blue` restricts claims to those pinned route tags;
 when omitted, the worker claims every queued tag for simple local development.
 
-Implemented control-plane endpoints:
+Implemented trigger endpoint:
 
 - `POST /v1/apps/{app}/actions/{action}`
-- `POST /v1/git-sources`
-- `GET /v1/git-sources`
-- `GET /v1/git-sources/{gitSourceId}`
-- `POST /v1/sync`
-- `GET /v1/catalog`
-- `GET /v1/deployments/{app}`
-- `GET /v1/apps/{app}/actions/{action}/schema` (compatibility alias; returns materialized `inputSchema` and `outputSchema`)
-- `GET /v1/runs/{runID}`
+
+Implemented control-plane endpoints:
+
 - `GET /api/w/{workspace}/git_sources`
 - `POST /api/w/{workspace}/git_sources`
 - `POST /api/w/{workspace}/git_sources/probe`
@@ -255,11 +250,6 @@ Implemented control-plane endpoints:
 - `GET /api/w/{workspace}/jobs/{jobID}/result`
 - `GET /api/w/{workspace}/jobs/{jobID}/logs?tail_bytes={bytes}`
 - `POST /api/w/{workspace}/jobs/{jobID}/cancel`
-- `POST /v1/runs/{runID}/cancel`
-- `POST /v1/runs/{runID}/retry`
-- `GET /v1/human-tasks/{humanTaskID}`
-- `POST /v1/human-tasks/{humanTaskID}/resume`
-- `POST /v1/runs/{runID}/resume`
 
 For local development without the full UI, `tools/windforce_control.py` calls
 the same control-plane API:

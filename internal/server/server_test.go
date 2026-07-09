@@ -70,48 +70,51 @@ func TestTriggerCreatesRunAndAPIReadsIt(t *testing.T) {
 		t.Fatalf("trigger correlation id = %#v", triggerResponse)
 	}
 
-	getResp, err := http.Get(server.URL + "/v1/runs/task-a")
+	listResp, err := http.Get(server.URL + "/api/w/default/jobs?status=queued&app=echo&action=echo&trigger_kind=windforce&limit=1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listResp.Body.Close()
+	if listResp.StatusCode != http.StatusOK {
+		t.Fatalf("job list status = %d, want %d", listResp.StatusCode, http.StatusOK)
+	}
+	var listResponse struct {
+		Items []struct {
+			ID          string `json:"id"`
+			Status      string `json:"status"`
+			AppKey      string `json:"app_key"`
+			ActionKey   string `json:"action_key"`
+			TriggerKind string `json:"trigger_kind"`
+		} `json:"items"`
+	}
+	if err := json.NewDecoder(listResp.Body).Decode(&listResponse); err != nil {
+		t.Fatal(err)
+	}
+	if len(listResponse.Items) != 1 ||
+		listResponse.Items[0].Status != "queued" ||
+		listResponse.Items[0].AppKey != "echo" ||
+		listResponse.Items[0].ActionKey != "echo" ||
+		listResponse.Items[0].TriggerKind != "windforce" {
+		t.Fatalf("job list response = %#v", listResponse)
+	}
+
+	jobID := listResponse.Items[0].ID
+	getResp, err := http.Get(server.URL + "/api/w/default/jobs/" + jobID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer getResp.Body.Close()
 	if getResp.StatusCode != http.StatusOK {
-		t.Fatalf("GET status = %d, want %d", getResp.StatusCode, http.StatusOK)
-	}
-	var getResponse map[string]any
-	if err := json.NewDecoder(getResp.Body).Decode(&getResponse); err != nil {
-		t.Fatal(err)
-	}
-	if getResponse["runId"] != "task-a" {
-		t.Fatalf("GET response = %#v", getResponse)
-	}
-	if getResponse["correlationId"] != "task-a" {
-		t.Fatalf("GET correlation id = %#v", getResponse)
+		t.Fatalf("GET job status = %d, want %d", getResp.StatusCode, http.StatusOK)
 	}
 
-	cancelResp, err := http.Post(server.URL+"/v1/runs/task-a/cancel", "application/json", bytes.NewBufferString(`{"reason":"test"}`))
+	cancelResp, err := http.Post(server.URL+"/api/w/default/jobs/"+jobID+"/cancel", "application/json", bytes.NewBufferString(`{"reason":"test"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer cancelResp.Body.Close()
 	if cancelResp.StatusCode != http.StatusOK {
 		t.Fatalf("cancel status = %d, want %d", cancelResp.StatusCode, http.StatusOK)
-	}
-
-	retryResp, err := http.Post(server.URL+"/v1/runs/task-a/retry", "application/json", bytes.NewBufferString(`{}`))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer retryResp.Body.Close()
-	if retryResp.StatusCode != http.StatusAccepted {
-		t.Fatalf("retry status = %d, want %d", retryResp.StatusCode, http.StatusAccepted)
-	}
-	var retryResponse map[string]any
-	if err := json.NewDecoder(retryResp.Body).Decode(&retryResponse); err != nil {
-		t.Fatal(err)
-	}
-	if retryResponse["state"] != string(state.RunQueued) || retryResponse["jobId"] == "" {
-		t.Fatalf("retry response = %#v", retryResponse)
 	}
 }
 
@@ -591,6 +594,50 @@ func TestCanonicalControlPlaneRejectsInvalidAppAndActionKeys(t *testing.T) {
 		_ = resp.Body.Close()
 		if resp.StatusCode != http.StatusBadRequest || body.Error != tc.want {
 			t.Fatalf("%s %s = %d %#v, want 400 %q", tc.method, tc.path, resp.StatusCode, body, tc.want)
+		}
+	}
+}
+
+func TestLegacyV1ControlPlaneRoutesAreNotExposed(t *testing.T) {
+	tempDir := t.TempDir()
+	fileCatalog := catalog.NewFileCatalog(filepath.Join(tempDir, "catalog.json"))
+	server := httptest.NewServer(New(Config{
+		Store:      state.NewLocalStore(filepath.Join(tempDir, "state.json")),
+		Catalog:    fileCatalog,
+		Syncer:     &syncer.Syncer{Store: bundle.NewLocalStore(filepath.Join(tempDir, "store")), Catalog: fileCatalog},
+		GitSources: gitsource.NewFileRegistry(filepath.Join(tempDir, "git-sources.json")),
+		EnableAPI:  true,
+	}))
+	defer server.Close()
+
+	for _, tc := range []struct {
+		method string
+		path   string
+		body   string
+	}{
+		{http.MethodPost, "/v1/sync", `{}`},
+		{http.MethodGet, "/v1/catalog", ""},
+		{http.MethodPost, "/v1/git-sources", `{}`},
+		{http.MethodGet, "/v1/git-sources/source-a", ""},
+		{http.MethodGet, "/v1/deployments/echo", ""},
+		{http.MethodGet, "/v1/apps/echo/actions/echo/schema", ""},
+		{http.MethodGet, "/v1/runs/run-a", ""},
+		{http.MethodPost, "/v1/runs/run-a/cancel", `{}`},
+		{http.MethodPost, "/v1/runs/run-a/retry", `{}`},
+		{http.MethodGet, "/v1/human-tasks/task-a", ""},
+		{http.MethodPost, "/v1/human-tasks/task-a/resume", `{}`},
+	} {
+		req, err := http.NewRequest(tc.method, server.URL+tc.path, bytes.NewBufferString(tc.body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusNotFound {
+			t.Fatalf("%s %s status = %d, want %d", tc.method, tc.path, resp.StatusCode, http.StatusNotFound)
 		}
 	}
 }
@@ -1794,162 +1841,6 @@ func TestTriggerTokenAuthorization(t *testing.T) {
 	}
 }
 
-func TestControlPlaneSyncCatalogDeploymentAndSchema(t *testing.T) {
-	tempDir := t.TempDir()
-	sourceDir := filepath.Join(tempDir, "source")
-	if err := os.MkdirAll(sourceDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(sourceDir, "windforce.json"), []byte(`{
-		"app": "echo",
-		"entrypoint": "main.ts",
-		"scriptLang": "typescript",
-		"actions": {
-			"echo": {
-				"command": ["helper"],
-				"inputSchema": "input.schema.json",
-				"outputSchema": "output.schema.json"
-			}
-		}
-	}`), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(sourceDir, "input.schema.json"), []byte(`{"type":"object","properties":{"message":{"type":"string"}}}`), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(sourceDir, "output.schema.json"), []byte(`{"type":"object","properties":{"ok":{"type":"boolean"}}}`), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	fileCatalog := catalog.NewFileCatalog(filepath.Join(tempDir, "catalog.json"))
-	handler := New(Config{
-		Store:     state.NewLocalStore(filepath.Join(tempDir, "state.json")),
-		Catalog:   fileCatalog,
-		Syncer:    &syncer.Syncer{Store: bundle.NewLocalStore(filepath.Join(tempDir, "store")), Catalog: fileCatalog},
-		EnableAPI: true,
-	})
-	server := httptest.NewServer(handler)
-	defer server.Close()
-
-	syncResp, err := http.Post(server.URL+"/v1/sync", "application/json", bytes.NewBufferString(`{"app":"echo","sourceDir":"`+filepath.ToSlash(sourceDir)+`","commit":"commit-a"}`))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer syncResp.Body.Close()
-	if syncResp.StatusCode != http.StatusOK {
-		t.Fatalf("sync status = %d, want %d", syncResp.StatusCode, http.StatusOK)
-	}
-
-	for _, path := range []string{"/v1/catalog", "/v1/deployments/echo", "/v1/apps/echo/actions/echo/schema"} {
-		resp, err := http.Get(server.URL + path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if resp.StatusCode != http.StatusOK {
-			t.Fatalf("GET %s status = %d, want %d", path, resp.StatusCode, http.StatusOK)
-		}
-		_ = resp.Body.Close()
-	}
-
-	schemaResp, err := http.Get(server.URL + "/v1/apps/echo/actions/echo/schema")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer schemaResp.Body.Close()
-	var schemaBody struct {
-		InputSchema     json.RawMessage `json:"inputSchema"`
-		OutputSchema    json.RawMessage `json:"outputSchema"`
-		InputSchemaPath string          `json:"inputSchemaPath"`
-	}
-	if err := json.NewDecoder(schemaResp.Body).Decode(&schemaBody); err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Contains(schemaBody.InputSchema, []byte(`"message"`)) ||
-		!bytes.Contains(schemaBody.OutputSchema, []byte(`"ok"`)) ||
-		schemaBody.InputSchemaPath != "input.schema.json" {
-		t.Fatalf("schema body = %#v input=%s output=%s", schemaBody, schemaBody.InputSchema, schemaBody.OutputSchema)
-	}
-}
-
-func TestControlPlaneRegistersGitSourceAndSyncsIt(t *testing.T) {
-	tempDir := t.TempDir()
-	repoDir := filepath.Join(tempDir, "repo")
-	if err := os.MkdirAll(repoDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(repoDir, "windforce.json"), []byte(`{
-		"app": "echo",
-		"entrypoint": "main.ts",
-		"scriptLang": "typescript",
-		"actions": {
-			"echo": {
-				"command": ["helper"]
-			}
-		}
-	}`), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	runTestGit(t, repoDir, "init")
-	runTestGit(t, repoDir, "checkout", "-b", "main")
-	runTestGit(t, repoDir, "config", "user.email", "test@example.com")
-	runTestGit(t, repoDir, "config", "user.name", "Test User")
-	runTestGit(t, repoDir, "add", "windforce.json")
-	runTestGit(t, repoDir, "commit", "-m", "initial")
-
-	fileCatalog := catalog.NewFileCatalog(filepath.Join(tempDir, "catalog.json"))
-	handler := New(Config{
-		Store:      state.NewLocalStore(filepath.Join(tempDir, "state.json")),
-		Catalog:    fileCatalog,
-		Syncer:     &syncer.Syncer{Store: bundle.NewLocalStore(filepath.Join(tempDir, "store")), Catalog: fileCatalog, CloneRoot: tempDir},
-		GitSources: gitsource.NewFileRegistry(filepath.Join(tempDir, "git-sources.json")),
-		EnableAPI:  true,
-	})
-	server := httptest.NewServer(handler)
-	defer server.Close()
-
-	registerBody, err := json.Marshal(map[string]string{
-		"id":      "source-a",
-		"repoUrl": filepath.ToSlash(repoDir),
-		"branch":  "main",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	registerResp, err := http.Post(server.URL+"/v1/git-sources", "application/json", bytes.NewReader(registerBody))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer registerResp.Body.Close()
-	if registerResp.StatusCode != http.StatusOK {
-		t.Fatalf("register status = %d, want %d", registerResp.StatusCode, http.StatusOK)
-	}
-
-	getResp, err := http.Get(server.URL + "/v1/git-sources/source-a")
-	if err != nil {
-		t.Fatal(err)
-	}
-	_ = getResp.Body.Close()
-	if getResp.StatusCode != http.StatusOK {
-		t.Fatalf("get git source status = %d, want %d", getResp.StatusCode, http.StatusOK)
-	}
-
-	syncResp, err := http.Post(server.URL+"/v1/sync", "application/json", bytes.NewBufferString(`{"app":"echo","gitSourceId":"source-a"}`))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer syncResp.Body.Close()
-	if syncResp.StatusCode != http.StatusOK {
-		t.Fatalf("sync status = %d, want %d", syncResp.StatusCode, http.StatusOK)
-	}
-	var deployment contract.Deployment
-	if err := json.NewDecoder(syncResp.Body).Decode(&deployment); err != nil {
-		t.Fatal(err)
-	}
-	if deployment.GitSourceID != "source-a" {
-		t.Fatalf("deployment gitSourceId = %q, want source-a", deployment.GitSourceID)
-	}
-}
-
 func TestControlPlaneRegistersGitSourcePathAndSyncsIt(t *testing.T) {
 	tempDir := t.TempDir()
 	repoDir := filepath.Join(tempDir, "repo")
@@ -1995,24 +1886,24 @@ func TestControlPlaneRegistersGitSourcePathAndSyncsIt(t *testing.T) {
 	defer server.Close()
 
 	registerBody, err := json.Marshal(map[string]string{
-		"id":      "source-a",
-		"repoUrl": filepath.ToSlash(repoDir),
-		"branch":  "main",
-		"subpath": "apps/echo",
+		"name":     "source-a",
+		"repo_url": filepath.ToSlash(repoDir),
+		"branch":   "main",
+		"subpath":  "apps/echo",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	registerResp, err := http.Post(server.URL+"/v1/git-sources", "application/json", bytes.NewReader(registerBody))
+	registerResp, err := http.Post(server.URL+"/api/w/ws-a/git_sources", "application/json", bytes.NewReader(registerBody))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer registerResp.Body.Close()
-	if registerResp.StatusCode != http.StatusOK {
-		t.Fatalf("register status = %d, want %d", registerResp.StatusCode, http.StatusOK)
+	if registerResp.StatusCode != http.StatusCreated {
+		t.Fatalf("register status = %d, want %d", registerResp.StatusCode, http.StatusCreated)
 	}
 
-	syncResp, err := http.Post(server.URL+"/v1/sync", "application/json", bytes.NewBufferString(`{"app":"echo","gitSourceId":"source-a"}`))
+	syncResp, err := http.Post(server.URL+"/api/w/ws-a/git_sources/source-a/sync", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2020,8 +1911,19 @@ func TestControlPlaneRegistersGitSourcePathAndSyncsIt(t *testing.T) {
 	if syncResp.StatusCode != http.StatusOK {
 		t.Fatalf("sync status = %d, want %d", syncResp.StatusCode, http.StatusOK)
 	}
-	var deployment contract.Deployment
-	if err := json.NewDecoder(syncResp.Body).Decode(&deployment); err != nil {
+	var syncBody struct {
+		App     string   `json:"app"`
+		Commit  string   `json:"commit"`
+		Actions []string `json:"actions"`
+	}
+	if err := json.NewDecoder(syncResp.Body).Decode(&syncBody); err != nil {
+		t.Fatal(err)
+	}
+	if syncBody.App != "echo" || syncBody.Commit == "" || len(syncBody.Actions) != 1 || syncBody.Actions[0] != "echo.echo" {
+		t.Fatalf("sync body = %#v", syncBody)
+	}
+	deployment, err := fileCatalog.GetDeploymentForWorkspace(context.Background(), "ws-a", "echo")
+	if err != nil {
 		t.Fatal(err)
 	}
 
