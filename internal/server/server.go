@@ -2406,6 +2406,9 @@ type jobStatusResponse struct {
 	DurationMs     int64           `json:"duration_ms,omitempty"`
 	CanceledBy     *string         `json:"canceled_by,omitempty"`
 	CanceledReason *string         `json:"canceled_reason,omitempty"`
+	FlowRunID      *string         `json:"flow_run_id,omitempty"`
+	FlowKey        *string         `json:"flow_key,omitempty"`
+	FlowStepKey    *string         `json:"flow_step_key,omitempty"`
 }
 
 func newJobStatus(workspaceID string, job state.Job, run state.Run) jobStatusResponse {

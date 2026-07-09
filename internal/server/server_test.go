@@ -1036,7 +1036,7 @@ func TestCanonicalControlPlaneOpenAPIExposesSchemaDiscovery(t *testing.T) {
 		}
 	}
 	jobStatus := schemas["JobStatus"].(map[string]any)["properties"].(map[string]any)
-	for _, field := range []string{"input_schema", "output_schema", "canceled_by", "canceled_reason"} {
+	for _, field := range []string{"input_schema", "output_schema", "canceled_by", "canceled_reason", "flow_run_id", "flow_key", "flow_step_key"} {
 		if jobStatus[field] == nil {
 			t.Fatalf("job status schema missing %s: %#v", field, jobStatus)
 		}
