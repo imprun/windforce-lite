@@ -271,8 +271,18 @@ func TestParseRejectsEscapingActionPaths(t *testing.T) {
 			want: "app echo entrypoint path",
 		},
 		{
+			name: "absolute app entrypoint",
+			body: `{"app":"echo","entrypoint":"/main.ts","actions":{"run":{}}}`,
+			want: "app echo entrypoint path",
+		},
+		{
 			name: "input schema",
 			body: `{"app":"echo","entrypoint":"main.ts","actions":{"run":{"inputSchema":"schemas/../input.json"}}}`,
+			want: "input schema path",
+		},
+		{
+			name: "absolute input schema",
+			body: `{"app":"echo","entrypoint":"main.ts","actions":{"run":{"inputSchema":"/input.json"}}}`,
 			want: "input schema path",
 		},
 		{

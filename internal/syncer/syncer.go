@@ -207,7 +207,7 @@ func readSchemaFile(root string, rel string) (json.RawMessage, error) {
 	if rel == "" {
 		return json.RawMessage([]byte("{}")), nil
 	}
-	if strings.Contains(rel, "..") {
+	if filepath.IsAbs(rel) || strings.HasPrefix(rel, "/") || strings.Contains(rel, "..") {
 		return nil, fmt.Errorf("schema path %q must be a relative path inside the app", rel)
 	}
 	normalized, err := contract.NormalizeSourcePath(rel)

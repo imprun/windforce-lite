@@ -296,6 +296,13 @@ func TestSyncRejectsInvalidSchemaReferences(t *testing.T) {
 	}
 }
 
+func TestReadSchemaFileRejectsAbsolutePath(t *testing.T) {
+	_, err := readSchemaFile(t.TempDir(), "/input.schema.json")
+	if err == nil || err.Error() != `schema path "/input.schema.json" must be a relative path inside the app` {
+		t.Fatalf("readSchemaFile error = %v, want absolute path validation", err)
+	}
+}
+
 func runSyncerTestGit(t *testing.T, dir string, args ...string) {
 	t.Helper()
 	cmd := exec.Command("git", args...)

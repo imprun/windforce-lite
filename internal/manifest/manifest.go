@@ -130,7 +130,7 @@ func validateActionPath(app string, action string, field string, value string) e
 	if action == "" {
 		owner = "app " + app
 	}
-	if strings.Contains(value, "..") {
+	if filepath.IsAbs(value) || strings.HasPrefix(value, "/") || strings.Contains(value, "..") {
 		return fmt.Errorf("%s %s path %q must be a relative path inside the app", owner, field, value)
 	}
 	if _, err := contract.NormalizeSourcePath(value); err != nil {
