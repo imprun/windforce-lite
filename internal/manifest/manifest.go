@@ -39,6 +39,9 @@ func Parse(data []byte) (contract.App, error) {
 	if err := validateActionPath(app.App, "", "entrypoint", app.Entrypoint); err != nil {
 		return contract.App{}, err
 	}
+	if app.MaxConcurrent != nil && *app.MaxConcurrent <= 0 {
+		return contract.App{}, fmt.Errorf("app %s maxConcurrent must be positive in %s", app.App, FileName)
+	}
 
 	for name, action := range app.Actions {
 		if !contract.ValidActionKey(name) {

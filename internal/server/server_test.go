@@ -645,6 +645,7 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 		"entrypoint": "main.ts",
 		"scriptLang": "typescript",
 		"timeout": 120,
+		"maxConcurrent": 2,
 		"actions": {
 			"echo": {
 				"command": ["helper"],
@@ -870,12 +871,13 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 	}
 	var appBody struct {
 		App struct {
-			AppKey      string    `json:"app_key"`
-			GitSourceID string    `json:"git_source_id"`
-			Entrypoint  string    `json:"entrypoint"`
-			ScriptLang  string    `json:"script_lang"`
-			TimeoutS    int32     `json:"timeout_s"`
-			UpdatedAt   time.Time `json:"updated_at"`
+			AppKey        string    `json:"app_key"`
+			GitSourceID   string    `json:"git_source_id"`
+			Entrypoint    string    `json:"entrypoint"`
+			ScriptLang    string    `json:"script_lang"`
+			TimeoutS      int32     `json:"timeout_s"`
+			MaxConcurrent *int32    `json:"max_concurrent"`
+			UpdatedAt     time.Time `json:"updated_at"`
 		} `json:"app"`
 		Actions []struct {
 			ActionKey   string          `json:"action_key"`
@@ -887,7 +889,8 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 	}
 	if appBody.App.AppKey != "echo" || appBody.App.GitSourceID != "source-a" ||
 		appBody.App.Entrypoint != "main.ts" || appBody.App.ScriptLang != "typescript" ||
-		appBody.App.TimeoutS != 120 || appBody.App.UpdatedAt.IsZero() ||
+		appBody.App.TimeoutS != 120 || appBody.App.MaxConcurrent == nil || *appBody.App.MaxConcurrent != 2 ||
+		appBody.App.UpdatedAt.IsZero() ||
 		len(appBody.Actions) != 1 || appBody.Actions[0].ActionKey != "echo" ||
 		!bytes.Contains(appBody.Actions[0].InputSchema, []byte(`"message"`)) {
 		t.Fatalf("app body = %#v", appBody)

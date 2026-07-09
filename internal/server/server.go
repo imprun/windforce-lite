@@ -1066,11 +1066,10 @@ func (h *Handler) handleCanonicalRequeueApp(w http.ResponseWriter, r *http.Reque
 }
 
 func (h *Handler) handleCanonicalDeployment(w http.ResponseWriter, r *http.Request, workspaceID string, id string) {
-	deployment, ok := h.getCanonicalDeployment(w, r, workspaceID, id, "deployment not found")
-	if !ok {
-		return
-	}
-	writeJSON(w, http.StatusOK, deployment)
+	// Full windforce returns an AppDeployment status row from the deploy control
+	// plane. windforce-lite does not yet have that deploy state table; do not
+	// expose the internal app Deployment contract through the canonical route.
+	writeError(w, http.StatusNotFound, "deployment not found")
 }
 
 func (h *Handler) handleCanonicalWorkerTags(w http.ResponseWriter, r *http.Request, workspaceID string) {
@@ -1261,6 +1260,7 @@ type canonicalAppModel struct {
 	TimeoutS             int32     `json:"timeout_s"`
 	ScriptLang           string    `json:"script_lang"`
 	RequiredCapabilities []string  `json:"required_capabilities"`
+	MaxConcurrent        *int32    `json:"max_concurrent,omitempty"`
 	UpdatedAt            time.Time `json:"updated_at"`
 }
 
@@ -1363,6 +1363,7 @@ func newCanonicalAppModel(deployment contract.Deployment) canonicalAppModel {
 		TimeoutS:             canonicalDeploymentTimeoutSeconds(deployment),
 		ScriptLang:           canonicalDeploymentScriptLang(deployment),
 		RequiredCapabilities: []string{},
+		MaxConcurrent:        cloneInt32Ptr(deployment.MaxConcurrent),
 		UpdatedAt:            canonicalDeploymentUpdatedAt(deployment),
 	}
 }
@@ -1639,6 +1640,14 @@ func cloneRawMessage(value json.RawMessage) json.RawMessage {
 }
 
 func cloneStringPtr(value *string) *string {
+	if value == nil {
+		return nil
+	}
+	clone := *value
+	return &clone
+}
+
+func cloneInt32Ptr(value *int32) *int32 {
 	if value == nil {
 		return nil
 	}

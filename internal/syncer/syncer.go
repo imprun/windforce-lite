@@ -91,17 +91,18 @@ func (s *Syncer) Sync(ctx context.Context, src Source) (contract.Deployment, err
 
 	updatedAt := time.Now().UTC()
 	deployment := contract.Deployment{
-		Workspace:   workspace,
-		GitSourceID: gitSourceID,
-		App:         app.App,
-		Tag:         app.Tag,
-		Entrypoint:  app.Entrypoint,
-		Runtime:     app.Runtime,
-		ScriptLang:  app.ScriptLang,
-		TimeoutS:    app.TimeoutS,
-		Commit:      commit,
-		Actions:     app.Actions,
-		UpdatedAt:   &updatedAt,
+		Workspace:     workspace,
+		GitSourceID:   gitSourceID,
+		App:           app.App,
+		Tag:           app.Tag,
+		Entrypoint:    app.Entrypoint,
+		Runtime:       app.Runtime,
+		ScriptLang:    app.ScriptLang,
+		TimeoutS:      app.TimeoutS,
+		MaxConcurrent: app.MaxConcurrent,
+		Commit:        commit,
+		Actions:       app.Actions,
+		UpdatedAt:     &updatedAt,
 	}
 	for key, action := range deployment.Actions {
 		action.UpdatedAt = &updatedAt

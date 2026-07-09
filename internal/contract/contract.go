@@ -20,14 +20,16 @@ const (
 
 // App is the deployable source bundle described by windforce.json.
 type App struct {
-	App        string            `json:"app"`
-	Name       string            `json:"name,omitempty"`
-	Entrypoint string            `json:"entrypoint,omitempty"`
-	Runtime    string            `json:"runtime,omitempty"`
-	ScriptLang string            `json:"scriptLang,omitempty"`
-	TimeoutS   int32             `json:"timeout,omitempty"`
-	Tag        string            `json:"tag,omitempty"`
-	Actions    map[string]Action `json:"actions"`
+	App        string `json:"app"`
+	Name       string `json:"name,omitempty"`
+	Entrypoint string `json:"entrypoint,omitempty"`
+	Runtime    string `json:"runtime,omitempty"`
+	ScriptLang string `json:"scriptLang,omitempty"`
+	TimeoutS   int32  `json:"timeout,omitempty"`
+	Tag        string `json:"tag,omitempty"`
+	// MaxConcurrent caps concurrently running jobs for this app. Nil means unlimited.
+	MaxConcurrent *int32            `json:"maxConcurrent,omitempty"`
+	Actions       map[string]Action `json:"actions"`
 }
 
 // Action is one executable unit inside an app.
@@ -60,21 +62,22 @@ type ActionAdapter struct {
 
 // Deployment is the active source bundle selected by the catalog.
 type Deployment struct {
-	Workspace    string            `json:"workspace,omitempty"`
-	GitSourceID  string            `json:"gitSourceId,omitempty"`
-	App          string            `json:"app"`
-	Version      string            `json:"version,omitempty"`
-	Tag          string            `json:"tag,omitempty"`
-	TagOverride  *string           `json:"tagOverride,omitempty"`
-	Entrypoint   string            `json:"entrypoint,omitempty"`
-	Runtime      string            `json:"runtime,omitempty"`
-	ScriptLang   string            `json:"scriptLang,omitempty"`
-	TimeoutS     int32             `json:"timeout,omitempty"`
-	Commit       string            `json:"commit"`
-	BundleDigest string            `json:"bundleDigest,omitempty"`
-	ObjectURI    string            `json:"objectUri"`
-	Actions      map[string]Action `json:"actions"`
-	UpdatedAt    *time.Time        `json:"updatedAt,omitempty"`
+	Workspace     string            `json:"workspace,omitempty"`
+	GitSourceID   string            `json:"gitSourceId,omitempty"`
+	App           string            `json:"app"`
+	Version       string            `json:"version,omitempty"`
+	Tag           string            `json:"tag,omitempty"`
+	TagOverride   *string           `json:"tagOverride,omitempty"`
+	Entrypoint    string            `json:"entrypoint,omitempty"`
+	Runtime       string            `json:"runtime,omitempty"`
+	ScriptLang    string            `json:"scriptLang,omitempty"`
+	TimeoutS      int32             `json:"timeout,omitempty"`
+	MaxConcurrent *int32            `json:"maxConcurrent,omitempty"`
+	Commit        string            `json:"commit"`
+	BundleDigest  string            `json:"bundleDigest,omitempty"`
+	ObjectURI     string            `json:"objectUri"`
+	Actions       map[string]Action `json:"actions"`
+	UpdatedAt     *time.Time        `json:"updatedAt,omitempty"`
 }
 
 // JobRequest is the runtime request passed into windforce-lite.

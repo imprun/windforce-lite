@@ -29,6 +29,7 @@ func TestParseAppliesCanonicalAppDefaults(t *testing.T) {
 		"entrypoint": "main.ts",
 		"scriptLang": "typescript",
 		"timeout": 120,
+		"maxConcurrent": 2,
 		"actions": {
 			"run": {},
 			"fast": {"entrypoint": "fast.ts", "runtime": "go", "timeout": 45}
@@ -37,6 +38,9 @@ func TestParseAppliesCanonicalAppDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Parse returned error: %v", err)
 	}
+	if app.MaxConcurrent == nil || *app.MaxConcurrent != 2 {
+		t.Fatalf("maxConcurrent = %v, want 2", app.MaxConcurrent)
+	}
 	run := app.Actions["run"]
 	if run.Entrypoint != "main.ts" || run.Runtime != "typescript" || run.TimeoutMs != 120000 {
 		t.Fatalf("run defaults = %#v", run)
@@ -44,6 +48,17 @@ func TestParseAppliesCanonicalAppDefaults(t *testing.T) {
 	fast := app.Actions["fast"]
 	if fast.Entrypoint != "fast.ts" || fast.Runtime != "go" || fast.TimeoutMs != 45000 {
 		t.Fatalf("fast overrides = %#v", fast)
+	}
+}
+
+func TestParseRejectsInvalidMaxConcurrent(t *testing.T) {
+	_, err := Parse([]byte(`{
+		"app": "echo",
+		"maxConcurrent": 0,
+		"actions": {"run": {}}
+	}`))
+	if err == nil || !strings.Contains(err.Error(), "maxConcurrent must be positive") {
+		t.Fatalf("Parse error = %v, want maxConcurrent validation", err)
 	}
 }
 
