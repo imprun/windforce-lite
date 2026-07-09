@@ -1378,12 +1378,14 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 		t.Fatalf("status status = %d, want %d", statusResp.StatusCode, http.StatusOK)
 	}
 	var statusBody struct {
-		InputSchema  json.RawMessage `json:"input_schema"`
-		OutputSchema json.RawMessage `json:"output_schema"`
-		Input        json.RawMessage `json:"input"`
-		CommitSha    string          `json:"commit_sha"`
-		Entrypoint   string          `json:"entrypoint"`
-		Tag          string          `json:"tag"`
+		InputSchema    json.RawMessage `json:"input_schema"`
+		OutputSchema   json.RawMessage `json:"output_schema"`
+		Input          json.RawMessage `json:"input"`
+		CommitSha      string          `json:"commit_sha"`
+		Entrypoint     string          `json:"entrypoint"`
+		Tag            string          `json:"tag"`
+		CreatedBy      string          `json:"created_by"`
+		PermissionedAs string          `json:"permissioned_as"`
 	}
 	if err := json.NewDecoder(statusResp.Body).Decode(&statusBody); err != nil {
 		t.Fatal(err)
@@ -1393,7 +1395,9 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 		!bytes.Contains(statusBody.Input, []byte(`"hello"`)) ||
 		statusBody.CommitSha != syncBody.Commit ||
 		statusBody.Entrypoint != "main.ts" ||
-		statusBody.Tag != "browser" {
+		statusBody.Tag != "browser" ||
+		statusBody.CreatedBy != "system" ||
+		statusBody.PermissionedAs != "system" {
 		t.Fatalf("status body schemas/input = input_schema:%s output_schema:%s input:%s", statusBody.InputSchema, statusBody.OutputSchema, statusBody.Input)
 	}
 

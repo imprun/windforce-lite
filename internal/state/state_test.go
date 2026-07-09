@@ -140,6 +140,51 @@ func TestLocalStoreClaimJobForTags(t *testing.T) {
 	}
 }
 
+func TestActionJobPreservesActorAudit(t *testing.T) {
+	deployment := contract.Deployment{
+		Workspace:   "ws-a",
+		GitSourceID: "1",
+		App:         "echo",
+		Commit:      "commit-a",
+		Entrypoint:  "main.ts",
+		Actions: map[string]contract.Action{
+			"echo": {Action: "echo"},
+		},
+	}
+	run := NewRun("windforce", "run-a", "echo", "echo", deployment, json.RawMessage(`{}`))
+	run.CreatedBy = "runner@example.test"
+	run.PermissionedAs = "delegate@example.test"
+
+	job := NewActionJob(run, nil)
+	if job.Payload.CreatedBy != "runner@example.test" || job.Payload.PermissionedAs != "delegate@example.test" {
+		t.Fatalf("job actor = %q/%q", job.Payload.CreatedBy, job.Payload.PermissionedAs)
+	}
+	item := newJobListItem("ws-a", job, run)
+	if item.CreatedBy != "runner@example.test" || item.PermissionedAs != "delegate@example.test" {
+		t.Fatalf("list actor = %q/%q", item.CreatedBy, item.PermissionedAs)
+	}
+}
+
+func TestActionJobDefaultsActorAudit(t *testing.T) {
+	deployment := contract.Deployment{
+		Workspace:   "ws-a",
+		GitSourceID: "1",
+		App:         "echo",
+		Commit:      "commit-a",
+		Actions: map[string]contract.Action{
+			"echo": {Action: "echo"},
+		},
+	}
+	run := NewRun("windforce", "run-a", "echo", "echo", deployment, json.RawMessage(`{}`))
+	job := NewActionJob(run, nil)
+	if run.CreatedBy != "system" || run.PermissionedAs != "system" {
+		t.Fatalf("run actor = %q/%q", run.CreatedBy, run.PermissionedAs)
+	}
+	if job.Payload.CreatedBy != "system" || job.Payload.PermissionedAs != "system" {
+		t.Fatalf("job actor = %q/%q", job.Payload.CreatedBy, job.Payload.PermissionedAs)
+	}
+}
+
 func exerciseStoreVariablesAndResources(t *testing.T, store Store) {
 	t.Helper()
 	ctx := context.Background()

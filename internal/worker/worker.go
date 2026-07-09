@@ -51,6 +51,8 @@ func (p *Processor) ProcessOne(ctx context.Context) (bool, error) {
 		TriggerHeaders: job.Payload.TriggerHeaders,
 		Tag:            job.Payload.Tag,
 		Env:            job.Payload.Env,
+		CreatedBy:      job.Payload.CreatedBy,
+		PermissionedAs: job.Payload.PermissionedAs,
 		LogSink: func(chunk []byte) {
 			_ = p.Store.AppendLogs(context.Background(), job.ID, workspaceID, string(chunk))
 		},

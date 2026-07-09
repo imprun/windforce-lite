@@ -58,22 +58,24 @@ var (
 )
 
 type Run struct {
-	ID            string              `json:"id"`
-	Adapter       string              `json:"adapter,omitempty"`
-	App           string              `json:"app"`
-	Action        string              `json:"action"`
-	State         RunState            `json:"state"`
-	Deployment    contract.Deployment `json:"deployment"`
-	Input         json.RawMessage     `json:"input,omitempty"`
-	Output        json.RawMessage     `json:"output,omitempty"`
-	Result        *contract.JobResult `json:"result,omitempty"`
-	Error         json.RawMessage     `json:"error,omitempty"`
-	TaskID        string              `json:"taskId,omitempty"`
-	CorrelationID string              `json:"correlationId,omitempty"`
-	Env           []string            `json:"env,omitempty"`
-	CreatedAt     time.Time           `json:"createdAt"`
-	UpdatedAt     time.Time           `json:"updatedAt"`
-	ExpiresAt     *time.Time          `json:"expiresAt,omitempty"`
+	ID             string              `json:"id"`
+	Adapter        string              `json:"adapter,omitempty"`
+	App            string              `json:"app"`
+	Action         string              `json:"action"`
+	State          RunState            `json:"state"`
+	Deployment     contract.Deployment `json:"deployment"`
+	Input          json.RawMessage     `json:"input,omitempty"`
+	Output         json.RawMessage     `json:"output,omitempty"`
+	Result         *contract.JobResult `json:"result,omitempty"`
+	Error          json.RawMessage     `json:"error,omitempty"`
+	TaskID         string              `json:"taskId,omitempty"`
+	CorrelationID  string              `json:"correlationId,omitempty"`
+	Env            []string            `json:"env,omitempty"`
+	CreatedBy      string              `json:"createdBy,omitempty"`
+	PermissionedAs string              `json:"permissionedAs,omitempty"`
+	CreatedAt      time.Time           `json:"createdAt"`
+	UpdatedAt      time.Time           `json:"updatedAt"`
+	ExpiresAt      *time.Time          `json:"expiresAt,omitempty"`
 }
 
 type JobPayload struct {
@@ -92,6 +94,8 @@ type JobPayload struct {
 	Deployment     contract.Deployment `json:"deployment"`
 	CorrelationID  string              `json:"correlationId,omitempty"`
 	Env            []string            `json:"env,omitempty"`
+	CreatedBy      string              `json:"createdBy,omitempty"`
+	PermissionedAs string              `json:"permissionedAs,omitempty"`
 }
 
 type Job struct {
@@ -304,15 +308,17 @@ func NewRun(adapter string, id string, app string, action string, deployment con
 	}
 	now := time.Now().UTC()
 	return Run{
-		ID:         id,
-		Adapter:    adapter,
-		App:        app,
-		Action:     action,
-		State:      RunQueued,
-		Deployment: deployment,
-		Input:      cloneRaw(input),
-		CreatedAt:  now,
-		UpdatedAt:  now,
+		ID:             id,
+		Adapter:        adapter,
+		App:            app,
+		Action:         action,
+		State:          RunQueued,
+		Deployment:     deployment,
+		Input:          cloneRaw(input),
+		CreatedBy:      defaultActorSubject,
+		PermissionedAs: defaultActorSubject,
+		CreatedAt:      now,
+		UpdatedAt:      now,
 	}
 }
 
@@ -331,20 +337,47 @@ func NewActionJob(run Run, input json.RawMessage) Job {
 		CreatedAt: now,
 		UpdatedAt: now,
 		Payload: JobPayload{
-			Workspace:     run.Deployment.SourceWorkspace(),
-			GitSourceID:   run.Deployment.SourceGitSourceID(),
-			Commit:        run.Deployment.Commit,
-			App:           run.App,
-			Action:        run.Action,
-			Tag:           contract.EffectiveRouteTagForAction(run.Deployment, actionSpec),
-			TriggerKind:   run.Adapter,
-			ActionSpec:    actionSpec,
-			Input:         cloneRaw(input),
-			Deployment:    run.Deployment,
-			CorrelationID: run.CorrelationID,
-			Env:           append([]string(nil), run.Env...),
+			Workspace:      run.Deployment.SourceWorkspace(),
+			GitSourceID:    run.Deployment.SourceGitSourceID(),
+			Commit:         run.Deployment.Commit,
+			App:            run.App,
+			Action:         run.Action,
+			Tag:            contract.EffectiveRouteTagForAction(run.Deployment, actionSpec),
+			TriggerKind:    run.Adapter,
+			ActionSpec:     actionSpec,
+			Input:          cloneRaw(input),
+			Deployment:     run.Deployment,
+			CorrelationID:  run.CorrelationID,
+			Env:            append([]string(nil), run.Env...),
+			CreatedBy:      actorCreatedBy(run),
+			PermissionedAs: actorPermissionedAs(run),
 		},
 	}
+}
+
+const defaultActorSubject = "system"
+
+func actorCreatedBy(run Run) string {
+	if createdBy := strings.TrimSpace(run.CreatedBy); createdBy != "" {
+		return createdBy
+	}
+	return defaultActorSubject
+}
+
+func actorPermissionedAs(run Run) string {
+	if permissionedAs := strings.TrimSpace(run.PermissionedAs); permissionedAs != "" {
+		return permissionedAs
+	}
+	return actorCreatedBy(run)
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func (p JobPayload) PinnedDeployment() contract.Deployment {
@@ -1343,6 +1376,8 @@ func newJobListItem(workspaceID string, job Job, run Run) JobListItem {
 		CommitSha:      stringPtr(job.Payload.Commit),
 		Entrypoint:     job.Payload.ActionSpec.Entrypoint,
 		Tag:            jobTag(job),
+		CreatedBy:      firstNonEmpty(strings.TrimSpace(job.Payload.CreatedBy), strings.TrimSpace(run.CreatedBy), defaultActorSubject),
+		PermissionedAs: firstNonEmpty(strings.TrimSpace(job.Payload.PermissionedAs), strings.TrimSpace(run.PermissionedAs), strings.TrimSpace(job.Payload.CreatedBy), strings.TrimSpace(run.CreatedBy), defaultActorSubject),
 		CanceledReason: canceledReason(run),
 		ErrorSnippet:   failureSnippet(status, run),
 	}

@@ -36,6 +36,8 @@ type RunRequest struct {
 	OutputPath     string
 	Timeout        time.Duration
 	Env            []string
+	CreatedBy      string
+	PermissionedAs string
 	LogSink        func([]byte)
 }
 
@@ -296,6 +298,8 @@ func (r *Runner) jobEnv(req RunRequest, action contract.Action) []string {
 	workspace := contract.NormalizeWorkspace(firstNonEmpty(req.WorkspaceID, req.Deployment.SourceWorkspace()))
 	triggerKind := firstNonEmpty(req.TriggerKind, "api")
 	tag := firstNonEmpty(req.Tag, contract.EffectiveRouteTagForAction(req.Deployment, action))
+	createdBy := firstNonEmpty(strings.TrimSpace(req.CreatedBy), "system")
+	permissionedAs := firstNonEmpty(strings.TrimSpace(req.PermissionedAs), createdBy)
 	env := append(curatedHostEnv(), req.Env...)
 	add := func(key string, value string) {
 		env = append(env, key+"="+value)
@@ -306,6 +310,9 @@ func (r *Runner) jobEnv(req RunRequest, action contract.Action) []string {
 	add("WF_ACTION", req.Action)
 	add("WF_TAG", tag)
 	add("WF_RUNNABLE_PATH", req.Deployment.Entrypoint)
+	add("WF_EMAIL", createdBy)
+	add("WF_USERNAME", createdBy)
+	add("WF_PERMISSIONED_AS", permissionedAs)
 	add("WF_STATE_PATH", req.Deployment.App+"/"+req.Action)
 	add("WF_TRIGGER_KIND", triggerKind)
 	if r.BaseURL != "" {
