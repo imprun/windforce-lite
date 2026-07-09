@@ -696,6 +696,11 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 	if openAPIBody["openapi"] != "3.1.0" {
 		t.Fatalf("openapi version = %#v", openAPIBody["openapi"])
 	}
+	infoDescription := openAPIBody["info"].(map[string]any)["description"].(string)
+	if !bytes.Contains([]byte(infoDescription), []byte("A run that FAILS")) ||
+		!bytes.Contains([]byte(infoDescription), []byte("enqueue-time errors")) {
+		t.Fatalf("openapi info description = %q", infoDescription)
+	}
 	if serverURL := openAPIBody["servers"].([]any)[0].(map[string]any)["url"]; serverURL != "https://api.example.test" {
 		t.Fatalf("openapi server url = %#v", serverURL)
 	}
@@ -715,6 +720,11 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 		t.Fatalf("openapi paths missing: %#v", paths)
 	}
 	webhook := paths["/api/w/ws-a/jobs/webhook/echo/echo"].(map[string]any)["post"].(map[string]any)
+	webhookDescription := webhook["description"].(string)
+	if !bytes.Contains([]byte(webhookDescription), []byte("ctx.trigger.raw")) ||
+		!bytes.Contains([]byte(webhookDescription), []byte("request headers are pinned")) {
+		t.Fatalf("webhook description = %q", webhookDescription)
+	}
 	webhookSchema := webhook["requestBody"].(map[string]any)["content"].(map[string]any)["*/*"].(map[string]any)["schema"].(map[string]any)
 	if len(webhookSchema) != 0 {
 		t.Fatalf("webhook schema should be permissive: %#v", webhookSchema)

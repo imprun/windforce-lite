@@ -85,10 +85,10 @@ func buildAppOpenAPI(baseURL string, workspaceID string, deployment contract.Dep
 			"post": map[string]any{
 				"operationId": opID("run", segment, "sync"),
 				"summary":     fmt.Sprintf("Run %s and wait for the result", action.ActionKey),
-				"description": "Runs the action and blocks up to the wait timeout. 200 carries the finished result; 202 means it is still running. Poll GET .../jobs/{id}/result with the returned job_id.",
+				"description": "Runs the action and blocks up to the wait timeout. 200 carries the finished result; 202 means it is still running — poll GET .../jobs/{id}/result with the returned job_id.",
 				"requestBody": oapiJSONBody(inputSchema, true),
 				"responses": withErrors(map[string]any{
-					"200": oapiResponse("Finished run. status is completed, failed, or canceled; result holds the action output or failure detail.", map[string]any{
+					"200": oapiResponse("Finished run — status is \"completed\" or \"failed\"; result holds the action output, or the failure detail when failed.", map[string]any{
 						"type": "object",
 						"properties": map[string]any{
 							"job_id": oapiStringSchema(),
@@ -96,7 +96,7 @@ func buildAppOpenAPI(baseURL string, workspaceID string, deployment contract.Dep
 							"result": outputSchema,
 						},
 					}),
-					"202": oapiResponse("Still running. Poll GET .../jobs/{id}/result with job_id.", oapiPendingSchema()),
+					"202": oapiResponse("Still running (wait timed out) — poll GET .../jobs/{id}/result with job_id.", oapiPendingSchema()),
 				}, "400", "401", "403", "404", "422"),
 			},
 		}
@@ -117,7 +117,7 @@ func buildAppOpenAPI(baseURL string, workspaceID string, deployment contract.Dep
 			"post": map[string]any{
 				"operationId": opID("webhook", segment),
 				"summary":     fmt.Sprintf("Invoke %s via webhook", action.ActionKey),
-				"description": "External webhook intake. The raw request body is delivered to the action as a JSON string; unlike run endpoints the body is not the typed action input.",
+				"description": "External webhook intake (ADR-0028). The raw request body is delivered to the action verbatim as ctx.trigger.raw and request headers are pinned for signature verification — the action parses and authenticates the payload itself. Unlike the run endpoints the body is not the typed action input.",
 				"requestBody": map[string]any{
 					"required": false,
 					"content":  map[string]any{"*/*": map[string]any{"schema": map[string]any{}}},
@@ -141,14 +141,14 @@ func buildAppOpenAPI(baseURL string, workspaceID string, deployment contract.Dep
 				"description": "job_id returned by an async run",
 			}},
 			"responses": map[string]any{
-				"200": oapiResponse("Finished run. status is completed, failed, or canceled; result holds the output or failure detail.", map[string]any{
+				"200": oapiResponse("Finished run — status \"completed\" or \"failed\"; result holds the output, or the failure detail when failed.", map[string]any{
 					"type": "object",
 					"properties": map[string]any{
 						"status": oapiStatusSchema(),
 						"result": map[string]any{},
 					},
 				}),
-				"202": oapiResponse("Still running.", oapiPendingSchema()),
+				"202": oapiResponse("Still running (or an unknown job_id).", oapiPendingSchema()),
 				"401": map[string]any{"$ref": "#/components/responses/Unauthorized"},
 				"403": map[string]any{"$ref": "#/components/responses/Forbidden"},
 			},
@@ -168,7 +168,7 @@ func buildAppOpenAPI(baseURL string, workspaceID string, deployment contract.Dep
 		"info": map[string]any{
 			"title":       deployment.App + " API",
 			"version":     version,
-			"description": "Auto-generated from windforce action input/output schemas. Actions are invoked over HTTP; the run API is asynchronous: enqueue and poll. A failed action is reported as status \"failed\" inside a 200 response, not as an HTTP error. Actions without a declared schema accept or return an unconstrained JSON body.",
+			"description": "Auto-generated from windforce action input/output schemas. Actions are invoked over HTTP; the run API is asynchronous (enqueue + poll, ADR-0007). A run that FAILS is reported as status \"failed\" inside a 200 response (not an HTTP error) — HTTP 4xx covers only enqueue-time errors (auth, quota, bad request). Actions without a declared schema accept/return an unconstrained JSON body.",
 		},
 		"servers":  []any{map[string]any{"url": baseURL}},
 		"security": []any{map[string]any{"bearerAuth": []any{}}},
@@ -176,7 +176,7 @@ func buildAppOpenAPI(baseURL string, workspaceID string, deployment contract.Dep
 			"schemas": map[string]any{
 				"Error": map[string]any{
 					"type":        "object",
-					"description": "windforce error envelope.",
+					"description": "windforce's uniform error envelope.",
 					"properties":  map[string]any{"error": oapiStringSchema()},
 					"required":    []any{"error"},
 				},
@@ -186,7 +186,7 @@ func buildAppOpenAPI(baseURL string, workspaceID string, deployment contract.Dep
 				"bearerAuth": map[string]any{
 					"type":        "http",
 					"scheme":      "bearer",
-					"description": "windforce API token. Send as `Authorization: Bearer <token>`.",
+					"description": "windforce API token (Settings -> API tokens). Send as `Authorization: Bearer <token>`.",
 				},
 			},
 		},
