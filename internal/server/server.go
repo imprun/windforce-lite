@@ -46,7 +46,6 @@ type AdapterRoute struct {
 type TriggerAdapter interface {
 	Name() string
 	MatchTrigger(path string) (AdapterRoute, bool)
-	MatchSchema(path string) (AdapterRoute, bool)
 	TriggerResponse(run state.Run, route AdapterRoute) (int, any)
 }
 
@@ -110,16 +109,6 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			h.handleTrigger(w, r, route)
-			return
-		}
-	}
-	if h.enableAPI && r.Method == http.MethodGet {
-		if route, ok := h.matchSchemaRoute(r.URL.Path); ok {
-			if !authorized(r, h.adminToken) {
-				writeError(w, http.StatusUnauthorized, "unauthorized")
-				return
-			}
-			h.handleSchema(w, r, route)
 			return
 		}
 	}
@@ -733,6 +722,15 @@ func (h *Handler) handleCanonicalAppSource(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusInternalServerError, "source storage not configured")
 		return
 	}
+	exists, err := h.syncer.Store.Exists(r.Context(), deployment.SourceWorkspace(), deployment.SourceGitSourceID(), deployment.Commit)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if !exists {
+		writeError(w, http.StatusNotFound, "source commit is not materialized \u2014 re-sync the app")
+		return
+	}
 	sourceDir, err := os.MkdirTemp("", "windforce-lite-app-source-")
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -740,7 +738,7 @@ func (h *Handler) handleCanonicalAppSource(w http.ResponseWriter, r *http.Reques
 	}
 	defer os.RemoveAll(sourceDir)
 	if err := h.syncer.Store.FetchTo(r.Context(), sourceDir, deployment.SourceWorkspace(), deployment.SourceGitSourceID(), deployment.Commit); err != nil {
-		writeError(w, http.StatusNotFound, "source commit is not materialized — re-sync the app")
+		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	files, skipped, err := readCanonicalSourceFiles(sourceDir)
@@ -2118,39 +2116,6 @@ func (h *Handler) handleGetResource(w http.ResponseWriter, r *http.Request, work
 	_, _ = w.Write(rawOrNull(resource.Value))
 }
 
-func (h *Handler) handleSchema(w http.ResponseWriter, r *http.Request, route triggerRoute) {
-	if h.catalog == nil {
-		writeError(w, http.StatusServiceUnavailable, "catalog is not configured")
-		return
-	}
-	deployment, err := h.catalog.GetDeployment(r.Context(), route.app)
-	if err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
-		return
-	}
-	action, ok := deployment.Actions[route.action]
-	if !ok {
-		writeError(w, http.StatusNotFound, fmt.Sprintf("action %q not found in app %q", route.action, route.app))
-		return
-	}
-	schemaReader := h.newCanonicalSchemaReader(r.Context(), deployment)
-	defer schemaReader.Close()
-	view, err := h.newCanonicalActionModel(schemaReader, deployment, route.action, action)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"app":              route.app,
-		"action":           route.action,
-		"inputSchema":      view.InputSchema,
-		"outputSchema":     view.OutputSchema,
-		"inputSchemaPath":  action.InputSchema,
-		"outputSchemaPath": action.OutputSchema,
-		"metadata":         action,
-	})
-}
-
 func (h *Handler) waitForRun(ctx context.Context, runID string) state.Run {
 	run, err := h.store.GetRun(ctx, runID)
 	if err != nil || h.wait <= 0 || state.IsSettledForTrigger(run) {
@@ -2192,27 +2157,6 @@ func (h *Handler) matchTriggerRoute(path string) (triggerRoute, bool) {
 			continue
 		}
 		adapterRoute, ok := adapter.MatchTrigger(path)
-		if !ok {
-			continue
-		}
-		return triggerRoute{
-			adapter:      adapter,
-			adapterName:  adapter.Name(),
-			adapterRoute: adapterRoute,
-			app:          adapterRoute.App,
-			action:       adapterRoute.Action,
-			env:          append([]string(nil), adapterRoute.Env...),
-		}, true
-	}
-	return triggerRoute{}, false
-}
-
-func (h *Handler) matchSchemaRoute(path string) (triggerRoute, bool) {
-	for _, adapter := range h.triggerAdapters {
-		if adapter == nil {
-			continue
-		}
-		adapterRoute, ok := adapter.MatchSchema(path)
 		if !ok {
 			continue
 		}

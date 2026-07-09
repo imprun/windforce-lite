@@ -1854,6 +1854,73 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 	}
 }
 
+func TestCanonicalAppSourceStorageErrors(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		store      failingBundleStore
+		wantStatus int
+		wantError  string
+	}{
+		{
+			name:       "missing materialized source",
+			store:      failingBundleStore{exists: false},
+			wantStatus: http.StatusNotFound,
+			wantError:  "source commit is not materialized \u2014 re-sync the app",
+		},
+		{
+			name:       "exists failure",
+			store:      failingBundleStore{existsErr: errors.New("stat failed")},
+			wantStatus: http.StatusInternalServerError,
+			wantError:  "stat failed",
+		},
+		{
+			name:       "fetch failure",
+			store:      failingBundleStore{exists: true, fetchErr: errors.New("copy failed")},
+			wantStatus: http.StatusInternalServerError,
+			wantError:  "copy failed",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tempDir := t.TempDir()
+			fileCatalog := catalog.NewFileCatalog(filepath.Join(tempDir, "catalog.json"))
+			if err := fileCatalog.UpsertDeployment(context.Background(), contract.Deployment{
+				Workspace:   "ws-a",
+				GitSourceID: "1",
+				App:         "echo",
+				Entrypoint:  "main.ts",
+				Commit:      "commit-a",
+				Actions: map[string]contract.Action{
+					"echo": {Action: "echo"},
+				},
+			}); err != nil {
+				t.Fatal(err)
+			}
+
+			server := httptest.NewServer(New(Config{
+				Catalog:   fileCatalog,
+				Syncer:    &syncer.Syncer{Store: tc.store},
+				EnableAPI: true,
+			}))
+			defer server.Close()
+
+			resp, err := http.Get(server.URL + "/api/w/ws-a/apps/echo/source")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer resp.Body.Close()
+			var body struct {
+				Error string `json:"error"`
+			}
+			if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+				t.Fatal(err)
+			}
+			if resp.StatusCode != tc.wantStatus || body.Error != tc.wantError {
+				t.Fatalf("source response = %d %#v, want %d %q", resp.StatusCode, body, tc.wantStatus, tc.wantError)
+			}
+		})
+	}
+}
+
 func TestCanonicalGitSourceProbePatchAndDelete(t *testing.T) {
 	tempDir := t.TempDir()
 	repoDir := filepath.Join(tempDir, "repo")
@@ -2581,6 +2648,24 @@ func TestControlPlaneRegistersGitSourcePathAndSyncsIt(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(fetchDir, "root.txt")); !os.IsNotExist(err) {
 		t.Fatalf("materialized app root should not contain repo root file, stat err = %v", err)
 	}
+}
+
+type failingBundleStore struct {
+	exists    bool
+	existsErr error
+	fetchErr  error
+}
+
+func (s failingBundleStore) Exists(context.Context, string, string, string) (bool, error) {
+	return s.exists, s.existsErr
+}
+
+func (s failingBundleStore) Materialize(context.Context, string, string, string, string) error {
+	return nil
+}
+
+func (s failingBundleStore) FetchTo(context.Context, string, string, string, string) error {
+	return s.fetchErr
 }
 
 func runTestGit(t *testing.T, dir string, args ...string) {
