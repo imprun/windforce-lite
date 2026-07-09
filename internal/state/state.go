@@ -85,6 +85,8 @@ type JobPayload struct {
 	TriggerKind    string              `json:"triggerKind,omitempty"`
 	TriggerHeaders json.RawMessage     `json:"triggerHeaders,omitempty"`
 	ActionSpec     contract.Action     `json:"actionSpec,omitempty"`
+	InputSchema    json.RawMessage     `json:"inputSchema,omitempty"`
+	OutputSchema   json.RawMessage     `json:"outputSchema,omitempty"`
 	Input          json.RawMessage     `json:"input,omitempty"`
 	Deployment     contract.Deployment `json:"deployment"`
 	CorrelationID  string              `json:"correlationId,omitempty"`

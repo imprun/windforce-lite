@@ -590,6 +590,46 @@ func TestCanonicalControlPlaneRejectsInvalidAppAndActionKeys(t *testing.T) {
 	}
 }
 
+func TestCanonicalActionExposesEmptySchemas(t *testing.T) {
+	tempDir := t.TempDir()
+	fileCatalog := catalog.NewFileCatalog(filepath.Join(tempDir, "catalog.json"))
+	if err := fileCatalog.UpsertDeployment(context.Background(), contract.Deployment{
+		Workspace: "ws-a",
+		App:       "echo",
+		Commit:    "commit-a",
+		Actions: map[string]contract.Action{
+			"echo": {Action: "echo", Command: []string{"helper"}},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	server := httptest.NewServer(New(Config{Catalog: fileCatalog, EnableAPI: true}))
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/api/w/ws-a/apps/echo/actions/echo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("action status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	var body map[string]json.RawMessage
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range []string{"input_schema", "output_schema"} {
+		schema, ok := body[field]
+		if !ok {
+			t.Fatalf("%s missing from action body: %#v", field, body)
+		}
+		if !bytes.Equal(bytes.TrimSpace(schema), []byte(`{}`)) {
+			t.Fatalf("%s = %s, want {}", field, schema)
+		}
+	}
+}
+
 func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 	tempDir := t.TempDir()
 	repoDir := filepath.Join(tempDir, "repo")
@@ -831,6 +871,42 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 	if appBody.App.AppKey != "echo" || len(appBody.Actions) != 1 || appBody.Actions[0].ActionKey != "echo" ||
 		!bytes.Contains(appBody.Actions[0].InputSchema, []byte(`"message"`)) {
 		t.Fatalf("app body = %#v", appBody)
+	}
+
+	runResp, err := http.Post(server.URL+"/api/w/ws-a/jobs/run/echo/echo", "application/json", bytes.NewBufferString(`{"message":"hello"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runResp.Body.Close()
+	if runResp.StatusCode != http.StatusCreated {
+		t.Fatalf("run status = %d, want %d", runResp.StatusCode, http.StatusCreated)
+	}
+	var runBody struct {
+		JobID string `json:"job_id"`
+	}
+	if err := json.NewDecoder(runResp.Body).Decode(&runBody); err != nil {
+		t.Fatal(err)
+	}
+	statusResp, err := http.Get(server.URL + "/api/w/ws-a/jobs/" + runBody.JobID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer statusResp.Body.Close()
+	if statusResp.StatusCode != http.StatusOK {
+		t.Fatalf("status status = %d, want %d", statusResp.StatusCode, http.StatusOK)
+	}
+	var statusBody struct {
+		InputSchema  json.RawMessage `json:"input_schema"`
+		OutputSchema json.RawMessage `json:"output_schema"`
+		Input        json.RawMessage `json:"input"`
+	}
+	if err := json.NewDecoder(statusResp.Body).Decode(&statusBody); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(statusBody.InputSchema, []byte(`"message"`)) ||
+		!bytes.Contains(statusBody.OutputSchema, []byte(`"ok"`)) ||
+		!bytes.Contains(statusBody.Input, []byte(`"hello"`)) {
+		t.Fatalf("status body schemas/input = input_schema:%s output_schema:%s input:%s", statusBody.InputSchema, statusBody.OutputSchema, statusBody.Input)
 	}
 
 	openAPIReq, err := http.NewRequest(http.MethodGet, server.URL+"/api/w/ws-a/apps/echo/openapi.json", nil)

@@ -1288,8 +1288,8 @@ type canonicalActionView struct {
 	WorkspaceID           string          `json:"workspace_id"`
 	AppKey                string          `json:"app_key"`
 	ActionKey             string          `json:"action_key"`
-	InputSchema           json.RawMessage `json:"input_schema,omitempty"`
-	OutputSchema          json.RawMessage `json:"output_schema,omitempty"`
+	InputSchema           json.RawMessage `json:"input_schema"`
+	OutputSchema          json.RawMessage `json:"output_schema"`
 	Tag                   *string         `json:"tag,omitempty"`
 	TagOverride           *string         `json:"tag_override,omitempty"`
 	TimeoutS              *int32          `json:"timeout_s,omitempty"`
@@ -1429,10 +1429,10 @@ func (r *canonicalSchemaReader) Close() {
 func (r *canonicalSchemaReader) Read(schemaPath string) (json.RawMessage, error) {
 	schemaPath = strings.TrimSpace(schemaPath)
 	if schemaPath == "" {
-		return nil, nil
+		return emptyJSONSchema(), nil
 	}
 	if r.store == nil {
-		return nil, nil
+		return nil, errors.New("source storage is not configured")
 	}
 	sourceDir, err := r.ensureSourceDir()
 	if err != nil {
@@ -1453,6 +1453,10 @@ func (r *canonicalSchemaReader) Read(schemaPath string) (json.RawMessage, error)
 		return nil, fmt.Errorf("%q is not valid JSON", schemaPath)
 	}
 	return json.RawMessage(append([]byte(nil), data...)), nil
+}
+
+func emptyJSONSchema() json.RawMessage {
+	return json.RawMessage([]byte("{}"))
 }
 
 func (r *canonicalSchemaReader) ensureSourceDir() (string, error) {
@@ -1773,7 +1777,8 @@ func (h *Handler) enqueueJob(w http.ResponseWriter, r *http.Request, workspaceID
 		writeError(w, http.StatusNotFound, "app not found: "+app)
 		return state.Job{}, false
 	}
-	if _, ok := deployment.Actions[action]; !ok {
+	actionSpec, ok := deployment.Actions[action]
+	if !ok {
 		writeError(w, http.StatusNotFound, "action not found: "+app+"/"+action)
 		return state.Job{}, false
 	}
@@ -1784,6 +1789,20 @@ func (h *Handler) enqueueJob(w http.ResponseWriter, r *http.Request, workspaceID
 	job := state.NewActionJob(run, input)
 	job.Payload.TriggerKind = triggerKind
 	job.Payload.TriggerHeaders = cloneRawMessage(triggerHeaders)
+	schemaReader := h.newCanonicalSchemaReader(r.Context(), deployment)
+	defer schemaReader.Close()
+	inputSchema, err := schemaReader.Read(actionSpec.InputSchema)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return state.Job{}, false
+	}
+	outputSchema, err := schemaReader.Read(actionSpec.OutputSchema)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return state.Job{}, false
+	}
+	job.Payload.InputSchema = inputSchema
+	job.Payload.OutputSchema = outputSchema
 	if err := h.store.CreateRunAndEnqueue(r.Context(), run, job); err != nil {
 		status := http.StatusInternalServerError
 		if errors.Is(err, state.ErrConflict) {
@@ -2250,24 +2269,26 @@ func runResponse(run state.Run) map[string]any {
 }
 
 type jobStatusResponse struct {
-	ID          string          `json:"id"`
-	WorkspaceID string          `json:"workspace_id"`
-	State       string          `json:"state"`
-	Status      *string         `json:"status,omitempty"`
-	Worker      *string         `json:"worker,omitempty"`
-	AppKey      *string         `json:"app_key,omitempty"`
-	ActionKey   *string         `json:"action_key,omitempty"`
-	TriggerKind *string         `json:"trigger_kind,omitempty"`
-	Kind        *string         `json:"kind,omitempty"`
-	CommitSha   *string         `json:"commit_sha,omitempty"`
-	Entrypoint  *string         `json:"entrypoint,omitempty"`
-	Tag         string          `json:"tag,omitempty"`
-	TimeoutS    int32           `json:"timeout_s,omitempty"`
-	Input       json.RawMessage `json:"input,omitempty"`
-	CreatedAt   *time.Time      `json:"created_at,omitempty"`
-	StartedAt   *time.Time      `json:"started_at,omitempty"`
-	CompletedAt *time.Time      `json:"completed_at,omitempty"`
-	DurationMs  int64           `json:"duration_ms,omitempty"`
+	ID           string          `json:"id"`
+	WorkspaceID  string          `json:"workspace_id"`
+	State        string          `json:"state"`
+	Status       *string         `json:"status,omitempty"`
+	Worker       *string         `json:"worker,omitempty"`
+	AppKey       *string         `json:"app_key,omitempty"`
+	ActionKey    *string         `json:"action_key,omitempty"`
+	TriggerKind  *string         `json:"trigger_kind,omitempty"`
+	Kind         *string         `json:"kind,omitempty"`
+	CommitSha    *string         `json:"commit_sha,omitempty"`
+	Entrypoint   *string         `json:"entrypoint,omitempty"`
+	InputSchema  json.RawMessage `json:"input_schema,omitempty"`
+	OutputSchema json.RawMessage `json:"output_schema,omitempty"`
+	Tag          string          `json:"tag,omitempty"`
+	TimeoutS     int32           `json:"timeout_s,omitempty"`
+	Input        json.RawMessage `json:"input,omitempty"`
+	CreatedAt    *time.Time      `json:"created_at,omitempty"`
+	StartedAt    *time.Time      `json:"started_at,omitempty"`
+	CompletedAt  *time.Time      `json:"completed_at,omitempty"`
+	DurationMs   int64           `json:"duration_ms,omitempty"`
 }
 
 func newJobStatus(workspaceID string, job state.Job, run state.Run) jobStatusResponse {
@@ -2296,23 +2317,25 @@ func newJobStatus(workspaceID string, job state.Job, run state.Run) jobStatusRes
 		tag = contract.EffectiveRouteTag(job.Payload.Deployment.Tag, job.Payload.Deployment.TagOverride, job.Payload.ActionSpec.Tag, job.Payload.ActionSpec.TagOverride)
 	}
 	response := jobStatusResponse{
-		ID:          job.ID,
-		WorkspaceID: contract.NormalizeWorkspace(workspaceID),
-		State:       stateValue,
-		Status:      statusValue,
-		Worker:      worker,
-		AppKey:      stringPtr(app),
-		ActionKey:   stringPtr(action),
-		TriggerKind: stringPtr(jobStatusTriggerKind(job, run)),
-		Kind:        stringPtr(kind),
-		CommitSha:   stringPtr(commit),
-		Entrypoint:  stringPtr(job.Payload.ActionSpec.Entrypoint),
-		Tag:         tag,
-		TimeoutS:    timeoutSeconds(job.Payload.ActionSpec.TimeoutMs),
-		Input:       cloneRaw(job.Payload.Input),
-		CreatedAt:   &job.CreatedAt,
-		StartedAt:   startedAt,
-		CompletedAt: completedAt,
+		ID:           job.ID,
+		WorkspaceID:  contract.NormalizeWorkspace(workspaceID),
+		State:        stateValue,
+		Status:       statusValue,
+		Worker:       worker,
+		AppKey:       stringPtr(app),
+		ActionKey:    stringPtr(action),
+		TriggerKind:  stringPtr(jobStatusTriggerKind(job, run)),
+		Kind:         stringPtr(kind),
+		CommitSha:    stringPtr(commit),
+		Entrypoint:   stringPtr(job.Payload.ActionSpec.Entrypoint),
+		InputSchema:  cloneRaw(job.Payload.InputSchema),
+		OutputSchema: cloneRaw(job.Payload.OutputSchema),
+		Tag:          tag,
+		TimeoutS:     timeoutSeconds(job.Payload.ActionSpec.TimeoutMs),
+		Input:        cloneRaw(job.Payload.Input),
+		CreatedAt:    &job.CreatedAt,
+		StartedAt:    startedAt,
+		CompletedAt:  completedAt,
 	}
 	if run.Result != nil {
 		response.DurationMs = run.Result.DurationMs
