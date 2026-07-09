@@ -18,6 +18,10 @@ type openAPIAction struct {
 }
 
 func (h *Handler) handleCanonicalAppOpenAPI(w http.ResponseWriter, r *http.Request, workspaceID string, app string) {
+	if !validAppKey(app) {
+		writeError(w, http.StatusBadRequest, "invalid app key")
+		return
+	}
 	deployment, ok := h.getCanonicalDeployment(w, r, workspaceID, app, "app not found: "+app)
 	if !ok {
 		return

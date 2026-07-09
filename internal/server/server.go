@@ -824,6 +824,10 @@ func (h *Handler) handleCanonicalApps(w http.ResponseWriter, r *http.Request, wo
 }
 
 func (h *Handler) handleCanonicalApp(w http.ResponseWriter, r *http.Request, workspaceID string, app string) {
+	if !validAppKey(app) {
+		writeError(w, http.StatusBadRequest, "invalid app key")
+		return
+	}
 	deployment, ok := h.getCanonicalDeployment(w, r, workspaceID, app, "app not found: "+app)
 	if !ok {
 		return
@@ -842,6 +846,10 @@ func (h *Handler) handleCanonicalApp(w http.ResponseWriter, r *http.Request, wor
 }
 
 func (h *Handler) handleCanonicalAppSource(w http.ResponseWriter, r *http.Request, workspaceID string, app string) {
+	if !validAppKey(app) {
+		writeError(w, http.StatusBadRequest, "invalid app key")
+		return
+	}
 	deployment, ok := h.getCanonicalDeployment(w, r, workspaceID, app, "app not found: "+app)
 	if !ok {
 		return
@@ -875,6 +883,10 @@ func (h *Handler) handleCanonicalAppSource(w http.ResponseWriter, r *http.Reques
 }
 
 func (h *Handler) handleCanonicalAppHistory(w http.ResponseWriter, r *http.Request, workspaceID string, app string) {
+	if !validAppKey(app) {
+		writeError(w, http.StatusBadRequest, "invalid app key")
+		return
+	}
 	snapshot, ok := h.loadCatalogSnapshot(w, r)
 	if !ok {
 		return
@@ -897,6 +909,10 @@ func (h *Handler) handleCanonicalAppHistory(w http.ResponseWriter, r *http.Reque
 }
 
 func (h *Handler) handleCanonicalAction(w http.ResponseWriter, r *http.Request, workspaceID string, app string, actionKey string) {
+	if !validAppKey(app) || !validActionKey(actionKey) {
+		writeError(w, http.StatusBadRequest, "invalid app/action key")
+		return
+	}
 	deployment, ok := h.getCanonicalDeployment(w, r, workspaceID, app, "app not found: "+app)
 	if !ok {
 		return
@@ -917,6 +933,10 @@ func (h *Handler) handleCanonicalAction(w http.ResponseWriter, r *http.Request, 
 }
 
 func (h *Handler) handleCanonicalPatchApp(w http.ResponseWriter, r *http.Request, workspaceID string, app string) {
+	if !validAppKey(app) {
+		writeError(w, http.StatusBadRequest, "invalid app key")
+		return
+	}
 	patcher, ok := h.catalog.(interface {
 		SetAppTagOverride(context.Context, string, string, *string) (contract.Deployment, error)
 	})
@@ -941,6 +961,10 @@ func (h *Handler) handleCanonicalPatchApp(w http.ResponseWriter, r *http.Request
 }
 
 func (h *Handler) handleCanonicalPatchAction(w http.ResponseWriter, r *http.Request, workspaceID string, app string, actionKey string) {
+	if !validAppKey(app) || !validActionKey(actionKey) {
+		writeError(w, http.StatusBadRequest, "invalid app/action key")
+		return
+	}
 	patcher, ok := h.catalog.(interface {
 		SetActionTagOverride(context.Context, string, string, string, *string) (contract.Action, error)
 	})
@@ -980,6 +1004,10 @@ func (h *Handler) handleCanonicalPatchAction(w http.ResponseWriter, r *http.Requ
 }
 
 func (h *Handler) handleCanonicalRequeueApp(w http.ResponseWriter, r *http.Request, workspaceID string, app string) {
+	if !validAppKey(app) {
+		writeError(w, http.StatusBadRequest, "invalid app key")
+		return
+	}
 	if h.store == nil {
 		writeError(w, http.StatusServiceUnavailable, "state store is not configured")
 		return
@@ -1519,14 +1547,40 @@ func validRouteTag(value string) bool {
 	if value == "" || len(value) > 64 {
 		return false
 	}
-	for _, item := range value {
+	for index, item := range value {
 		if item >= 'a' && item <= 'z' {
 			continue
 		}
 		if item >= '0' && item <= '9' {
 			continue
 		}
-		if item == '_' || item == '-' {
+		if index > 0 && (item == '_' || item == '-') {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func validAppKey(value string) bool {
+	value = strings.TrimSpace(value)
+	if len(value) < 2 || len(value) > 64 || !utf8.ValidString(value) {
+		return false
+	}
+	for index, item := range value {
+		if index == 0 {
+			if item < 'a' || item > 'z' {
+				return false
+			}
+			continue
+		}
+		if item >= 'a' && item <= 'z' {
+			continue
+		}
+		if item >= '0' && item <= '9' {
+			continue
+		}
+		if item == '_' {
 			continue
 		}
 		return false
@@ -1539,8 +1593,35 @@ func validActionKey(value string) bool {
 	if value == "" || len(value) > 128 || !utf8.ValidString(value) {
 		return false
 	}
-	if value == "." || value == ".." || strings.ContainsAny(value, `/\`) {
+	if strings.ContainsAny(value, `/\`) {
 		return false
+	}
+	segments := strings.Split(value, ".")
+	if len(segments) > 8 {
+		return false
+	}
+	for _, segment := range segments {
+		if segment == "" {
+			return false
+		}
+		for index, item := range segment {
+			if index == 0 {
+				if item < 'a' || item > 'z' {
+					return false
+				}
+				continue
+			}
+			if item >= 'a' && item <= 'z' {
+				continue
+			}
+			if item >= '0' && item <= '9' {
+				continue
+			}
+			if item == '_' {
+				continue
+			}
+			return false
+		}
 	}
 	return true
 }
@@ -1731,6 +1812,10 @@ func (h *Handler) enqueueJobRun(w http.ResponseWriter, r *http.Request, workspac
 func (h *Handler) enqueueJob(w http.ResponseWriter, r *http.Request, workspaceID string, app string, action string, triggerKind string, input json.RawMessage, triggerHeaders json.RawMessage) (state.Job, bool) {
 	if h.store == nil || h.catalog == nil {
 		writeError(w, http.StatusServiceUnavailable, "job API is not configured")
+		return state.Job{}, false
+	}
+	if !validAppKey(app) || !validActionKey(action) {
+		writeError(w, http.StatusBadRequest, "invalid app/action key")
 		return state.Job{}, false
 	}
 	workspaceID = contract.NormalizeWorkspace(workspaceID)

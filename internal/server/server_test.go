@@ -514,6 +514,47 @@ func TestCanonicalJobCancelAPI(t *testing.T) {
 	}
 }
 
+func TestCanonicalControlPlaneRejectsInvalidAppAndActionKeys(t *testing.T) {
+	server := httptest.NewServer(New(Config{EnableAPI: true}))
+	defer server.Close()
+
+	for _, tc := range []struct {
+		method string
+		path   string
+		body   string
+		want   string
+	}{
+		{http.MethodGet, "/api/w/ws-a/apps/Bad!", "", "invalid app key"},
+		{http.MethodGet, "/api/w/ws-a/apps/Bad!/source", "", "invalid app key"},
+		{http.MethodGet, "/api/w/ws-a/apps/Bad!/history", "", "invalid app key"},
+		{http.MethodGet, "/api/w/ws-a/apps/Bad!/openapi.json", "", "invalid app key"},
+		{http.MethodGet, "/api/w/ws-a/apps/echo/actions/Bad!", "", "invalid app/action key"},
+		{http.MethodPatch, "/api/w/ws-a/apps/Bad!", `{"tag_override":null}`, "invalid app key"},
+		{http.MethodPatch, "/api/w/ws-a/apps/echo/actions/Bad!", `{"tag_override":null}`, "invalid app/action key"},
+		{http.MethodPost, "/api/w/ws-a/apps/Bad!/requeue", `{}`, "invalid app key"},
+	} {
+		req, err := http.NewRequest(tc.method, server.URL+tc.path, bytes.NewBufferString(tc.body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var body struct {
+			Error string `json:"error"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+			_ = resp.Body.Close()
+			t.Fatal(err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest || body.Error != tc.want {
+			t.Fatalf("%s %s = %d %#v, want 400 %q", tc.method, tc.path, resp.StatusCode, body, tc.want)
+		}
+	}
+}
+
 func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 	tempDir := t.TempDir()
 	repoDir := filepath.Join(tempDir, "repo")
@@ -555,6 +596,23 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 	})
 	server := httptest.NewServer(handler)
 	defer server.Close()
+
+	invalidAppResp, err := http.Get(server.URL + "/api/w/ws-a/apps/Echo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer invalidAppResp.Body.Close()
+	if invalidAppResp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("invalid app status = %d, want %d", invalidAppResp.StatusCode, http.StatusBadRequest)
+	}
+	invalidRunResp, err := http.Post(server.URL+"/api/w/ws-a/jobs/run/Echo/echo", "application/json", bytes.NewBufferString(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer invalidRunResp.Body.Close()
+	if invalidRunResp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("invalid run status = %d, want %d", invalidRunResp.StatusCode, http.StatusBadRequest)
+	}
 
 	registerBody, err := json.Marshal(map[string]string{
 		"name":      "source-a",
@@ -677,6 +735,15 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 	if actionBody.AppKey != "echo" || actionBody.ActionKey != "echo" ||
 		!bytes.Contains(actionBody.InputSchema, []byte(`"message"`)) || !bytes.Contains(actionBody.OutputSchema, []byte(`"ok"`)) {
 		t.Fatalf("action body = %#v input=%s output=%s", actionBody, actionBody.InputSchema, actionBody.OutputSchema)
+	}
+
+	invalidActionResp, err := http.Get(server.URL + "/api/w/ws-a/apps/echo/actions/bad-action")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer invalidActionResp.Body.Close()
+	if invalidActionResp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("invalid action status = %d, want %d", invalidActionResp.StatusCode, http.StatusBadRequest)
 	}
 
 	appResp, err := http.Get(server.URL + "/api/w/ws-a/apps/echo")
