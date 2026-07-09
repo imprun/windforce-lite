@@ -252,7 +252,7 @@ func checkLockfile(root string) error {
 			return nil
 		}
 	}
-	return fmt.Errorf("package.json declares dependencies but no bun.lock (or bun.lockb) is committed at the source root - commit a lockfile so installs are reproducible (bun install --frozen-lockfile)")
+	return fmt.Errorf("package.json declares dependencies but no bun.lock (or bun.lockb) is committed at the source root — commit a lockfile so installs are reproducible (bun install --frozen-lockfile)")
 }
 
 func sourceDirForSubpath(root string, subpath string) (string, error) {

@@ -2,7 +2,6 @@ package manifest
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -17,6 +16,9 @@ func Load(dir string) (contract.App, error) {
 	path := filepath.Join(dir, FileName)
 	data, err := os.ReadFile(path)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return contract.App{}, fmt.Errorf("no %s manifest at source root (subpath)", FileName)
+		}
 		return contract.App{}, err
 	}
 	return Parse(data)
@@ -25,22 +27,17 @@ func Load(dir string) (contract.App, error) {
 func Parse(data []byte) (contract.App, error) {
 	var app contract.App
 	if err := json.Unmarshal(data, &app); err != nil {
-		return contract.App{}, err
-	}
-	if app.App == "" {
-		return contract.App{}, errors.New("app is required")
+		return contract.App{}, fmt.Errorf("parse %s: %w", FileName, err)
 	}
 	if !contract.ValidAppKey(app.App) {
 		return contract.App{}, fmt.Errorf("invalid app key %q in %s", app.App, FileName)
 	}
-	if strings.TrimSpace(app.Runtime) != "" {
-		return contract.App{}, fmt.Errorf("app %s runtime is not supported in %s; use scriptLang", app.App, FileName)
-	}
+	app.Runtime = ""
 	if strings.TrimSpace(app.Entrypoint) == "" {
 		return contract.App{}, fmt.Errorf("app %s has no entrypoint in %s", app.App, FileName)
 	}
 	if len(app.Actions) == 0 {
-		return contract.App{}, errors.New("at least one action is required")
+		return contract.App{}, fmt.Errorf("%s declares no actions", FileName)
 	}
 	if err := validateActionPath(app.App, "", "entrypoint", app.Entrypoint); err != nil {
 		return contract.App{}, err
@@ -64,27 +61,8 @@ func Parse(data []byte) (contract.App, error) {
 		if !contract.ValidActionKey(name) {
 			return contract.App{}, fmt.Errorf("invalid action key %q in %s", name, FileName)
 		}
-		if action.Action == "" {
-			action.Action = name
-		}
-		if action.Action != name {
-			return contract.App{}, fmt.Errorf("action %q has mismatched action field %q", name, action.Action)
-		}
-		if strings.TrimSpace(action.Entrypoint) != "" {
-			return contract.App{}, fmt.Errorf("action %s.%s entrypoint is not supported in %s; use app entrypoint", app.App, name, FileName)
-		}
-		if strings.TrimSpace(action.Runtime) != "" {
-			return contract.App{}, fmt.Errorf("action %s.%s runtime is not supported in %s; use app scriptLang", app.App, name, FileName)
-		}
-		if action.TimeoutMs > 0 {
-			return contract.App{}, fmt.Errorf("action %s.%s timeoutMs is not supported in %s; use timeout seconds", app.App, name, FileName)
-		}
-		if len(action.Command) > 0 {
-			return contract.App{}, fmt.Errorf("action %s.%s command is not supported in %s; use app entrypoint", app.App, name, FileName)
-		}
-		if action.Adapter != nil {
-			return contract.App{}, fmt.Errorf("action %s.%s adapter is not supported in %s; adapters are runtime integration code", app.App, name, FileName)
-		}
+		action.Action = name
+		clearNonCanonicalActionManifestFields(&action)
 		if action.Capabilities != nil {
 			caps, err := contract.NormalizeCapabilities(*action.Capabilities)
 			if err != nil {
@@ -110,6 +88,18 @@ func Parse(data []byte) (contract.App, error) {
 		app.Actions[name] = action
 	}
 	return app, nil
+}
+
+func clearNonCanonicalActionManifestFields(action *contract.Action) {
+	action.TagOverride = nil
+	action.Runtime = ""
+	action.Entrypoint = ""
+	action.Command = nil
+	action.Adapter = nil
+	action.InputSchemaBody = nil
+	action.OutputSchemaBody = nil
+	action.TimeoutMs = 0
+	action.UpdatedAt = nil
 }
 
 func applyAppDefaults(app contract.App, action *contract.Action) {

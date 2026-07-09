@@ -120,16 +120,19 @@ func TestParseRejectsInvalidMaxConcurrent(t *testing.T) {
 	}
 }
 
-func TestParseRejectsMismatchedActionName(t *testing.T) {
-	_, err := Parse([]byte(`{
+func TestParseIgnoresActionNameFieldAndUsesMapKey(t *testing.T) {
+	app, err := Parse([]byte(`{
 		"app": "echo",
 		"entrypoint": "main.ts",
 		"actions": {
 			"run": { "action": "other" }
 		}
 	}`))
-	if err == nil {
-		t.Fatalf("expected error")
+	if err != nil {
+		t.Fatalf("Parse returned error: %v", err)
+	}
+	if app.Actions["run"].Action != "run" {
+		t.Fatalf("action name = %q, want map key", app.Actions["run"].Action)
 	}
 }
 
@@ -160,55 +163,49 @@ func TestParseRejectsInvalidCanonicalKeys(t *testing.T) {
 	}
 }
 
-func TestParseRejectsNonCanonicalManifestFields(t *testing.T) {
-	tests := []struct {
-		name string
-		body string
-		want string
-	}{
-		{
-			name: "missing app entrypoint",
-			body: `{"app":"echo","actions":{"run":{}}}`,
-			want: "has no entrypoint",
-		},
-		{
-			name: "app runtime alias",
-			body: `{"app":"echo","entrypoint":"main.ts","runtime":"typescript","actions":{"run":{}}}`,
-			want: "use scriptLang",
-		},
-		{
-			name: "action entrypoint",
-			body: `{"app":"echo","entrypoint":"main.ts","actions":{"run":{"entrypoint":"run.ts"}}}`,
-			want: "use app entrypoint",
-		},
-		{
-			name: "action runtime",
-			body: `{"app":"echo","entrypoint":"main.ts","actions":{"run":{"runtime":"go"}}}`,
-			want: "use app scriptLang",
-		},
-		{
-			name: "millisecond timeout",
-			body: `{"app":"echo","entrypoint":"main.ts","actions":{"run":{"timeoutMs":30000}}}`,
-			want: "use timeout seconds",
-		},
-		{
-			name: "action command",
-			body: `{"app":"echo","entrypoint":"main.ts","actions":{"run":{"command":["go","run","./main.go"]}}}`,
-			want: "use app entrypoint",
-		},
-		{
-			name: "action adapter",
-			body: `{"app":"echo","entrypoint":"main.ts","actions":{"run":{"adapter":{"type":"command","command":["adapter"]}}}}`,
-			want: "adapters are runtime integration code",
-		},
+func TestParseRejectsMissingEntrypoint(t *testing.T) {
+	_, err := Parse([]byte(`{"app":"echo","actions":{"run":{}}}`))
+	if err == nil || !strings.Contains(err.Error(), "has no entrypoint") {
+		t.Fatalf("Parse error = %v, want missing entrypoint validation", err)
 	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			_, err := Parse([]byte(test.body))
-			if err == nil || !strings.Contains(err.Error(), test.want) {
-				t.Fatalf("Parse error = %v, want %q", err, test.want)
+}
+
+func TestParseIgnoresNonCanonicalManifestFields(t *testing.T) {
+	tagOverride := "operator-owned"
+	app, err := Parse([]byte(`{
+		"app": "echo",
+		"entrypoint": "main.ts",
+		"runtime": "legacy",
+		"scriptLang": "typescript",
+		"timeout": 120,
+		"actions": {
+			"run": {
+				"action": "other",
+				"entrypoint": "run.ts",
+				"runtime": "go",
+				"timeoutMs": 30000,
+				"tagOverride": "operator-owned",
+				"command": ["go", "run", "./main.go"],
+				"adapter": {"type": "command", "command": ["adapter"]},
+				"inputSchemaBody": {"type": "string"},
+				"outputSchemaBody": {"type": "string"},
+				"updatedAt": "2025-01-01T00:00:00Z"
 			}
-		})
+		}
+	}`))
+	if err != nil {
+		t.Fatalf("Parse returned error: %v", err)
+	}
+	if app.Runtime != "" {
+		t.Fatalf("app runtime = %q, want ignored", app.Runtime)
+	}
+	run := app.Actions["run"]
+	if run.Action != "run" || run.Entrypoint != "main.ts" || run.Runtime != "typescript" || run.TimeoutMs != 120000 {
+		t.Fatalf("run canonical fields = %#v", run)
+	}
+	if run.TagOverride != nil || len(run.Command) != 0 || run.Adapter != nil ||
+		len(run.InputSchemaBody) != 0 || len(run.OutputSchemaBody) != 0 || run.UpdatedAt != nil {
+		t.Fatalf("run non-canonical fields leaked = %#v; tagOverride input was %q", run, tagOverride)
 	}
 }
 
