@@ -344,7 +344,15 @@ func TestCanonicalJobWebhookAPI(t *testing.T) {
 	server := httptest.NewServer(New(Config{Store: store, Catalog: fileCatalog, EnableAPI: true}))
 	defer server.Close()
 
-	resp, err := http.Post(server.URL+"/api/w/ws-a/jobs/webhook/echo/echo", "text/plain", bytes.NewBufferString(`{"event":"push"}`))
+	req, err := http.NewRequest(http.MethodPost, server.URL+"/api/w/ws-a/jobs/webhook/echo/echo", bytes.NewBufferString(`{"event":"push"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "text/plain")
+	req.Header.Set("X-Hub-Signature-256", "sha256=abc")
+	req.Header.Set("Authorization", "Bearer secret")
+	req.Header.Set("Cookie", "session=secret")
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -377,6 +385,19 @@ func TestCanonicalJobWebhookAPI(t *testing.T) {
 	}
 	if raw != `{"event":"push"}` {
 		t.Fatalf("webhook raw = %q", raw)
+	}
+	var headers map[string]string
+	if err := json.Unmarshal(job.Payload.TriggerHeaders, &headers); err != nil {
+		t.Fatalf("webhook headers are not JSON: %v headers=%s", err, job.Payload.TriggerHeaders)
+	}
+	if headers["X-Hub-Signature-256"] != "sha256=abc" {
+		t.Fatalf("signature header missing: %#v", headers)
+	}
+	if _, ok := headers["Authorization"]; ok {
+		t.Fatalf("authorization header should be denied: %#v", headers)
+	}
+	if _, ok := headers["Cookie"]; ok {
+		t.Fatalf("cookie header should be denied: %#v", headers)
 	}
 }
 

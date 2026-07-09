@@ -76,18 +76,19 @@ type Run struct {
 }
 
 type JobPayload struct {
-	Workspace     string              `json:"workspace,omitempty"`
-	GitSourceID   string              `json:"gitSourceId,omitempty"`
-	Commit        string              `json:"commit,omitempty"`
-	App           string              `json:"app"`
-	Action        string              `json:"action"`
-	Tag           string              `json:"tag,omitempty"`
-	TriggerKind   string              `json:"triggerKind,omitempty"`
-	ActionSpec    contract.Action     `json:"actionSpec,omitempty"`
-	Input         json.RawMessage     `json:"input,omitempty"`
-	Deployment    contract.Deployment `json:"deployment"`
-	CorrelationID string              `json:"correlationId,omitempty"`
-	Env           []string            `json:"env,omitempty"`
+	Workspace      string              `json:"workspace,omitempty"`
+	GitSourceID    string              `json:"gitSourceId,omitempty"`
+	Commit         string              `json:"commit,omitempty"`
+	App            string              `json:"app"`
+	Action         string              `json:"action"`
+	Tag            string              `json:"tag,omitempty"`
+	TriggerKind    string              `json:"triggerKind,omitempty"`
+	TriggerHeaders json.RawMessage     `json:"triggerHeaders,omitempty"`
+	ActionSpec     contract.Action     `json:"actionSpec,omitempty"`
+	Input          json.RawMessage     `json:"input,omitempty"`
+	Deployment     contract.Deployment `json:"deployment"`
+	CorrelationID  string              `json:"correlationId,omitempty"`
+	Env            []string            `json:"env,omitempty"`
 }
 
 type Job struct {

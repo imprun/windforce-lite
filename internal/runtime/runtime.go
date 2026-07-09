@@ -21,33 +21,35 @@ type Runner struct {
 }
 
 type RunRequest struct {
-	Deployment contract.Deployment
-	Action     string
-	Input      json.RawMessage
-	InputPath  string
-	OutputPath string
-	Timeout    time.Duration
-	Env        []string
-	LogSink    func([]byte)
+	Deployment     contract.Deployment
+	Action         string
+	Input          json.RawMessage
+	TriggerHeaders json.RawMessage
+	InputPath      string
+	OutputPath     string
+	Timeout        time.Duration
+	Env            []string
+	LogSink        func([]byte)
 }
 
 const actionAdapterProtocolVersion = "windforce.action-adapter/v1"
 
 type actionAdapterRequest struct {
-	Version    string                     `json:"version"`
-	WorkDir    string                     `json:"workDir"`
-	Command    []string                   `json:"command,omitempty"`
-	InputPath  string                     `json:"inputPath"`
-	OutputPath string                     `json:"outputPath"`
-	App        string                     `json:"app"`
-	Action     string                     `json:"action"`
-	Runtime    string                     `json:"runtime,omitempty"`
-	Entrypoint string                     `json:"entrypoint,omitempty"`
-	TimeoutMs  int64                      `json:"timeoutMs,omitempty"`
-	Env        []string                   `json:"env,omitempty"`
-	ActionSpec contract.Action            `json:"actionSpec"`
-	Deployment contract.Deployment        `json:"deployment"`
-	Options    map[string]json.RawMessage `json:"options,omitempty"`
+	Version        string                     `json:"version"`
+	WorkDir        string                     `json:"workDir"`
+	Command        []string                   `json:"command,omitempty"`
+	InputPath      string                     `json:"inputPath"`
+	OutputPath     string                     `json:"outputPath"`
+	App            string                     `json:"app"`
+	Action         string                     `json:"action"`
+	Runtime        string                     `json:"runtime,omitempty"`
+	Entrypoint     string                     `json:"entrypoint,omitempty"`
+	TimeoutMs      int64                      `json:"timeoutMs,omitempty"`
+	Env            []string                   `json:"env,omitempty"`
+	TriggerHeaders json.RawMessage            `json:"triggerHeaders,omitempty"`
+	ActionSpec     contract.Action            `json:"actionSpec"`
+	Deployment     contract.Deployment        `json:"deployment"`
+	Options        map[string]json.RawMessage `json:"options,omitempty"`
 }
 
 func (r *Runner) Run(ctx context.Context, req RunRequest) (contract.JobResult, error) {
@@ -123,6 +125,19 @@ func (r *Runner) Run(ctx context.Context, req RunRequest) (contract.JobResult, e
 		}
 	}
 
+	env := append([]string(nil), req.Env...)
+	if len(req.TriggerHeaders) > 0 {
+		if !json.Valid(req.TriggerHeaders) {
+			return contract.JobResult{}, errors.New("trigger headers are not valid JSON")
+		}
+		triggerHeadersPath := filepath.Join(jobDir, "trigger.headers.json")
+		headers := append(append([]byte(nil), req.TriggerHeaders...), '\n')
+		if err := os.WriteFile(triggerHeadersPath, headers, 0o644); err != nil {
+			return contract.JobResult{}, err
+		}
+		env = append(env, "WINDFORCE_TRIGGER_HEADERS_JSON="+triggerHeadersPath)
+	}
+
 	timeout := req.Timeout
 	if timeout == 0 && action.TimeoutMs > 0 {
 		timeout = time.Duration(action.TimeoutMs) * time.Millisecond
@@ -140,7 +155,7 @@ func (r *Runner) Run(ctx context.Context, req RunRequest) (contract.JobResult, e
 			App:        req.Deployment.App,
 			Action:     req.Action,
 			Timeout:    timeout,
-			Env:        req.Env,
+			Env:        env,
 			LogSink:    req.LogSink,
 		})
 	case contract.ActionAdapterCommand:
@@ -153,20 +168,21 @@ func (r *Runner) Run(ctx context.Context, req RunRequest) (contract.JobResult, e
 			RequestPath: adapterRequestPath,
 			ResultPath:  adapterResultPath,
 			Request: actionAdapterRequest{
-				Version:    actionAdapterProtocolVersion,
-				WorkDir:    sourceDir,
-				Command:    append([]string(nil), action.Command...),
-				InputPath:  inputPath,
-				OutputPath: outputPath,
-				App:        req.Deployment.App,
-				Action:     req.Action,
-				Runtime:    action.Runtime,
-				Entrypoint: action.Entrypoint,
-				TimeoutMs:  timeout.Milliseconds(),
-				Env:        append([]string(nil), req.Env...),
-				ActionSpec: action,
-				Deployment: req.Deployment,
-				Options:    action.Adapter.Options,
+				Version:        actionAdapterProtocolVersion,
+				WorkDir:        sourceDir,
+				Command:        append([]string(nil), action.Command...),
+				InputPath:      inputPath,
+				OutputPath:     outputPath,
+				App:            req.Deployment.App,
+				Action:         req.Action,
+				Runtime:        action.Runtime,
+				Entrypoint:     action.Entrypoint,
+				TimeoutMs:      timeout.Milliseconds(),
+				Env:            append([]string(nil), env...),
+				TriggerHeaders: append(json.RawMessage(nil), req.TriggerHeaders...),
+				ActionSpec:     action,
+				Deployment:     req.Deployment,
+				Options:        action.Adapter.Options,
 			},
 			App:     req.Deployment.App,
 			Action:  req.Action,

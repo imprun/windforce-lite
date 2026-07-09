@@ -32,7 +32,14 @@ func main() {
 	if err != nil {
 		os.Exit(2)
 	}
-	output := fmt.Sprintf("{\"app\":\"echo\",\"action\":\"echo\",\"input\":%s}", string(input))
+	headers := []byte("{}")
+	if path := os.Getenv("WINDFORCE_TRIGGER_HEADERS_JSON"); path != "" {
+		headers, err = os.ReadFile(path)
+		if err != nil {
+			os.Exit(2)
+		}
+	}
+	output := fmt.Sprintf("{\"app\":\"echo\",\"action\":\"echo\",\"input\":%s,\"headers\":%s}", string(input), string(headers))
 	if err := os.WriteFile(os.Getenv("WINDFORCE_OUTPUT_JSON"), []byte(output), 0o644); err != nil {
 		os.Exit(2)
 	}
@@ -65,8 +72,9 @@ func main() {
 				},
 			},
 		},
-		Action:    "echo",
-		InputPath: inputPath,
+		Action:         "echo",
+		InputPath:      inputPath,
+		TriggerHeaders: json.RawMessage(`{"X-Hub-Signature-256":"sha256=abc"}`),
 	})
 	if err != nil {
 		t.Fatalf("Run returned error: %v", err)
@@ -74,8 +82,18 @@ func main() {
 	if result.ExitCode != 0 {
 		t.Fatalf("exit code = %d", result.ExitCode)
 	}
-	if string(result.Output) != `{"app":"echo","action":"echo","input":{"message":"hello"}}` {
-		t.Fatalf("output = %s", result.Output)
+	var output struct {
+		App     string            `json:"app"`
+		Action  string            `json:"action"`
+		Input   map[string]string `json:"input"`
+		Headers map[string]string `json:"headers"`
+	}
+	if err := json.Unmarshal(result.Output, &output); err != nil {
+		t.Fatalf("output is not JSON: %v", err)
+	}
+	if output.App != "echo" || output.Action != "echo" || output.Input["message"] != "hello" ||
+		output.Headers["X-Hub-Signature-256"] != "sha256=abc" {
+		t.Fatalf("output = %#v", output)
 	}
 }
 
@@ -113,9 +131,10 @@ func TestRunnerRunsActionThroughCommandAdapter(t *testing.T) {
 				},
 			},
 		},
-		Action: "echo",
-		Input:  json.RawMessage(`{"message":"hello"}`),
-		Env:    []string{"SCRIPT_ENV=1"},
+		Action:         "echo",
+		Input:          json.RawMessage(`{"message":"hello"}`),
+		TriggerHeaders: json.RawMessage(`{"X-Hub-Signature-256":"sha256=abc"}`),
+		Env:            []string{"SCRIPT_ENV=1"},
 	})
 	if err != nil {
 		t.Fatalf("Run returned error: %v", err)
@@ -127,6 +146,7 @@ func TestRunnerRunsActionThroughCommandAdapter(t *testing.T) {
 		Adapter string            `json:"adapter"`
 		Command []string          `json:"command"`
 		Env     []string          `json:"env"`
+		Headers map[string]string `json:"headers"`
 		Input   map[string]string `json:"input"`
 		Option  string            `json:"option"`
 		Version string            `json:"version"`
@@ -140,11 +160,14 @@ func TestRunnerRunsActionThroughCommandAdapter(t *testing.T) {
 	if len(output.Command) != 2 || output.Command[0] != "legacy" || output.Command[1] != "script" {
 		t.Fatalf("command = %#v", output.Command)
 	}
-	if len(output.Env) != 1 || output.Env[0] != "SCRIPT_ENV=1" {
+	if !containsEnv(output.Env, "SCRIPT_ENV=1") || !containsEnvPrefix(output.Env, "WINDFORCE_TRIGGER_HEADERS_JSON=") {
 		t.Fatalf("env = %#v", output.Env)
 	}
 	if output.Input["message"] != "hello" {
 		t.Fatalf("input = %#v", output.Input)
+	}
+	if output.Headers["X-Hub-Signature-256"] != "sha256=abc" {
+		t.Fatalf("headers = %#v", output.Headers)
 	}
 }
 
@@ -158,6 +181,7 @@ func TestRuntimeActionAdapterHelperProcess(t *testing.T) {
 		InputPath  string                     `json:"inputPath"`
 		OutputPath string                     `json:"outputPath"`
 		Env        []string                   `json:"env"`
+		Headers    map[string]string          `json:"triggerHeaders"`
 		Options    map[string]json.RawMessage `json:"options"`
 	}
 	requestBytes, err := os.ReadFile(os.Getenv("WINDFORCE_ADAPTER_REQUEST_JSON"))
@@ -183,6 +207,7 @@ func TestRuntimeActionAdapterHelperProcess(t *testing.T) {
 		"adapter": "command",
 		"command": request.Command,
 		"env":     request.Env,
+		"headers": request.Headers,
 		"input":   input,
 		"option":  option,
 		"version": request.Version,
@@ -201,4 +226,22 @@ func TestRuntimeActionAdapterHelperProcess(t *testing.T) {
 		os.Exit(6)
 	}
 	os.Exit(0)
+}
+
+func containsEnv(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
+}
+
+func containsEnvPrefix(values []string, prefix string) bool {
+	for _, value := range values {
+		if len(value) >= len(prefix) && value[:len(prefix)] == prefix {
+			return true
+		}
+	}
+	return false
 }

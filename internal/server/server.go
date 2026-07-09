@@ -1545,6 +1545,13 @@ func validActionKey(value string) bool {
 	return true
 }
 
+func cloneRawMessage(value json.RawMessage) json.RawMessage {
+	if len(value) == 0 {
+		return nil
+	}
+	return append(json.RawMessage(nil), value...)
+}
+
 func cloneStringPtr(value *string) *string {
 	if value == nil {
 		return nil
@@ -1705,7 +1712,8 @@ func (h *Handler) handleJobWebhook(w http.ResponseWriter, r *http.Request, works
 	if !ok {
 		return
 	}
-	job, ok := h.enqueueJob(w, r, workspaceID, app, action, "webhook", input)
+	triggerHeaders := captureWebhookHeaders(r)
+	job, ok := h.enqueueJob(w, r, workspaceID, app, action, "webhook", input, triggerHeaders)
 	if !ok {
 		return
 	}
@@ -1717,10 +1725,10 @@ func (h *Handler) enqueueJobRun(w http.ResponseWriter, r *http.Request, workspac
 	if !ok {
 		return state.Job{}, false
 	}
-	return h.enqueueJob(w, r, workspaceID, app, action, "api", input)
+	return h.enqueueJob(w, r, workspaceID, app, action, "api", input, nil)
 }
 
-func (h *Handler) enqueueJob(w http.ResponseWriter, r *http.Request, workspaceID string, app string, action string, triggerKind string, input json.RawMessage) (state.Job, bool) {
+func (h *Handler) enqueueJob(w http.ResponseWriter, r *http.Request, workspaceID string, app string, action string, triggerKind string, input json.RawMessage, triggerHeaders json.RawMessage) (state.Job, bool) {
 	if h.store == nil || h.catalog == nil {
 		writeError(w, http.StatusServiceUnavailable, "job API is not configured")
 		return state.Job{}, false
@@ -1741,6 +1749,7 @@ func (h *Handler) enqueueJob(w http.ResponseWriter, r *http.Request, workspaceID
 	}
 	job := state.NewActionJob(run, input)
 	job.Payload.TriggerKind = triggerKind
+	job.Payload.TriggerHeaders = cloneRawMessage(triggerHeaders)
 	if err := h.store.CreateRunAndEnqueue(r.Context(), run, job); err != nil {
 		status := http.StatusInternalServerError
 		if errors.Is(err, state.ErrConflict) {
@@ -2095,6 +2104,50 @@ func readWebhookRaw(w http.ResponseWriter, r *http.Request) (json.RawMessage, bo
 		return nil, false
 	}
 	return json.RawMessage(raw), true
+}
+
+const (
+	maxWebhookHeaderValueBytes = 1 << 10
+	maxWebhookHeadersBytes     = 8 << 10
+)
+
+var webhookHeaderDenylist = map[string]bool{
+	"Authorization":       true,
+	"Cookie":              true,
+	"Proxy-Authorization": true,
+}
+
+func captureWebhookHeaders(r *http.Request) json.RawMessage {
+	names := make([]string, 0, len(r.Header))
+	for name := range r.Header {
+		if webhookHeaderDenylist[name] {
+			continue
+		}
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	headers := make(map[string]string, len(names))
+	total := 0
+	for _, name := range names {
+		value := strings.Join(r.Header[name], ", ")
+		if len(value) > maxWebhookHeaderValueBytes {
+			value = value[:maxWebhookHeaderValueBytes]
+		}
+		if total+len(name)+len(value) > maxWebhookHeadersBytes {
+			break
+		}
+		total += len(name) + len(value)
+		headers[name] = value
+	}
+	if len(headers) == 0 {
+		return nil
+	}
+	data, err := json.Marshal(headers)
+	if err != nil {
+		return nil
+	}
+	return json.RawMessage(data)
 }
 
 func readResumeInput(r *http.Request) (json.RawMessage, error) {
