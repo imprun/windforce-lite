@@ -66,7 +66,7 @@ func TreeDigest(ctx context.Context, dir string) (string, error) {
 
 func skipDigestDir(base string) bool {
 	switch strings.ToLower(base) {
-	case ".git", "node_modules", ".venv", "__pycache__":
+	case ".git", "node_modules":
 		return true
 	default:
 		return false
