@@ -2886,8 +2886,15 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 		t.Fatalf("openapi paths missing: %#v", paths)
 	}
 	resultResponses := paths["/api/w/ws-a/jobs/{id}/result"].(map[string]any)["get"].(map[string]any)["responses"].(map[string]any)
-	if resultResponses["404"] == nil {
-		t.Fatalf("openapi result poll must document job-not-found 404: %#v", resultResponses)
+	if resultResponses["401"] == nil || resultResponses["403"] == nil {
+		t.Fatalf("openapi result poll must document canonical auth failures: %#v", resultResponses)
+	}
+	if resultResponses["404"] != nil {
+		t.Fatalf("openapi result poll must match canonical app OpenAPI without 404: %#v", resultResponses)
+	}
+	appResponses := openAPIBody["components"].(map[string]any)["responses"].(map[string]any)
+	if appResponses["Conflict"] != nil || appResponses["RequestEntityTooLarge"] != nil {
+		t.Fatalf("app openapi responses must match canonical invocation components: %#v", appResponses)
 	}
 	webhook := paths["/api/w/ws-a/jobs/webhook/echo/echo"].(map[string]any)["post"].(map[string]any)
 	webhookDescription := webhook["description"].(string)
