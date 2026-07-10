@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/imprun/windforce-lite/internal/contract"
+	wfcrypto "github.com/imprun/windforce-lite/internal/crypto"
 )
 
 type RunState string
@@ -287,6 +288,7 @@ type Store interface {
 	DeleteVariable(ctx context.Context, workspaceID string, appKey string, path string) error
 	SetResource(ctx context.Context, workspaceID string, path string, value json.RawMessage, resourceType string, description string) error
 	GetResource(ctx context.Context, workspaceID string, path string) (Resource, bool, error)
+	DecryptInput(ctx context.Context, workspaceID string, input json.RawMessage) (json.RawMessage, error)
 	ClaimJob(ctx context.Context, workerID string, leaseTTL time.Duration) (Job, Lease, error)
 	ClaimJobForTags(ctx context.Context, workerID string, tags []string, leaseTTL time.Duration) (Job, Lease, error)
 	HeartbeatJob(ctx context.Context, lease Lease, leaseTTL time.Duration) (HeartbeatResult, error)
@@ -301,11 +303,36 @@ type Store interface {
 }
 
 type LocalStore struct {
-	Path string
+	Path              string
+	SecretKey         string
+	SecretKeyPrevious string
 }
 
 func NewLocalStore(path string) *LocalStore {
 	return &LocalStore{Path: path}
+}
+
+func (s *LocalStore) ConfigureInputCrypto(secretKey string, previous string) {
+	s.SecretKey = strings.TrimSpace(secretKey)
+	s.SecretKeyPrevious = strings.TrimSpace(previous)
+}
+
+func (s *LocalStore) encryptInput(ctx context.Context, workspaceID string, input json.RawMessage) (json.RawMessage, error) {
+	return encryptInputAtRest(ctx, nil, inputCryptoConfig{
+		SecretKey:         s.SecretKey,
+		SecretKeyPrevious: s.SecretKeyPrevious,
+	}, workspaceID, input)
+}
+
+func (s *LocalStore) decryptInput(ctx context.Context, workspaceID string, input json.RawMessage) (json.RawMessage, error) {
+	return decryptInputAtRest(ctx, nil, inputCryptoConfig{
+		SecretKey:         s.SecretKey,
+		SecretKeyPrevious: s.SecretKeyPrevious,
+	}, workspaceID, input)
+}
+
+func (s *LocalStore) DecryptInput(ctx context.Context, workspaceID string, input json.RawMessage) (json.RawMessage, error) {
+	return s.decryptInput(ctx, workspaceID, input)
 }
 
 func NewID(prefix string) string {
@@ -449,6 +476,17 @@ func (s *LocalStore) CreateRunAndEnqueue(ctx context.Context, run Run, job Job) 
 		if job.Payload.CorrelationID == "" {
 			job.Payload.CorrelationID = run.CorrelationID
 		}
+		workspaceID := normalizedJobWorkspace("", job)
+		runInput, err := s.encryptInput(ctx, workspaceID, run.Input)
+		if err != nil {
+			return err
+		}
+		jobInput, err := s.encryptInput(ctx, workspaceID, job.Payload.Input)
+		if err != nil {
+			return err
+		}
+		run.Input = runInput
+		job.Payload.Input = jobInput
 		snapshot.Runs[run.ID] = run
 		snapshot.Jobs[job.ID] = job
 		runCreated := map[string]string{"app": run.App, "action": run.Action}
@@ -474,6 +512,11 @@ func (s *LocalStore) GetRun(ctx context.Context, runID string) (Run, error) {
 	if !ok {
 		return Run{}, fmt.Errorf("%w: run %q", ErrNotFound, runID)
 	}
+	if input, err := s.decryptInput(ctx, run.Deployment.SourceWorkspace(), run.Input); err != nil {
+		return Run{}, err
+	} else {
+		run.Input = input
+	}
 	return run, nil
 }
 
@@ -489,6 +532,16 @@ func (s *LocalStore) GetJob(ctx context.Context, workspaceID string, jobID strin
 	run, ok := snapshot.Runs[job.RunID]
 	if !ok {
 		return Job{}, Run{}, false, fmt.Errorf("%w: run %q", ErrNotFound, job.RunID)
+	}
+	if input, err := s.decryptInput(ctx, normalizedJobWorkspace("", job), job.Payload.Input); err != nil {
+		return Job{}, Run{}, false, err
+	} else {
+		job.Payload.Input = input
+	}
+	if input, err := s.decryptInput(ctx, run.Deployment.SourceWorkspace(), run.Input); err != nil {
+		return Job{}, Run{}, false, err
+	} else {
+		run.Input = input
 	}
 	return job, run, true, nil
 }
@@ -967,14 +1020,24 @@ func (s *LocalStore) ResumeHumanTask(ctx context.Context, taskID string, resumeI
 		run.State = RunResuming
 		run.TaskID = ""
 		run.UpdatedAt = now
-		jobInput := mergeResumeInput(run.Input, task.ID, resumeInput)
+		plainRunInput, err := s.decryptInput(ctx, run.Deployment.SourceWorkspace(), run.Input)
+		if err != nil {
+			return err
+		}
+		jobInput := mergeResumeInput(plainRunInput, task.ID, resumeInput)
 		job := NewActionJob(run, jobInput)
 		job.CreatedAt = now
 		job.UpdatedAt = now
+		storedJobInput, err := s.encryptInput(ctx, normalizedJobWorkspace("", job), job.Payload.Input)
+		if err != nil {
+			return err
+		}
+		storedJob := job
+		storedJob.Payload.Input = storedJobInput
 
 		snapshot.HumanTasks[task.ID] = task
 		snapshot.Runs[run.ID] = run
-		snapshot.Jobs[job.ID] = job
+		snapshot.Jobs[storedJob.ID] = storedJob
 		appendEvent(snapshot, run.ID, "human_task_resumed", eventPayload(run.CorrelationID, map[string]any{"taskId": task.ID, "jobId": job.ID}), now)
 		resumedRun = run
 		enqueuedJob = job
@@ -1083,11 +1146,21 @@ func (s *LocalStore) RetryRun(ctx context.Context, runID string) (Run, Job, erro
 		run.Error = nil
 		run.TaskID = ""
 		run.UpdatedAt = now
-		job := NewActionJob(run, run.Input)
+		plainRunInput, err := s.decryptInput(ctx, run.Deployment.SourceWorkspace(), run.Input)
+		if err != nil {
+			return err
+		}
+		job := NewActionJob(run, plainRunInput)
 		job.CreatedAt = now
 		job.UpdatedAt = now
+		storedJobInput, err := s.encryptInput(ctx, normalizedJobWorkspace("", job), job.Payload.Input)
+		if err != nil {
+			return err
+		}
+		storedJob := job
+		storedJob.Payload.Input = storedJobInput
 		snapshot.Runs[run.ID] = run
-		snapshot.Jobs[job.ID] = job
+		snapshot.Jobs[storedJob.ID] = storedJob
 		appendEvent(snapshot, run.ID, "run_retried", eventPayload(run.CorrelationID, map[string]any{"jobId": job.ID}), now)
 		retried = run
 		enqueued = job
@@ -1791,6 +1864,85 @@ func normalizedJobWorkspace(workspaceID string, job Job) string {
 		workspaceID = job.Payload.Deployment.SourceWorkspace()
 	}
 	return contract.NormalizeWorkspace(workspaceID)
+}
+
+type inputCryptoConfig struct {
+	SecretKey         string
+	SecretKeyPrevious string
+}
+
+type inputWorkspaceKeyProvider interface {
+	GetWorkspaceKeyVersioned(ctx context.Context, workspaceID string) (string, int32, error)
+}
+
+func encryptInputAtRest(ctx context.Context, provider inputWorkspaceKeyProvider, config inputCryptoConfig, workspaceID string, input json.RawMessage) (json.RawMessage, error) {
+	input = canonicalJSONInput(input)
+	if !json.Valid(input) {
+		return nil, errors.New("input is not valid JSON")
+	}
+	if strings.TrimSpace(config.SecretKey) == "" || wfcrypto.IsEnc(input) {
+		return cloneRaw(input), nil
+	}
+	dek, err := resolveInputDEK(ctx, provider, config, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	encrypted, err := wfcrypto.WrapEnc(dek, input)
+	if err != nil {
+		return nil, err
+	}
+	return json.RawMessage(encrypted), nil
+}
+
+func decryptInputAtRest(ctx context.Context, provider inputWorkspaceKeyProvider, config inputCryptoConfig, workspaceID string, input json.RawMessage) (json.RawMessage, error) {
+	input = canonicalJSONInput(input)
+	if !wfcrypto.IsEnc(input) {
+		return cloneRaw(input), nil
+	}
+	if strings.TrimSpace(config.SecretKey) == "" {
+		return nil, errors.New("input is encrypted but SECRET_KEY is not configured")
+	}
+	dek, err := resolveInputDEK(ctx, provider, config, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	plain, err := wfcrypto.UnwrapEnc(dek, input)
+	if err != nil {
+		return nil, err
+	}
+	if !json.Valid(plain) {
+		return nil, errors.New("decrypted input is not valid JSON")
+	}
+	return json.RawMessage(append([]byte(nil), plain...)), nil
+}
+
+func resolveInputDEK(ctx context.Context, provider inputWorkspaceKeyProvider, config inputCryptoConfig, workspaceID string) (string, error) {
+	workspaceID = contract.NormalizeWorkspace(workspaceID)
+	if provider != nil {
+		key, version, err := provider.GetWorkspaceKeyVersioned(ctx, workspaceID)
+		if err != nil {
+			return "", err
+		}
+		if key != "" {
+			return wfcrypto.ResolveDEK(key, version, inputKEKs(config))
+		}
+	}
+	return wfcrypto.DeriveWorkspaceKey(strings.TrimSpace(config.SecretKey), workspaceID), nil
+}
+
+func inputKEKs(config inputCryptoConfig) []string {
+	keks := []string{wfcrypto.DeriveKEK(strings.TrimSpace(config.SecretKey))}
+	if previous := strings.TrimSpace(config.SecretKeyPrevious); previous != "" {
+		keks = append(keks, wfcrypto.DeriveKEK(previous))
+	}
+	return keks
+}
+
+func canonicalJSONInput(input json.RawMessage) json.RawMessage {
+	if len(input) == 0 {
+		return json.RawMessage("{}")
+	}
+	return cloneRaw(input)
 }
 
 func nonZeroTime(value time.Time, fallback time.Time) time.Time {

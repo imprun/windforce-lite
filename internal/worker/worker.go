@@ -49,12 +49,24 @@ func (p *Processor) ProcessOne(ctx context.Context) (bool, error) {
 	defer cancel()
 	stopHeartbeat := p.startHeartbeat(lease, cancel)
 	defer stopHeartbeat()
+	input, err := p.Store.DecryptInput(runCtx, workspaceID, job.Payload.Input)
+	if err != nil {
+		result := contract.JobResult{
+			JobID:    job.ID,
+			App:      job.Payload.App,
+			Action:   job.Payload.Action,
+			Output:   actionruntime.ErrorResult("InputDecryptError", "could not decrypt job input"),
+			ExitCode: -1,
+			Error:    "could not decrypt job input",
+		}
+		return completeProcessed(p.Store.CompleteJobFailed(ctx, lease, result))
+	}
 	result, runErr := p.Runner.Run(runCtx, actionruntime.RunRequest{
 		JobID:           job.ID,
 		WorkspaceID:     workspaceID,
 		Deployment:      job.Payload.PinnedDeployment(),
 		Action:          job.Payload.Action,
-		Input:           job.Payload.Input,
+		Input:           input,
 		TriggerKind:     job.Payload.TriggerKind,
 		TriggerHeaders:  job.Payload.TriggerHeaders,
 		Tag:             job.Payload.Tag,

@@ -10,11 +10,62 @@ import (
 	"time"
 
 	"github.com/imprun/windforce-lite/internal/contract"
+	wfcrypto "github.com/imprun/windforce-lite/internal/crypto"
 )
 
 func TestLocalStoreClaimCompleteAndResumeLifecycle(t *testing.T) {
 	store := NewLocalStore(t.TempDir() + "/state.json")
 	exerciseStoreLifecycle(t, store)
+}
+
+func TestLocalStoreEncryptsInputAtRest(t *testing.T) {
+	store := NewLocalStore(t.TempDir() + "/state.json")
+	store.ConfigureInputCrypto("test-secret-key", "")
+	deployment := contract.Deployment{
+		Workspace: "default",
+		App:       "echo",
+		Commit:    "commit-a",
+		Actions: map[string]contract.Action{
+			"echo": {Action: "echo", Command: []string{"helper"}},
+		},
+	}
+	run := NewRun("windforce", "run-encrypted", "echo", "echo", deployment, json.RawMessage(`{"message":"secret"}`))
+	job := NewActionJob(run, nil)
+	if err := store.CreateRunAndEnqueue(context.Background(), run, job); err != nil {
+		t.Fatalf("CreateRunAndEnqueue returned error: %v", err)
+	}
+
+	snapshot, err := store.Load(context.Background())
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	storedRun := snapshot.Runs[run.ID]
+	storedJob := snapshot.Jobs[job.ID]
+	if !wfcrypto.IsEnc(storedRun.Input) || !wfcrypto.IsEnc(storedJob.Payload.Input) {
+		t.Fatalf("stored input is not encrypted: run=%s job=%s", storedRun.Input, storedJob.Payload.Input)
+	}
+
+	publicRun, err := store.GetRun(context.Background(), run.ID)
+	if err != nil {
+		t.Fatalf("GetRun returned error: %v", err)
+	}
+	if string(publicRun.Input) != `{"message":"secret"}` {
+		t.Fatalf("public run input = %s", publicRun.Input)
+	}
+	claimed, _, err := store.ClaimJob(context.Background(), "worker-a", time.Minute)
+	if err != nil {
+		t.Fatalf("ClaimJob returned error: %v", err)
+	}
+	if !wfcrypto.IsEnc(claimed.Payload.Input) {
+		t.Fatalf("claimed input should remain encrypted until worker decrypt: %s", claimed.Payload.Input)
+	}
+	plain, err := store.DecryptInput(context.Background(), "default", claimed.Payload.Input)
+	if err != nil {
+		t.Fatalf("DecryptInput returned error: %v", err)
+	}
+	if string(plain) != `{"message":"secret"}` {
+		t.Fatalf("plain input = %s", plain)
+	}
 }
 
 func TestPostgresStoreClaimCompleteAndResumeLifecycle(t *testing.T) {

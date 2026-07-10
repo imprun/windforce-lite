@@ -262,6 +262,7 @@ func newProcessorTestHarness(t *testing.T, helperMode string) (Processor, *state
 	run := state.NewRun("windforce", "run-"+helperMode, "echo", "echo", deployment, json.RawMessage(`{"message":"hello"}`))
 	job := state.NewActionJob(run, nil)
 	stateStore := state.NewLocalStore(filepath.Join(tempDir, "state.json"))
+	stateStore.ConfigureInputCrypto("test-secret-key", "")
 	if err := stateStore.CreateRunAndEnqueue(context.Background(), run, job); err != nil {
 		t.Fatal(err)
 	}

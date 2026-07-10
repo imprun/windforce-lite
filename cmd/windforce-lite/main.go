@@ -95,8 +95,9 @@ func runServer(args []string, mode string) int {
 	gitSources := gitsource.NewFileRegistry(*gitSourcesPath)
 	adminToken := tokenFromEnv(*adminTokenEnv)
 	jobTokenSecret := firstNonEmpty(tokenFromEnv(*jobTokenSecretEnv), adminToken)
-	secretKey := tokenFromEnv(*secretKeyEnv)
+	secretKey := effectiveSecretKey(tokenFromEnv(*secretKeyEnv))
 	secretKeyPrevious := tokenFromEnv(*secretKeyPreviousEnv)
+	configureInputCrypto(stateStore, secretKey, secretKeyPrevious)
 	runtimeBaseURL := strings.TrimSpace(*baseURL)
 	if runtimeBaseURL == "" && mode == "standalone" {
 		runtimeBaseURL = localBaseURL(*addr)
@@ -163,6 +164,8 @@ func runWorker(args []string) int {
 	baseURL := flags.String("base-url", "", "public API base URL injected into job ctx helpers")
 	apiTokenEnv := flags.String("api-token-env", "", "deprecated fallback for --job-token-secret-env")
 	jobTokenSecretEnv := flags.String("job-token-secret-env", "", "environment variable that contains the WF_TOKEN signing secret")
+	secretKeyEnv := flags.String("secret-key-env", "SECRET_KEY", "environment variable that contains the instance secret used for input encryption")
+	secretKeyPreviousEnv := flags.String("secret-key-previous-env", "SECRET_KEY_PREVIOUS", "environment variable that contains the previous instance secret during rotation")
 	poll := flags.Duration("poll", 500*time.Millisecond, "job poll interval")
 	leaseTTL := flags.Duration("lease", 30*time.Second, "job lease TTL")
 	workerID := flags.String("worker-id", "", "worker identity")
@@ -181,6 +184,9 @@ func runWorker(args []string) int {
 	}
 	defer closeState()
 	jobTokenSecret := firstNonEmpty(tokenFromEnv(*jobTokenSecretEnv), tokenFromEnv(*apiTokenEnv))
+	secretKey := effectiveSecretKey(tokenFromEnv(*secretKeyEnv))
+	secretKeyPrevious := tokenFromEnv(*secretKeyPreviousEnv)
+	configureInputCrypto(stateStore, secretKey, secretKeyPrevious)
 	processor := worker.Processor{
 		Store: stateStore,
 		Runner: runtime.Runner{
@@ -251,6 +257,23 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+type inputCryptoConfigurer interface {
+	ConfigureInputCrypto(secretKey string, previous string)
+}
+
+func configureInputCrypto(store state.Store, secretKey string, previous string) {
+	if configurable, ok := store.(inputCryptoConfigurer); ok {
+		configurable.ConfigureInputCrypto(secretKey, previous)
+	}
+}
+
+func effectiveSecretKey(value string) string {
+	if strings.TrimSpace(value) == "" {
+		return server.DefaultSecretKey
+	}
+	return strings.TrimSpace(value)
 }
 
 func localBaseURL(addr string) string {

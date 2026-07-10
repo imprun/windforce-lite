@@ -31,7 +31,9 @@ const humanTaskColumns = `
 `
 
 type PostgresStore struct {
-	pool *pgxpool.Pool
+	pool              *pgxpool.Pool
+	SecretKey         string
+	SecretKeyPrevious string
 }
 
 func OpenPostgresStore(ctx context.Context, databaseURL string) (*PostgresStore, error) {
@@ -53,6 +55,29 @@ func (s *PostgresStore) Close() {
 	if s != nil && s.pool != nil {
 		s.pool.Close()
 	}
+}
+
+func (s *PostgresStore) ConfigureInputCrypto(secretKey string, previous string) {
+	s.SecretKey = strings.TrimSpace(secretKey)
+	s.SecretKeyPrevious = strings.TrimSpace(previous)
+}
+
+func (s *PostgresStore) encryptInput(ctx context.Context, workspaceID string, input json.RawMessage) (json.RawMessage, error) {
+	return encryptInputAtRest(ctx, s, inputCryptoConfig{
+		SecretKey:         s.SecretKey,
+		SecretKeyPrevious: s.SecretKeyPrevious,
+	}, workspaceID, input)
+}
+
+func (s *PostgresStore) decryptInput(ctx context.Context, workspaceID string, input json.RawMessage) (json.RawMessage, error) {
+	return decryptInputAtRest(ctx, s, inputCryptoConfig{
+		SecretKey:         s.SecretKey,
+		SecretKeyPrevious: s.SecretKeyPrevious,
+	}, workspaceID, input)
+}
+
+func (s *PostgresStore) DecryptInput(ctx context.Context, workspaceID string, input json.RawMessage) (json.RawMessage, error) {
+	return s.decryptInput(ctx, workspaceID, input)
 }
 
 func (s *PostgresStore) Migrate(ctx context.Context) error {
@@ -413,6 +438,16 @@ WHERE id=$1
 	if err != nil {
 		return Job{}, Run{}, false, err
 	}
+	if input, err := s.decryptInput(ctx, normalizedJobWorkspace("", job), job.Payload.Input); err != nil {
+		return Job{}, Run{}, false, err
+	} else {
+		job.Payload.Input = input
+	}
+	if input, err := s.decryptInput(ctx, run.Deployment.SourceWorkspace(), run.Input); err != nil {
+		return Job{}, Run{}, false, err
+	} else {
+		run.Input = input
+	}
 	return job, run, true, nil
 }
 
@@ -539,6 +574,17 @@ func (s *PostgresStore) CreateRunAndEnqueue(ctx context.Context, run Run, job Jo
 		if job.Payload.CorrelationID == "" {
 			job.Payload.CorrelationID = run.CorrelationID
 		}
+		workspaceID := normalizedJobWorkspace("", job)
+		runInput, err := s.encryptInput(ctx, workspaceID, run.Input)
+		if err != nil {
+			return err
+		}
+		jobInput, err := s.encryptInput(ctx, workspaceID, job.Payload.Input)
+		if err != nil {
+			return err
+		}
+		run.Input = runInput
+		job.Payload.Input = jobInput
 
 		if _, err := tx.Exec(ctx, `
 INSERT INTO runs (
@@ -573,7 +619,15 @@ func (s *PostgresStore) GetRun(ctx context.Context, runID string) (Run, error) {
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Run{}, fmt.Errorf("%w: run %q", ErrNotFound, runID)
 	}
-	return run, err
+	if err != nil {
+		return Run{}, err
+	}
+	if input, err := s.decryptInput(ctx, run.Deployment.SourceWorkspace(), run.Input); err != nil {
+		return Run{}, err
+	} else {
+		run.Input = input
+	}
+	return run, nil
 }
 
 func (s *PostgresStore) GetHumanTask(ctx context.Context, taskID string) (HumanTask, error) {
@@ -907,9 +961,19 @@ func (s *PostgresStore) ResumeHumanTask(ctx context.Context, taskID string, resu
 		run.State = RunResuming
 		run.TaskID = ""
 		run.UpdatedAt = now
-		job := NewActionJob(run, mergeResumeInput(run.Input, task.ID, resumeInput))
+		plainRunInput, err := s.decryptInput(ctx, run.Deployment.SourceWorkspace(), run.Input)
+		if err != nil {
+			return err
+		}
+		job := NewActionJob(run, mergeResumeInput(plainRunInput, task.ID, resumeInput))
 		job.CreatedAt = now
 		job.UpdatedAt = now
+		storedJobInput, err := s.encryptInput(ctx, normalizedJobWorkspace("", job), job.Payload.Input)
+		if err != nil {
+			return err
+		}
+		storedJob := job
+		storedJob.Payload.Input = storedJobInput
 
 		if _, err := tx.Exec(ctx, `
 UPDATE human_tasks
@@ -930,8 +994,8 @@ INSERT INTO jobs (
 	id, run_id, state, kind, payload, priority, attempt, lease_owner,
 	lease_expires_at, created_at, updated_at
 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-`, job.ID, job.RunID, string(job.State), job.Kind, mustRaw(job.Payload), job.Priority, job.Attempt,
-			nullableString(job.LeaseOwner), job.LeaseExpiresAt, job.CreatedAt, job.UpdatedAt); err != nil {
+`, storedJob.ID, storedJob.RunID, string(storedJob.State), storedJob.Kind, mustRaw(storedJob.Payload), storedJob.Priority, storedJob.Attempt,
+			nullableString(storedJob.LeaseOwner), storedJob.LeaseExpiresAt, storedJob.CreatedAt, storedJob.UpdatedAt); err != nil {
 			return err
 		}
 		if err := insertEvent(ctx, tx, run.ID, "human_task_resumed", eventPayload(run.CorrelationID, map[string]any{"taskId": task.ID, "jobId": job.ID})); err != nil {
@@ -1070,9 +1134,19 @@ func (s *PostgresStore) RetryRun(ctx context.Context, runID string) (Run, Job, e
 		run.Error = nil
 		run.TaskID = ""
 		run.UpdatedAt = now
-		job := NewActionJob(run, run.Input)
+		plainRunInput, err := s.decryptInput(ctx, run.Deployment.SourceWorkspace(), run.Input)
+		if err != nil {
+			return err
+		}
+		job := NewActionJob(run, plainRunInput)
 		job.CreatedAt = now
 		job.UpdatedAt = now
+		storedJobInput, err := s.encryptInput(ctx, normalizedJobWorkspace("", job), job.Payload.Input)
+		if err != nil {
+			return err
+		}
+		storedJob := job
+		storedJob.Payload.Input = storedJobInput
 		if _, err := tx.Exec(ctx, `
 UPDATE runs
 SET state=$1, output=NULL, result=NULL, error=NULL, task_id=NULL, updated_at=$2
@@ -1085,8 +1159,8 @@ INSERT INTO jobs (
 	id, run_id, state, kind, payload, priority, attempt, lease_owner,
 	lease_expires_at, created_at, updated_at
 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-`, job.ID, job.RunID, string(job.State), job.Kind, mustRaw(job.Payload), job.Priority, job.Attempt,
-			nullableString(job.LeaseOwner), job.LeaseExpiresAt, job.CreatedAt, job.UpdatedAt); err != nil {
+`, storedJob.ID, storedJob.RunID, string(storedJob.State), storedJob.Kind, mustRaw(storedJob.Payload), storedJob.Priority, storedJob.Attempt,
+			nullableString(storedJob.LeaseOwner), storedJob.LeaseExpiresAt, storedJob.CreatedAt, storedJob.UpdatedAt); err != nil {
 			return err
 		}
 		if err := insertEvent(ctx, tx, run.ID, "run_retried", eventPayload(run.CorrelationID, map[string]any{"jobId": job.ID})); err != nil {

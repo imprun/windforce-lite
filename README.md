@@ -360,6 +360,12 @@ go run ./cmd/windforce-lite api `
   --job-token-secret-env WINDFORCE_JOB_TOKEN_SECRET
 ```
 
+Job input is stored with the same Windforce `{"__wf_enc":1,"ct":"..."}`
+envelope used by the canonical worker when `SECRET_KEY` is configured. The
+lite API and worker must use the same `--secret-key-env` /
+`--secret-key-previous-env` values; when omitted, both use the local development
+default so standalone and compose runs continue to work without extra setup.
+
 ## Runtime architecture
 
 The runtime follows the original Windforce control-plane/worker model:

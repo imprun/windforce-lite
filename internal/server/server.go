@@ -39,7 +39,7 @@ type GitSourceRegistry interface {
 	Get(ctx context.Context, workspace string, id string) (gitsourcepkg.Source, error)
 }
 
-const defaultSecretKey = "dev-insecure-change-me-0000000000000000000000000000"
+const DefaultSecretKey = "dev-insecure-change-me-0000000000000000000000000000"
 
 type Config struct {
 	Store             state.Store
@@ -86,7 +86,7 @@ func jobPrincipalFrom(ctx context.Context) *jobPrincipal {
 func New(config Config) http.Handler {
 	secretKey := config.SecretKey
 	if secretKey == "" {
-		secretKey = defaultSecretKey
+		secretKey = DefaultSecretKey
 	}
 	return &Handler{
 		store:             config.Store,
