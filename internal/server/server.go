@@ -929,17 +929,9 @@ func (h *Handler) handleCanonicalRequeueApp(w http.ResponseWriter, r *http.Reque
 }
 
 func (h *Handler) handleCanonicalDeployment(w http.ResponseWriter, r *http.Request, workspaceID string, id string) {
-	snapshot, ok := h.loadCatalogSnapshot(w, r)
-	if !ok {
-		return
-	}
-	workspaceID = contract.NormalizeWorkspace(workspaceID)
-	for _, item := range snapshot.History {
-		if contract.NormalizeWorkspace(item.Workspace) == workspaceID && item.ID == id {
-			writeJSON(w, http.StatusOK, newCanonicalDeploymentStatus(item))
-			return
-		}
-	}
+	// Full windforce returns an AppDeployment status row from the deploy control
+	// plane. windforce-lite does not yet have that deploy state table; do not
+	// expose the internal app Deployment contract through the canonical route.
 	writeError(w, http.StatusNotFound, "deployment not found")
 }
 
@@ -1217,22 +1209,6 @@ type canonicalAppHistoryItem struct {
 	CreatedAt    time.Time `json:"created_at"`
 }
 
-type canonicalDeploymentStatus struct {
-	ID              string    `json:"id"`
-	WorkspaceID     string    `json:"workspace_id"`
-	AppKey          string    `json:"app_key"`
-	GitSourceID     int64     `json:"git_source_id"`
-	BaseCommitSha   string    `json:"base_commit_sha"`
-	TargetCommitSha *string   `json:"target_commit_sha,omitempty"`
-	Status          string    `json:"status"`
-	Message         string    `json:"message"`
-	Error           *string   `json:"error,omitempty"`
-	CreatedBy       string    `json:"created_by"`
-	PermissionedAs  string    `json:"permissioned_as"`
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
-}
-
 type canonicalActionModel struct {
 	ID                   string    `json:"id"`
 	WorkspaceID          string    `json:"workspace_id"`
@@ -1296,42 +1272,13 @@ func newCanonicalAppSummaryView(deployment contract.Deployment) canonicalAppSumm
 }
 
 func newCanonicalAppHistoryItem(item catalogpkg.DeploymentHistory) canonicalAppHistoryItem {
-	deploymentID := item.ID
 	return canonicalAppHistoryItem{
-		ID:           item.ID,
-		CommitSha:    item.Commit,
-		Entrypoint:   item.Entrypoint,
-		Source:       firstNonEmpty(item.Source, "external_sync"),
-		DeploymentID: &deploymentID,
-		Message:      item.Message,
-		CreatedAt:    item.CreatedAt,
-	}
-}
-
-func newCanonicalDeploymentStatus(item catalogpkg.DeploymentHistory) canonicalDeploymentStatus {
-	status := firstNonEmpty(item.Status, "deployed")
-	message := ""
-	if item.Message != nil {
-		message = *item.Message
-	}
-	updatedAt := item.CreatedAt
-	if item.Deployment.UpdatedAt != nil {
-		updatedAt = *item.Deployment.UpdatedAt
-	}
-	targetCommit := item.Commit
-	return canonicalDeploymentStatus{
-		ID:              item.ID,
-		WorkspaceID:     contract.NormalizeWorkspace(item.Workspace),
-		AppKey:          item.App,
-		GitSourceID:     parseCanonicalGitSourceID(item.GitSourceID),
-		BaseCommitSha:   item.Commit,
-		TargetCommitSha: &targetCommit,
-		Status:          status,
-		Message:         message,
-		CreatedBy:       "",
-		PermissionedAs:  "",
-		CreatedAt:       item.CreatedAt,
-		UpdatedAt:       updatedAt,
+		ID:         item.ID,
+		CommitSha:  item.Commit,
+		Entrypoint: item.Entrypoint,
+		Source:     firstNonEmpty(item.Source, "external_sync"),
+		Message:    item.Message,
+		CreatedAt:  item.CreatedAt,
 	}
 }
 

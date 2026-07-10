@@ -249,17 +249,6 @@ func buildControlPlaneOpenAPI(baseURL string, workspaceID string) map[string]any
 				}, "400", "401", "403", "404"),
 			},
 		},
-		"/api/w/{workspace}/deployments/{id}": map[string]any{
-			"get": map[string]any{
-				"operationId": "getDeployment",
-				"summary":     "Get deployment status",
-				"description": "Returns a read-only deployment status row. In windforce-lite, a git-source sync is the deployment operation, so this is backed by the catalog history item linked from app history.",
-				"parameters":  []any{oapiWorkspaceParam(workspaceID), oapiPathParam("id", "Deployment id.")},
-				"responses": withErrors(map[string]any{
-					"200": oapiResponse("Deployment status.", oapiSchemaRef("AppDeployment")),
-				}, "401", "403", "404"),
-			},
-		},
 		"/api/w/{workspace}/apps/{app}/requeue": map[string]any{
 			"post": map[string]any{
 				"operationId": "requeueApp",
@@ -991,28 +980,6 @@ func controlPlaneSchemas() map[string]any {
 				"deployment_id": nullableString,
 				"message":       nullableString,
 				"created_at":    oapiDateTimeSchema(),
-			},
-		},
-		"AppDeployment": map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"id":                oapiStringSchema(),
-				"workspace_id":      oapiStringSchema(),
-				"app_key":           oapiStringSchema(),
-				"git_source_id":     oapiIntegerSchema(),
-				"base_commit_sha":   oapiStringSchema(),
-				"target_commit_sha": nullableString,
-				"status":            oapiStringSchema(),
-				"message":           oapiStringSchema(),
-				"error":             nullableString,
-				"created_by":        oapiStringSchema(),
-				"permissioned_as":   oapiStringSchema(),
-				"created_at":        oapiDateTimeSchema(),
-				"updated_at":        oapiDateTimeSchema(),
-			},
-			"required": []any{
-				"id", "workspace_id", "app_key", "git_source_id", "base_commit_sha", "status",
-				"message", "created_by", "permissioned_as", "created_at", "updated_at",
 			},
 		},
 		"RequeueResponse": map[string]any{
