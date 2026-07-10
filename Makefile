@@ -1,5 +1,4 @@
 .PHONY: help fmt test test-postgres build clean \
-	sync-example run-example smoke \
 	compose-up compose-db compose-build compose-down compose-reset compose-logs compose-ps postgres-dsn \
 	dev-standalone dev-standalone-postgres dev-api dev-worker worker-once \
 	windforce-variable-set windforce-git-token windforce-register windforce-sync windforce-sample \
@@ -66,7 +65,6 @@ help:
 	@echo "  test                   run go test ./..."
 	@echo "  test-postgres          run PostgreSQL integration test against docker compose"
 	@echo "  build                  build $(BIN)"
-	@echo "  smoke                  sync and run examples/echo through the direct CLI"
 	@echo "  dev-standalone         run local JSON-state standalone server"
 	@echo "  dev-standalone-postgres run PostgreSQL-backed standalone server"
 	@echo "  dev-api                run API process with PostgreSQL state"
@@ -98,17 +96,6 @@ build:
 	@mkdir -p "$(BIN_DIR)"
 	$(GO) build -o "$(BIN)" $(CMD)
 
-sync-example:
-	@mkdir -p "$(DEV_DIR)"
-	$(GO) run $(CMD) sync --source examples/echo --store "$(STORE)" --catalog "$(CATALOG)"
-
-run-example: sync-example
-	@printf '%s\n' '{"message":"hello from make"}' > "$(INPUT)"
-	$(GO) run $(CMD) run --app echo --action echo --input "$(INPUT)" --output "$(OUTPUT)" --store "$(STORE)" --catalog "$(CATALOG)" --cache "$(CACHE)"
-
-smoke: run-example
-	@cat "$(OUTPUT)"
-
 compose-up:
 	$(COMPOSE) up -d postgres control-plane
 
@@ -133,10 +120,10 @@ compose-ps:
 postgres-dsn:
 	@echo "$(POSTGRES_DSN)"
 
-dev-standalone: sync-example
+dev-standalone:
 	$(GO) run $(CMD) standalone --addr "$(ADDR)" --store "$(STORE)" --catalog "$(CATALOG)" --state "$(STATE)" --cache "$(CACHE)"
 
-dev-standalone-postgres: compose-up sync-example
+dev-standalone-postgres: compose-db
 	$(GO) run $(CMD) standalone --addr "$(ADDR)" --store "$(STORE)" --catalog "$(CATALOG)" --cache "$(CACHE)" --state-backend postgres --database-url "$(POSTGRES_DSN)" --migrate
 
 dev-api: compose-up
