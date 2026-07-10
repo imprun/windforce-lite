@@ -9,6 +9,8 @@ register git source -> sync -> inspect materialized schemas.
 from __future__ import annotations
 
 import argparse
+import base64
+import binascii
 import json
 import os
 import sys
@@ -323,9 +325,25 @@ def get_schema(args: argparse.Namespace) -> dict[str, Any]:
     return {
         "app_key": action.get("app_key", args.app),
         "action_key": action.get("action_key", args.action),
-        "input_schema": action.get("input_schema") or {},
-        "output_schema": action.get("output_schema") or {},
+        "input_schema": decode_schema_field(action.get("input_schema"), "input_schema"),
+        "output_schema": decode_schema_field(action.get("output_schema"), "output_schema"),
     }
+
+
+def decode_schema_field(value: Any, field: str) -> Any:
+    if value in (None, ""):
+        return {}
+    if isinstance(value, (dict, list)):
+        return value
+    if not isinstance(value, str):
+        raise APIError({"error": f"{field} was not a JSON schema or base64 string"})
+    try:
+        decoded = base64.b64decode(value, validate=True).decode("utf-8")
+        if not decoded.strip():
+            return {}
+        return json.loads(decoded)
+    except (binascii.Error, ValueError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise APIError({"error": f"{field} was not valid base64-encoded JSON: {exc}"}) from exc
 
 
 def request(args: argparse.Namespace, method: str, path: str, body: dict[str, Any] | None = None) -> Any:

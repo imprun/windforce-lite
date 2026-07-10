@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -26,6 +27,19 @@ import (
 	"github.com/imprun/windforce-lite/internal/syncer"
 	"github.com/imprun/windforce-lite/internal/token"
 )
+
+func decodeCatalogSchema(t *testing.T, raw json.RawMessage) []byte {
+	t.Helper()
+	var encoded string
+	if err := json.Unmarshal(raw, &encoded); err != nil {
+		t.Fatalf("catalog schema is not a base64 JSON string: %s: %v", raw, err)
+	}
+	decoded, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		t.Fatalf("decode catalog schema %q: %v", encoded, err)
+	}
+	return decoded
+}
 
 func TestJobLogsAPI(t *testing.T) {
 	tempDir := t.TempDir()
@@ -1490,6 +1504,10 @@ func TestCanonicalControlPlaneOpenAPIExposesSchemaDiscovery(t *testing.T) {
 	if jsonSchema["additionalProperties"] != true {
 		t.Fatalf("JSONSchema component must expose materialized action schemas as free-form JSON Schema: %#v", jsonSchema)
 	}
+	base64JSONSchema := schemas["Base64JSONSchema"].(map[string]any)
+	if base64JSONSchema["format"] != "byte" {
+		t.Fatalf("Base64JSONSchema component must document canonical catalog schema encoding: %#v", base64JSONSchema)
+	}
 	if schemas["Deployment"] != nil {
 		t.Fatalf("unsupported deployment status schema should not be advertised: %#v", schemas["Deployment"])
 	}
@@ -1539,7 +1557,7 @@ func TestCanonicalControlPlaneOpenAPIExposesSchemaDiscovery(t *testing.T) {
 	}
 	for _, schemaName := range []string{"Action", "AppAction"} {
 		for _, field := range []string{"input_schema", "output_schema"} {
-			assertSchemaRef(schemaName, schemas[schemaName].(map[string]any), field, "#/components/schemas/JSONSchema")
+			assertSchemaRef(schemaName, schemas[schemaName].(map[string]any), field, "#/components/schemas/Base64JSONSchema")
 		}
 	}
 	assertSchemaFields("AppHistoryItem", []string{
@@ -1608,8 +1626,8 @@ func TestCanonicalControlPlaneOpenAPIExposesSchemaDiscovery(t *testing.T) {
 	if properties["effective_capabilities"] != nil || properties["effective_route_tag"] != nil {
 		t.Fatalf("base Action schema must match canonical action response without effective fields: %#v", properties)
 	}
-	assertSchemaRef("Action", actionSchema, "input_schema", "#/components/schemas/JSONSchema")
-	assertSchemaRef("Action", actionSchema, "output_schema", "#/components/schemas/JSONSchema")
+	assertSchemaRef("Action", actionSchema, "input_schema", "#/components/schemas/Base64JSONSchema")
+	assertSchemaRef("Action", actionSchema, "output_schema", "#/components/schemas/Base64JSONSchema")
 	appDetail := schemas["AppDetailResponse"].(map[string]any)
 	appDetailApp := appDetail["properties"].(map[string]any)["app"].(map[string]any)
 	if appDetailApp["$ref"] != "#/components/schemas/AppView" {
@@ -1651,6 +1669,8 @@ func TestCanonicalControlPlaneOpenAPIExposesSchemaDiscovery(t *testing.T) {
 			t.Fatalf("job status schema missing %s: %#v", field, jobStatus)
 		}
 	}
+	assertSchemaRef("JobStatus", schemas["JobStatus"].(map[string]any), "input_schema", "#/components/schemas/JSONSchema")
+	assertSchemaRef("JobStatus", schemas["JobStatus"].(map[string]any), "output_schema", "#/components/schemas/JSONSchema")
 	jobListItem := schemas["JobListItem"].(map[string]any)["properties"].(map[string]any)
 	for _, field := range []string{"flow_run_id", "flow_step_id"} {
 		if jobListItem[field] == nil {
@@ -1820,8 +1840,9 @@ func TestCanonicalActionExposesEmptySchemas(t *testing.T) {
 		if !ok {
 			t.Fatalf("%s missing from action body: %#v", field, body)
 		}
-		if !bytes.Equal(bytes.TrimSpace(schema), []byte(`{}`)) {
-			t.Fatalf("%s = %s, want {}", field, schema)
+		decoded := decodeCatalogSchema(t, schema)
+		if !bytes.Equal(bytes.TrimSpace(decoded), []byte(`{}`)) {
+			t.Fatalf("%s = %s decoded=%s, want {}", field, schema, decoded)
 		}
 	}
 }
@@ -1864,9 +1885,11 @@ func TestCanonicalActionExposesPinnedSchemaBodiesWithoutSourceStore(t *testing.T
 	if err := json.NewDecoder(resp.Body).Decode(&actionBody); err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Contains(actionBody.InputSchema, []byte(`"message"`)) ||
-		!bytes.Contains(actionBody.OutputSchema, []byte(`"ok"`)) {
-		t.Fatalf("action schemas = input:%s output:%s", actionBody.InputSchema, actionBody.OutputSchema)
+	inputSchema := decodeCatalogSchema(t, actionBody.InputSchema)
+	outputSchema := decodeCatalogSchema(t, actionBody.OutputSchema)
+	if !bytes.Contains(inputSchema, []byte(`"message"`)) ||
+		!bytes.Contains(outputSchema, []byte(`"ok"`)) {
+		t.Fatalf("action schemas = input:%s decoded:%s output:%s decoded:%s", actionBody.InputSchema, inputSchema, actionBody.OutputSchema, outputSchema)
 	}
 }
 
@@ -1971,9 +1994,11 @@ func TestCanonicalControlPlaneUsesMaterializedActionSchemas(t *testing.T) {
 	if err := json.NewDecoder(actionResp.Body).Decode(&actionBody); err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Contains(actionBody.InputSchema, []byte(`"message"`)) ||
-		!bytes.Contains(actionBody.OutputSchema, []byte(`"ok"`)) {
-		t.Fatalf("action schemas = input:%s output:%s", actionBody.InputSchema, actionBody.OutputSchema)
+	actionInputSchema := decodeCatalogSchema(t, actionBody.InputSchema)
+	actionOutputSchema := decodeCatalogSchema(t, actionBody.OutputSchema)
+	if !bytes.Contains(actionInputSchema, []byte(`"message"`)) ||
+		!bytes.Contains(actionOutputSchema, []byte(`"ok"`)) {
+		t.Fatalf("action schemas = input:%s decoded:%s output:%s decoded:%s", actionBody.InputSchema, actionInputSchema, actionBody.OutputSchema, actionOutputSchema)
 	}
 
 	openAPIResp, err := http.Get(server.URL + "/api/w/ws-a/apps/echo/openapi.json")
@@ -2099,8 +2124,9 @@ func TestCanonicalSampleGitSourceRegistersAndSyncs(t *testing.T) {
 	if err := json.NewDecoder(actionResp.Body).Decode(&actionBody); err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Contains(actionBody.InputSchema, []byte(`"message"`)) {
-		t.Fatalf("sample input schema = %s", actionBody.InputSchema)
+	sampleInputSchema := decodeCatalogSchema(t, actionBody.InputSchema)
+	if !bytes.Contains(sampleInputSchema, []byte(`"message"`)) {
+		t.Fatalf("sample input schema = %s decoded=%s", actionBody.InputSchema, sampleInputSchema)
 	}
 
 	againResp, err := http.Post(server.URL+"/api/w/ws-a/git_sources/sample", "application/json", nil)
@@ -2528,10 +2554,12 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 	if err := json.NewDecoder(actionResp.Body).Decode(&actionBody); err != nil {
 		t.Fatal(err)
 	}
+	actionInputSchema := decodeCatalogSchema(t, actionBody.InputSchema)
+	actionOutputSchema := decodeCatalogSchema(t, actionBody.OutputSchema)
 	if actionBody.AppKey != "echo" || actionBody.ActionKey != "echo" ||
 		actionBody.TimeoutS != nil || actionBody.UpdatedAt.IsZero() ||
-		!bytes.Contains(actionBody.InputSchema, []byte(`"message"`)) || !bytes.Contains(actionBody.OutputSchema, []byte(`"ok"`)) {
-		t.Fatalf("action body = %#v input=%s output=%s", actionBody, actionBody.InputSchema, actionBody.OutputSchema)
+		!bytes.Contains(actionInputSchema, []byte(`"message"`)) || !bytes.Contains(actionOutputSchema, []byte(`"ok"`)) {
+		t.Fatalf("action body = %#v input=%s decoded=%s output=%s decoded=%s", actionBody, actionBody.InputSchema, actionInputSchema, actionBody.OutputSchema, actionOutputSchema)
 	}
 
 	invalidActionResp, err := http.Get(server.URL + "/api/w/ws-a/apps/echo/actions/bad-action")
@@ -2579,8 +2607,11 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 		!reflect.DeepEqual(appBody.App.RequiredCapabilities, []string{"browser"}) || appBody.App.EffectiveRouteTag != "browser" ||
 		appBody.App.UpdatedAt.IsZero() ||
 		len(appBody.Actions) != 1 || appBody.Actions[0].ActionKey != "echo" ||
-		!reflect.DeepEqual(appBody.Actions[0].EffectiveCapabilities, []string{"browser"}) || appBody.Actions[0].EffectiveRouteTag != "browser" ||
-		!bytes.Contains(appBody.Actions[0].InputSchema, []byte(`"message"`)) {
+		!reflect.DeepEqual(appBody.Actions[0].EffectiveCapabilities, []string{"browser"}) || appBody.Actions[0].EffectiveRouteTag != "browser" {
+		t.Fatalf("app body = %#v", appBody)
+	}
+	appActionInputSchema := decodeCatalogSchema(t, appBody.Actions[0].InputSchema)
+	if !bytes.Contains(appActionInputSchema, []byte(`"message"`)) {
 		t.Fatalf("app body = %#v", appBody)
 	}
 

@@ -1182,17 +1182,17 @@ type canonicalAppHistoryItem struct {
 }
 
 type canonicalActionModel struct {
-	ID                   string          `json:"id"`
-	WorkspaceID          string          `json:"workspace_id"`
-	AppKey               string          `json:"app_key"`
-	ActionKey            string          `json:"action_key"`
-	InputSchema          json.RawMessage `json:"input_schema"`
-	OutputSchema         json.RawMessage `json:"output_schema"`
-	Tag                  *string         `json:"tag,omitempty"`
-	TagOverride          *string         `json:"tag_override,omitempty"`
-	TimeoutS             *int32          `json:"timeout_s,omitempty"`
-	RequiredCapabilities []string        `json:"required_capabilities,omitempty"`
-	UpdatedAt            time.Time       `json:"updated_at"`
+	ID                   string    `json:"id"`
+	WorkspaceID          string    `json:"workspace_id"`
+	AppKey               string    `json:"app_key"`
+	ActionKey            string    `json:"action_key"`
+	InputSchema          []byte    `json:"input_schema"`
+	OutputSchema         []byte    `json:"output_schema"`
+	Tag                  *string   `json:"tag,omitempty"`
+	TagOverride          *string   `json:"tag_override,omitempty"`
+	TimeoutS             *int32    `json:"timeout_s,omitempty"`
+	RequiredCapabilities []string  `json:"required_capabilities,omitempty"`
+	UpdatedAt            time.Time `json:"updated_at"`
 }
 
 type canonicalActionSchemaView struct {
@@ -1305,14 +1305,21 @@ func (h *Handler) newCanonicalActionModel(schemaReader *canonicalSchemaReader, d
 		WorkspaceID:          contract.NormalizeWorkspace(deployment.SourceWorkspace()),
 		AppKey:               deployment.App,
 		ActionKey:            actionKey,
-		InputSchema:          schemaView.InputSchema,
-		OutputSchema:         schemaView.OutputSchema,
+		InputSchema:          canonicalCatalogSchemaBytes(schemaView.InputSchema),
+		OutputSchema:         canonicalCatalogSchemaBytes(schemaView.OutputSchema),
 		Tag:                  cloneStringPtr(action.Tag),
 		TagOverride:          cloneStringPtr(action.TagOverride),
 		TimeoutS:             cloneInt32Ptr(action.TimeoutS),
 		RequiredCapabilities: cloneStringSlicePtr(action.Capabilities),
 		UpdatedAt:            canonicalActionUpdatedAt(deployment, action),
 	}, nil
+}
+
+func canonicalCatalogSchemaBytes(schema json.RawMessage) []byte {
+	if len(bytes.TrimSpace(schema)) == 0 {
+		return []byte("{}")
+	}
+	return append([]byte(nil), schema...)
 }
 
 func (h *Handler) newCanonicalActionSchemaView(schemaReader *canonicalSchemaReader, deployment contract.Deployment, actionKey string, action contract.Action) (canonicalActionSchemaView, error) {

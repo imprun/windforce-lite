@@ -171,7 +171,7 @@ func buildControlPlaneOpenAPI(baseURL string, workspaceID string) map[string]any
 			"get": map[string]any{
 				"operationId": "getApp",
 				"summary":     "Get app detail and action contracts",
-				"description": "Returns app metadata and actions. Each action includes materialized input_schema and output_schema JSON Schema documents for adapters and UI forms. This is the bulk schema discovery API.",
+				"description": "Returns app metadata and actions. Each action includes Windforce catalog input_schema and output_schema fields as base64-encoded materialized JSON Schema bytes. This is the bulk schema discovery API.",
 				"parameters":  []any{oapiWorkspaceParam(workspaceID), oapiPathParam("app", "App key.")},
 				"responses": withErrors(map[string]any{
 					"200": oapiResponse("App detail including action schemas.", oapiSchemaRef("AppDetailResponse")),
@@ -222,7 +222,7 @@ func buildControlPlaneOpenAPI(baseURL string, workspaceID string) map[string]any
 			"get": map[string]any{
 				"operationId": "getAction",
 				"summary":     "Get action detail and schemas",
-				"description": "This is the schema discovery endpoint for protocol adapters and UI forms. input_schema and output_schema are the materialized JSON Schema documents from windforce.json/source; use this control-plane API instead of a lite-only schema route.",
+				"description": "This is the schema discovery endpoint for protocol adapters and UI forms. input_schema and output_schema use Windforce catalog encoding: base64-encoded materialized JSON Schema bytes from windforce.json/source; use this control-plane API instead of a lite-only schema route.",
 				"parameters":  []any{oapiWorkspaceParam(workspaceID), oapiPathParam("app", "App key."), oapiPathParam("action", "Action key.")},
 				"responses": withErrors(map[string]any{
 					"200": oapiResponse("Action detail including materialized schemas.", oapiSchemaRef("Action")),
@@ -734,6 +734,7 @@ func cloneSchemaProperties(properties map[string]any) map[string]any {
 
 func controlPlaneSchemas() map[string]any {
 	jsonSchema := oapiSchemaRef("JSONSchema")
+	catalogSchema := oapiSchemaRef("Base64JSONSchema")
 	stringArray := map[string]any{"type": "array", "items": oapiStringSchema()}
 	nullableString := map[string]any{"type": []any{"string", "null"}}
 	nullableInteger := map[string]any{"type": []any{"integer", "null"}}
@@ -760,8 +761,8 @@ func controlPlaneSchemas() map[string]any {
 		"workspace_id":          oapiStringSchema(),
 		"app_key":               oapiStringSchema(),
 		"action_key":            oapiStringSchema(),
-		"input_schema":          jsonSchema,
-		"output_schema":         jsonSchema,
+		"input_schema":          catalogSchema,
+		"output_schema":         catalogSchema,
 		"tag":                   nullableString,
 		"tag_override":          nullableString,
 		"timeout_s":             nullableInteger,
@@ -777,6 +778,11 @@ func controlPlaneSchemas() map[string]any {
 			"type":                 "object",
 			"description":          "Materialized action input/output JSON Schema document. An empty object means unconstrained JSON.",
 			"additionalProperties": true,
+		},
+		"Base64JSONSchema": map[string]any{
+			"type":        "string",
+			"format":      "byte",
+			"description": "Base64-encoded materialized JSON Schema bytes, matching canonical Windforce catalog action JSON encoding.",
 		},
 		"Error": map[string]any{
 			"type":        "object",
@@ -905,7 +911,7 @@ func controlPlaneSchemas() map[string]any {
 		},
 		"Action": map[string]any{
 			"type":        "object",
-			"description": "Canonical action detail. input_schema and output_schema expose the materialized action contract.",
+			"description": "Canonical action detail. input_schema and output_schema use the canonical catalog encoding: base64-encoded materialized JSON Schema bytes.",
 			"properties":  actionProperties,
 			"required":    []any{"id", "workspace_id", "app_key", "action_key", "input_schema", "output_schema", "updated_at"},
 		},
