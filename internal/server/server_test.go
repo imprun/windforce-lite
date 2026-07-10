@@ -1407,6 +1407,7 @@ func TestCanonicalControlPlaneOpenAPIExposesSchemaDiscovery(t *testing.T) {
 	actionGet := actionPath["get"].(map[string]any)
 	actionDescription := actionGet["description"].(string)
 	if !bytes.Contains([]byte(actionDescription), []byte("schema discovery")) ||
+		!bytes.Contains([]byte(actionDescription), []byte("control-plane API")) ||
 		!bytes.Contains([]byte(actionDescription), []byte("input_schema")) ||
 		!bytes.Contains([]byte(actionDescription), []byte("output_schema")) {
 		t.Fatalf("action discovery description = %q", actionDescription)
@@ -1444,6 +1445,10 @@ func TestCanonicalControlPlaneOpenAPIExposesSchemaDiscovery(t *testing.T) {
 
 	components := body["components"].(map[string]any)
 	schemas := components["schemas"].(map[string]any)
+	jsonSchema := schemas["JSONSchema"].(map[string]any)
+	if jsonSchema["additionalProperties"] != true {
+		t.Fatalf("JSONSchema component must expose materialized action schemas as free-form JSON Schema: %#v", jsonSchema)
+	}
 	if schemas["Deployment"] != nil {
 		t.Fatalf("unsupported deployment status schema should not be advertised: %#v", schemas["Deployment"])
 	}
@@ -1479,6 +1484,23 @@ func TestCanonicalControlPlaneOpenAPIExposesSchemaDiscovery(t *testing.T) {
 		"tag_override", "timeout_s", "required_capabilities", "updated_at",
 		"effective_capabilities", "effective_route_tag",
 	})
+	assertSchemaRef := func(owner string, schema map[string]any, field string, want string) {
+		t.Helper()
+		properties := schema["properties"].(map[string]any)
+		fieldSchema, ok := properties[field].(map[string]any)
+		if !ok {
+			t.Fatalf("%s.%s schema is not an object: %#v", owner, field, properties[field])
+		}
+		ref, ok := fieldSchema["$ref"].(string)
+		if !ok || ref != want {
+			t.Fatalf("%s.%s schema ref = %#v, want %s", owner, field, fieldSchema["$ref"], want)
+		}
+	}
+	for _, schemaName := range []string{"Action", "AppAction"} {
+		for _, field := range []string{"input_schema", "output_schema"} {
+			assertSchemaRef(schemaName, schemas[schemaName].(map[string]any), field, "#/components/schemas/JSONSchema")
+		}
+	}
 	assertSchemaFields("AppHistoryItem", []string{
 		"id", "commit_sha", "entrypoint", "source", "deployment_id", "message", "created_at",
 	})
@@ -1545,12 +1567,8 @@ func TestCanonicalControlPlaneOpenAPIExposesSchemaDiscovery(t *testing.T) {
 	if properties["effective_capabilities"] != nil || properties["effective_route_tag"] != nil {
 		t.Fatalf("base Action schema must match canonical action response without effective fields: %#v", properties)
 	}
-	inputSchema := properties["input_schema"].(map[string]any)
-	outputSchema := properties["output_schema"].(map[string]any)
-	if !bytes.Contains([]byte(inputSchema["description"].(string)), []byte("Materialized JSON Schema")) ||
-		!bytes.Contains([]byte(outputSchema["description"].(string)), []byte("Materialized JSON Schema")) {
-		t.Fatalf("action schema components = input:%#v output:%#v", inputSchema, outputSchema)
-	}
+	assertSchemaRef("Action", actionSchema, "input_schema", "#/components/schemas/JSONSchema")
+	assertSchemaRef("Action", actionSchema, "output_schema", "#/components/schemas/JSONSchema")
 	appDetail := schemas["AppDetailResponse"].(map[string]any)
 	appDetailApp := appDetail["properties"].(map[string]any)["app"].(map[string]any)
 	if appDetailApp["$ref"] != "#/components/schemas/AppView" {
@@ -1635,6 +1653,7 @@ func TestCanonicalControlPlaneNotFoundMessagesMatchCanonicalAPI(t *testing.T) {
 	}{
 		{http.MethodGet, "/api/w/ws-a/apps/missing", "", "app not found"},
 		{http.MethodGet, "/api/w/ws-a/apps/missing/source", "", "app not found"},
+		{http.MethodGet, "/api/w/ws-a/apps/missing/openapi.json", "", "app not found"},
 		{http.MethodPatch, "/api/w/ws-a/apps/missing", `{"tag_override":null}`, "app not found"},
 		{http.MethodPost, "/api/w/ws-a/apps/missing/requeue", `{}`, "app not found"},
 		{http.MethodGet, "/api/w/ws-a/apps/missing/actions/echo", "", "action not found"},

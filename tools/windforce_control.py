@@ -86,7 +86,10 @@ def main(argv: list[str] | None = None) -> int:
     action.add_argument("--action", required=True)
     action.set_defaults(func=cmd_action)
 
-    schema = sub.add_parser("schema", help="get action input/output schemas")
+    schema = sub.add_parser(
+        "schema",
+        help="get action input/output schemas via the control-plane action API",
+    )
     schema.add_argument("--app", required=True)
     schema.add_argument("--action", required=True)
     schema.add_argument(

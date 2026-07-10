@@ -22,7 +22,7 @@ func (h *Handler) handleCanonicalAppOpenAPI(w http.ResponseWriter, r *http.Reque
 		writeError(w, http.StatusBadRequest, "invalid app key")
 		return
 	}
-	deployment, ok := h.getCanonicalDeployment(w, r, workspaceID, app, "app not found: "+app)
+	deployment, ok := h.getCanonicalDeployment(w, r, workspaceID, app, "app not found")
 	if !ok {
 		return
 	}
@@ -171,7 +171,7 @@ func buildControlPlaneOpenAPI(baseURL string, workspaceID string) map[string]any
 			"get": map[string]any{
 				"operationId": "getApp",
 				"summary":     "Get app detail and action contracts",
-				"description": "Returns app metadata and actions. Each action includes materialized input_schema and output_schema JSON Schema documents for adapters and UI forms.",
+				"description": "Returns app metadata and actions. Each action includes materialized input_schema and output_schema JSON Schema documents for adapters and UI forms. This is the bulk schema discovery API.",
 				"parameters":  []any{oapiWorkspaceParam(workspaceID), oapiPathParam("app", "App key.")},
 				"responses": withErrors(map[string]any{
 					"200": oapiResponse("App detail including action schemas.", oapiSchemaRef("AppDetailResponse")),
@@ -222,7 +222,7 @@ func buildControlPlaneOpenAPI(baseURL string, workspaceID string) map[string]any
 			"get": map[string]any{
 				"operationId": "getAction",
 				"summary":     "Get action detail and schemas",
-				"description": "This is the schema discovery endpoint for protocol adapters. input_schema and output_schema are the materialized JSON Schema documents from windforce.json/source.",
+				"description": "This is the schema discovery endpoint for protocol adapters and UI forms. input_schema and output_schema are the materialized JSON Schema documents from windforce.json/source; use this control-plane API instead of a lite-only schema route.",
 				"parameters":  []any{oapiWorkspaceParam(workspaceID), oapiPathParam("app", "App key."), oapiPathParam("action", "Action key.")},
 				"responses": withErrors(map[string]any{
 					"200": oapiResponse("Action detail including materialized schemas.", oapiSchemaRef("Action")),
@@ -733,11 +733,7 @@ func cloneSchemaProperties(properties map[string]any) map[string]any {
 }
 
 func controlPlaneSchemas() map[string]any {
-	jsonSchema := map[string]any{
-		"type":                 "object",
-		"description":          "Materialized JSON Schema document. An empty object means unconstrained JSON.",
-		"additionalProperties": true,
-	}
+	jsonSchema := oapiSchemaRef("JSONSchema")
 	stringArray := map[string]any{"type": "array", "items": oapiStringSchema()}
 	nullableString := map[string]any{"type": []any{"string", "null"}}
 	nullableInteger := map[string]any{"type": []any{"integer", "null"}}
@@ -777,6 +773,11 @@ func controlPlaneSchemas() map[string]any {
 	appActionProperties["effective_route_tag"] = oapiStringSchema()
 
 	return map[string]any{
+		"JSONSchema": map[string]any{
+			"type":                 "object",
+			"description":          "Materialized action input/output JSON Schema document. An empty object means unconstrained JSON.",
+			"additionalProperties": true,
+		},
 		"Error": map[string]any{
 			"type":        "object",
 			"description": "windforce's uniform error envelope.",
