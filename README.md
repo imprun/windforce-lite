@@ -43,10 +43,10 @@ control-plane API:
 The ordering is intentional: a catalog entry must not point at a bundle that a
 worker cannot fetch.
 
-The Docker Compose control-plane runs inside a container, so the default
-`make windforce-register` path registers a remote git URL. Local development
-uses `tools/windforce_control.py` against the same API instead of a separate
-source-sync command.
+The Docker Compose control-plane runs inside a container and maps the API to
+`127.0.0.1:18090` by default, so the default `make windforce-register` path
+registers a remote git URL. Local development uses `tools/windforce_control.py`
+against the same API instead of a separate source-sync command.
 
 ## Run
 
@@ -290,17 +290,20 @@ control plane and used by `make windforce-sync`. `WF_GIT_CREDS_REF` defaults to
 `secrets/git/token`.
 
 For local development without the full UI, `tools/windforce_control.py` calls
-the same control-plane API:
+the same control-plane API. The examples below target the Docker Compose and
+Makefile default API URL, `http://127.0.0.1:18090`. Use
+`http://127.0.0.1:8080` only when running `go run ./cmd/windforce-lite
+standalone --addr 127.0.0.1:8080` directly.
 
 ```powershell
-python tools/windforce_control.py --api-url http://127.0.0.1:8080 register `
+python tools/windforce_control.py --api-url http://127.0.0.1:18090 register `
   --name echo --repo-url . --subpath examples/echo --creds-ref secrets/git/token
-python tools/windforce_control.py --api-url http://127.0.0.1:8080 sync --git-source-id 1
-python tools/windforce_control.py --api-url http://127.0.0.1:8080 sample --app-key sample_hello
-python tools/windforce_control.py --api-url http://127.0.0.1:8080 variables
-python tools/windforce_control.py --api-url http://127.0.0.1:8080 --pretty schema `
+python tools/windforce_control.py --api-url http://127.0.0.1:18090 sync --git-source-id 1
+python tools/windforce_control.py --api-url http://127.0.0.1:18090 sample --app-key sample_hello
+python tools/windforce_control.py --api-url http://127.0.0.1:18090 variables
+python tools/windforce_control.py --api-url http://127.0.0.1:18090 --pretty schema `
   --app echo --action echo
-python tools/windforce_control.py --api-url http://127.0.0.1:8080 --pretty control-openapi
+python tools/windforce_control.py --api-url http://127.0.0.1:18090 --pretty control-openapi
 ```
 
 The schema command reads the canonical action detail endpoint,
