@@ -68,6 +68,14 @@ func CommitSubject(ctx context.Context, repoDir string) (string, error) {
 	return strings.TrimSpace(out), nil
 }
 
+func HeadCommit(ctx context.Context, repoDir string) (string, error) {
+	out, err := runGit(ctx, repoDir, "rev-parse", "HEAD")
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(out), nil
+}
+
 func CloneCommit(ctx context.Context, repoURL string, branch string, commit string, destinationDir string, token string) error {
 	cloneURL := authURL(repoURL, token)
 	args := []string{"clone"}

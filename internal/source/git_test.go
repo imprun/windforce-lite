@@ -91,6 +91,51 @@ func TestCloneCommitPreservesTags(t *testing.T) {
 	}
 }
 
+func TestCloneCommitSparseMaterializesOnlySubpath(t *testing.T) {
+	tempDir := t.TempDir()
+	repoDir := filepath.Join(tempDir, "repo")
+	if err := os.MkdirAll(repoDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	runTestGit(t, repoDir, "init")
+	runTestGit(t, repoDir, "checkout", "-b", "main")
+	runTestGit(t, repoDir, "config", "user.email", "test@example.com")
+	runTestGit(t, repoDir, "config", "user.name", "Test User")
+	writeTestFile(t, filepath.Join(repoDir, "unrelated", "big.txt"), "not needed by the app\n")
+	writeTestFile(t, filepath.Join(repoDir, "apps", "echo", "windforce.json"), `{"app":"echo","entrypoint":"main.ts","actions":{"run":{}}}`)
+	writeTestFile(t, filepath.Join(repoDir, "apps", "echo", "main.ts"), "export const main = 1;\n")
+	runTestGit(t, repoDir, "add", "-A")
+	runTestGit(t, repoDir, "commit", "-m", "subpath fixture")
+	commitOut, err := exec.Command("git", "-C", repoDir, "rev-parse", "HEAD").CombinedOutput()
+	if err != nil {
+		t.Fatalf("git rev-parse: %v: %s", err, string(commitOut))
+	}
+	commit := strings.TrimSpace(string(commitOut))
+
+	cloneDir := filepath.Join(tempDir, "sparse-clone")
+	if err := CloneCommitSparse(context.Background(), filepath.ToSlash(repoDir), "main", commit, cloneDir, "apps/echo", ""); err != nil {
+		t.Fatalf("CloneCommitSparse returned error: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(cloneDir, "apps", "echo", "windforce.json")); err != nil {
+		t.Fatalf("app manifest was not materialized: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(cloneDir, "unrelated")); !os.IsNotExist(err) {
+		t.Fatalf("unrelated dir should be excluded by sparse-checkout, stat err = %v", err)
+	}
+	if head, err := HeadCommit(context.Background(), cloneDir); err != nil || head != commit {
+		t.Fatalf("HeadCommit = %q err %v, want %q", head, err, commit)
+	}
+	if subject, err := CommitSubject(context.Background(), cloneDir); err != nil || subject != "subpath fixture" {
+		t.Fatalf("CommitSubject = %q err %v, want subpath fixture", subject, err)
+	}
+}
+
+func TestCloneCommitSparseRequiresSubpath(t *testing.T) {
+	if err := CloneCommitSparse(context.Background(), filepath.ToSlash(t.TempDir()), "main", "", filepath.Join(t.TempDir(), "clone"), "", ""); err == nil {
+		t.Fatal("expected error for empty subpath")
+	}
+}
+
 func TestCloneCommitSparseRejectsAbsoluteSubpathBeforeGit(t *testing.T) {
 	err := CloneCommitSparse(context.Background(), "https://example.test/repo.git", "main", "commit-a", t.TempDir(), "/apps/echo", "")
 	if err == nil {
@@ -105,5 +150,15 @@ func runTestGit(t *testing.T, dir string, args ...string) {
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("git %v: %v: %s", args, err, string(out))
+	}
+}
+
+func writeTestFile(t *testing.T, path string, content string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
 	}
 }
