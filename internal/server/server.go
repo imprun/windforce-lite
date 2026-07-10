@@ -2042,10 +2042,11 @@ func (h *Handler) handleGetVariable(w http.ResponseWriter, r *http.Request, work
 }
 
 func (h *Handler) jobVariableScope(r *http.Request, workspaceID string) (string, bool, error) {
-	jobID := strings.TrimSpace(r.Header.Get("X-Windforce-Job-ID"))
-	if principal := jobPrincipalFrom(r.Context()); principal != nil && principal.JobID != "" {
-		jobID = principal.JobID
+	principal := jobPrincipalFrom(r.Context())
+	if principal == nil || principal.JobID == "" {
+		return "", false, nil
 	}
+	jobID := principal.JobID
 	if jobID == "" {
 		return "", false, nil
 	}

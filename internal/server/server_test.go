@@ -244,8 +244,9 @@ func TestCanonicalVariablesAndResourcesAPI(t *testing.T) {
 	tempDir := t.TempDir()
 	store := state.NewLocalStore(filepath.Join(tempDir, "state.json"))
 	server := httptest.NewServer(New(Config{
-		Store:     store,
-		EnableAPI: true,
+		Store:          store,
+		EnableAPI:      true,
+		JobTokenSecret: "job-secret",
 	}))
 	defer server.Close()
 
@@ -343,11 +344,40 @@ func TestCanonicalVariablesAndResourcesAPI(t *testing.T) {
 	if err := store.CreateRunAndEnqueue(context.Background(), run, job); err != nil {
 		t.Fatal(err)
 	}
+	forgedJobReq, err := http.NewRequest(http.MethodGet, server.URL+"/api/w/ws-a/variables/get/p/config/token", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	forgedJobReq.Header.Set("X-Windforce-Job-ID", job.ID)
+	forgedJobResp, err := http.DefaultClient.Do(forgedJobReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer forgedJobResp.Body.Close()
+	if forgedJobResp.StatusCode != http.StatusOK {
+		t.Fatalf("forged job header variable status = %d, want %d", forgedJobResp.StatusCode, http.StatusOK)
+	}
+	var forgedJobBody struct {
+		Value string `json:"value"`
+	}
+	if err := json.NewDecoder(forgedJobResp.Body).Decode(&forgedJobBody); err != nil {
+		t.Fatal(err)
+	}
+	if forgedJobBody.Value != "shared" {
+		t.Fatalf("forged job header variable body = %#v, want shared scope", forgedJobBody)
+	}
+
+	jobToken := token.MintJob("job-secret", token.JobClaims{
+		Workspace: "ws-a",
+		JobID:     job.ID,
+		Subject:   "runner@example.test",
+		Exp:       time.Now().Add(time.Minute).Unix(),
+	})
 	jobVariableReq, err := http.NewRequest(http.MethodGet, server.URL+"/api/w/ws-a/variables/get/p/config/token", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	jobVariableReq.Header.Set("X-Windforce-Job-ID", job.ID)
+	jobVariableReq.Header.Set("Authorization", "Bearer "+jobToken)
 	jobVariableResp, err := http.DefaultClient.Do(jobVariableReq)
 	if err != nil {
 		t.Fatal(err)
@@ -468,8 +498,9 @@ func TestCanonicalVariableAppScopeShadowing(t *testing.T) {
 	tempDir := t.TempDir()
 	store := state.NewLocalStore(filepath.Join(tempDir, "state.json"))
 	server := httptest.NewServer(New(Config{
-		Store:     store,
-		EnableAPI: true,
+		Store:          store,
+		EnableAPI:      true,
+		JobTokenSecret: "job-secret",
 	}))
 	defer server.Close()
 
@@ -492,14 +523,14 @@ func TestCanonicalVariableAppScopeShadowing(t *testing.T) {
 			t.Fatalf("set %s@%q status = %d, want %d", path, appKey, resp.StatusCode, http.StatusOK)
 		}
 	}
-	reveal := func(path, query, jobID string) (string, int) {
+	reveal := func(path, query, bearerToken string) (string, int) {
 		t.Helper()
 		req, err := http.NewRequest(http.MethodGet, server.URL+"/api/w/ws-a/variables/get/p/"+path+query, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if jobID != "" {
-			req.Header.Set("X-Windforce-Job-ID", jobID)
+		if bearerToken != "" {
+			req.Header.Set("Authorization", "Bearer "+bearerToken)
 		}
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
@@ -529,6 +560,15 @@ func TestCanonicalVariableAppScopeShadowing(t *testing.T) {
 		}
 		return job.ID
 	}
+	mintJobToken := func(jobID string) string {
+		t.Helper()
+		return token.MintJob("job-secret", token.JobClaims{
+			Workspace: "ws-a",
+			JobID:     jobID,
+			Subject:   "runner@example.test",
+			Exp:       time.Now().Add(time.Minute).Unix(),
+		})
+	}
 
 	set("", "token", "shared-value")
 	set("appa", "token", "appa-value")
@@ -541,8 +581,8 @@ func TestCanonicalVariableAppScopeShadowing(t *testing.T) {
 		t.Fatalf("console appa = %d %q, want appa-value", code, value)
 	}
 
-	jobA := enqueue("appa")
-	jobB := enqueue("appb")
+	jobA := mintJobToken(enqueue("appa"))
+	jobB := mintJobToken(enqueue("appb"))
 	if value, code := reveal("token", "", jobA); code != http.StatusOK || value != "appa-value" {
 		t.Fatalf("job appa shadowed read = %d %q, want appa-value", code, value)
 	}
