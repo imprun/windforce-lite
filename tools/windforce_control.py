@@ -39,6 +39,11 @@ def main(argv: list[str] | None = None) -> int:
         default="WINDFORCE_LITE_API_TOKEN",
         help="optional env var containing the API bearer token",
     )
+    parser.add_argument(
+        "--actor",
+        default=os.environ.get("WINDFORCE_LITE_ACTOR", ""),
+        help="optional actor subject sent as X-Windforce-Actor",
+    )
     parser.add_argument("--pretty", action="store_true", help="pretty-print JSON output")
 
     sub = parser.add_subparsers(dest="command", required=True)
@@ -339,6 +344,9 @@ def request(args: argparse.Namespace, method: str, path: str, body: dict[str, An
     token = os.environ.get(args.auth_token_env, "").strip()
     if token:
         headers["Authorization"] = f"Bearer {token}"
+    actor = str(getattr(args, "actor", "") or "").strip()
+    if actor:
+        headers["X-Windforce-Actor"] = actor
     req = urllib.request.Request(url, data=data, headers=headers, method=method)
     try:
         with urllib.request.urlopen(req, timeout=60) as response:

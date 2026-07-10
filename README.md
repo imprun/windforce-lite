@@ -335,8 +335,10 @@ lite basic control plane.
 The full Windforce control plane derives job actor provenance from the
 authenticated principal. Lite keeps the same response fields without
 implementing the full user/session principal model: local control-plane clients
-may provide `X-Windforce-Actor`, and `created_by`, `permissioned_as`, and
-`canceled_by` fall back to `system` only when no actor is present.
+may provide `X-Windforce-Actor` directly or use the lite CLI's global `--actor`
+option / `WINDFORCE_LITE_ACTOR` environment variable. `created_by`,
+`permissioned_as`, and `canceled_by` fall back to `system` only when no actor is
+present.
 
 PostgreSQL is the production state backend. All runtime modes accept
 `--state-backend postgres`, `--database-url`, and `--migrate`:
