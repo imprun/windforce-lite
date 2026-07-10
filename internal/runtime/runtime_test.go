@@ -557,6 +557,7 @@ func TestRunnerJobEnvIncludesSDKCallbackEndpoint(t *testing.T) {
 	for _, want := range []string{
 		"WF_BASE_URL=http://127.0.0.1:18080",
 		"WF_STATE_PATH=echo/run",
+		"WF_RUNNABLE_PATH=",
 		"WF_EMAIL=runner@example.test",
 		"WF_USERNAME=runner@example.test",
 		"WF_PERMISSIONED_AS=delegate@example.test",
@@ -576,6 +577,9 @@ func TestRunnerJobEnvIncludesSDKCallbackEndpoint(t *testing.T) {
 	}
 	if claims.Workspace != "ws-a" || claims.JobID != "job-a" || claims.Subject != "delegate@example.test" {
 		t.Fatalf("job token claims = %#v", claims)
+	}
+	if got := envValue(env, "WF_RUNNABLE_PATH"); got != "" {
+		t.Fatalf("WF_RUNNABLE_PATH = %q, want empty for catalog action jobs", got)
 	}
 
 	emptyRunner := Runner{}

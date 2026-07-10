@@ -38,6 +38,7 @@ type RunRequest struct {
 	TriggerKind     string
 	TriggerHeaders  json.RawMessage
 	Tag             string
+	RunnablePath    string
 	InputPath       string
 	OutputPath      string
 	Timeout         time.Duration
@@ -323,7 +324,7 @@ func (r *Runner) jobEnv(req RunRequest, action contract.Action) []string {
 	add("WF_APP", req.Deployment.App)
 	add("WF_ACTION", req.Action)
 	add("WF_TAG", tag)
-	add("WF_RUNNABLE_PATH", req.Deployment.Entrypoint)
+	add("WF_RUNNABLE_PATH", strings.TrimSpace(req.RunnablePath))
 	add("WF_EMAIL", createdBy)
 	add("WF_USERNAME", createdBy)
 	add("WF_PERMISSIONED_AS", permissionedAs)
