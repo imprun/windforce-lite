@@ -319,7 +319,7 @@ func exerciseStoreVariablesAndResources(t *testing.T, store Store) {
 	if err != nil {
 		t.Fatalf("GetResource nil value returned error: %v", err)
 	}
-	if !found || string(resource.Value) != "null" {
+	if !found || string(resource.Value) != "{}" {
 		t.Fatalf("nil resource found=%v value=%s", found, resource.Value)
 	}
 }

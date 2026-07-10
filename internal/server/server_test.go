@@ -489,8 +489,8 @@ func TestCanonicalVariablesAndResourcesAPI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(bytes.TrimSpace(nullBody)) != "null" {
-		t.Fatalf("default resource body = %q, want null", nullBody)
+	if string(bytes.TrimSpace(nullBody)) != "{}" {
+		t.Fatalf("default resource body = %q, want {}", nullBody)
 	}
 }
 
