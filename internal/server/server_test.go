@@ -164,6 +164,76 @@ func TestCanonicalJobListQueryValidation(t *testing.T) {
 	}
 }
 
+func TestCanonicalJobListDoesNotLeakResultOrLogs(t *testing.T) {
+	tempDir := t.TempDir()
+	store := state.NewLocalStore(filepath.Join(tempDir, "state.json"))
+	fileCatalog := catalog.NewFileCatalog(filepath.Join(tempDir, "catalog.json"))
+	if err := fileCatalog.UpsertDeployment(context.Background(), contract.Deployment{
+		Workspace:   "ws-a",
+		GitSourceID: "1",
+		App:         "echo",
+		Commit:      "commit-a",
+		Actions: map[string]contract.Action{
+			"echo": {Action: "echo", Entrypoint: "main.ts"},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(New(Config{Store: store, Catalog: fileCatalog, EnableAPI: true}))
+	defer server.Close()
+
+	resp, err := http.Post(server.URL+"/api/w/ws-a/jobs/run/echo/echo", "application/json", bytes.NewBufferString(`{"message":"hello"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("run status = %d, want %d", resp.StatusCode, http.StatusCreated)
+	}
+	var runResponse struct {
+		JobID string `json:"job_id"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&runResponse); err != nil {
+		t.Fatal(err)
+	}
+	claimed, lease, err := store.ClaimJob(context.Background(), "worker-a", 0)
+	if err != nil {
+		t.Fatalf("ClaimJob returned error: %v", err)
+	}
+	if claimed.ID != runResponse.JobID {
+		t.Fatalf("claimed job = %q, want %q", claimed.ID, runResponse.JobID)
+	}
+	if err := store.CompleteJobSucceeded(context.Background(), lease, contract.JobResult{
+		JobID:      claimed.ID,
+		App:        "echo",
+		Action:     "echo",
+		ExitCode:   0,
+		Output:     json.RawMessage(`{"secret":"result-secret"}`),
+		DurationMs: 12,
+	}); err != nil {
+		t.Fatalf("CompleteJobSucceeded returned error: %v", err)
+	}
+	if err := store.AppendLogs(context.Background(), claimed.ID, "ws-a", "log-secret"); err != nil {
+		t.Fatalf("AppendLogs returned error: %v", err)
+	}
+
+	listResp, err := http.Get(server.URL + "/api/w/ws-a/jobs?status=all")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listResp.Body.Close()
+	body, err := io.ReadAll(listResp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if listResp.StatusCode != http.StatusOK {
+		t.Fatalf("list status = %d, want %d: %s", listResp.StatusCode, http.StatusOK, body)
+	}
+	if bytes.Contains(body, []byte("result-secret")) || bytes.Contains(body, []byte("log-secret")) {
+		t.Fatalf("job list leaked result or logs: %s", body)
+	}
+}
+
 func TestCanonicalStateAPI(t *testing.T) {
 	tempDir := t.TempDir()
 	server := httptest.NewServer(New(Config{
