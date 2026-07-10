@@ -999,7 +999,6 @@ func (s *LocalStore) CompleteJobSucceeded(ctx context.Context, lease Lease, resu
 			return err
 		}
 		job.State = JobSucceeded
-		job.LeaseOwner = ""
 		job.LeaseExpiresAt = nil
 		job.UpdatedAt = now
 		run.State = RunSucceeded
@@ -1033,7 +1032,6 @@ func (s *LocalStore) CompleteJobFailed(ctx context.Context, lease Lease, result 
 			return err
 		}
 		job.State = JobFailed
-		job.LeaseOwner = ""
 		job.LeaseExpiresAt = nil
 		job.UpdatedAt = now
 		run.State = RunFailed
@@ -1075,7 +1073,6 @@ func (s *LocalStore) CompleteJobWaitingHuman(ctx context.Context, lease Lease, r
 			return fmt.Errorf("%w: human task %q already exists", ErrConflict, task.ID)
 		}
 		job.State = JobSucceeded
-		job.LeaseOwner = ""
 		job.LeaseExpiresAt = nil
 		job.UpdatedAt = now
 		run.State = RunWaitingHuman
@@ -1457,7 +1454,6 @@ func applyCanceledJob(snapshot *Snapshot, job Job, run Run, by string, reason st
 		message = "job canceled"
 	}
 	job.State = JobFailed
-	job.LeaseOwner = ""
 	job.LeaseExpiresAt = nil
 	job.CanceledBy = &by
 	job.CanceledReason = &reason
@@ -1639,11 +1635,13 @@ func newJobListItem(workspaceID string, job Job, run Run) JobListItem {
 	var completedAt *time.Time
 	var worker *string
 	startedAt = job.StartedAt
+	if job.LeaseOwner != "" {
+		worker = stringPtr(job.LeaseOwner)
+	}
 	if job.State == JobRunning {
 		if startedAt == nil {
 			startedAt = &job.UpdatedAt
 		}
-		worker = stringPtr(job.LeaseOwner)
 	}
 	if job.State == JobSucceeded || job.State == JobFailed || IsTerminal(run) {
 		completedAt = &run.UpdatedAt

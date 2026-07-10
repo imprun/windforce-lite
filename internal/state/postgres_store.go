@@ -1395,7 +1395,7 @@ func (s *PostgresStore) completeCanceledJob(ctx context.Context, tx pgx.Tx, job 
 	run.UpdatedAt = now
 	if _, err := tx.Exec(ctx, `
 UPDATE jobs
-SET state=$1, lease_owner=NULL, lease_expires_at=NULL, canceled_by=$2, canceled_reason=$3, updated_at=$4
+SET state=$1, lease_expires_at=NULL, canceled_by=$2, canceled_reason=$3, updated_at=$4
 WHERE id=$5
 `, string(JobFailed), by, reason, now, job.ID); err != nil {
 		return err
@@ -1413,7 +1413,7 @@ WHERE id=$5
 func updateJobComplete(ctx context.Context, tx pgx.Tx, jobID string, state JobState, now time.Time) error {
 	_, err := tx.Exec(ctx, `
 UPDATE jobs
-SET state=$1, lease_owner=NULL, lease_expires_at=NULL, updated_at=$2
+SET state=$1, lease_expires_at=NULL, updated_at=$2
 WHERE id=$3
 `, string(state), now, jobID)
 	return err

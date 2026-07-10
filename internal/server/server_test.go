@@ -1032,6 +1032,7 @@ func TestCanonicalJobRunStatusAndResultAPI(t *testing.T) {
 	var doneStatusBody struct {
 		State       string     `json:"state"`
 		Status      string     `json:"status"`
+		Worker      string     `json:"worker"`
 		StartedAt   *time.Time `json:"started_at"`
 		CompletedAt *time.Time `json:"completed_at"`
 	}
@@ -1040,6 +1041,9 @@ func TestCanonicalJobRunStatusAndResultAPI(t *testing.T) {
 	}
 	if doneStatusBody.State != "completed" || doneStatusBody.Status != "success" {
 		t.Fatalf("done job status = %#v", doneStatusBody)
+	}
+	if doneStatusBody.Worker != "worker-a" {
+		t.Fatalf("done job worker = %q, want worker-a", doneStatusBody.Worker)
 	}
 	if doneStatusBody.StartedAt == nil || doneStatusBody.CompletedAt == nil {
 		t.Fatalf("done job timestamps = %#v", doneStatusBody)
@@ -1061,6 +1065,7 @@ func TestCanonicalJobRunStatusAndResultAPI(t *testing.T) {
 			GitSourceID int64      `json:"git_source_id"`
 			Status      string     `json:"status"`
 			Completed   bool       `json:"completed"`
+			Worker      string     `json:"worker"`
 			StartedAt   *time.Time `json:"started_at"`
 			CompletedAt *time.Time `json:"completed_at"`
 		} `json:"items"`
@@ -1075,7 +1080,8 @@ func TestCanonicalJobRunStatusAndResultAPI(t *testing.T) {
 	}
 	if len(listBody.Items) != 1 || listBody.Items[0].ID != runResponse.JobID ||
 		listBody.Items[0].GitSourceID != 1 ||
-		listBody.Items[0].Status != "success" || !listBody.Items[0].Completed {
+		listBody.Items[0].Status != "success" || !listBody.Items[0].Completed ||
+		listBody.Items[0].Worker != "worker-a" {
 		t.Fatalf("list body = %#v", listBody)
 	}
 	if listBody.Items[0].StartedAt == nil || listBody.Items[0].CompletedAt == nil {

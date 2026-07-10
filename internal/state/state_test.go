@@ -739,6 +739,18 @@ func exerciseStoreLifecycle(t *testing.T, store Store) {
 	if waiting.CorrelationID != "task-a" {
 		t.Fatalf("waiting correlation id = %q, want task-a", waiting.CorrelationID)
 	}
+	completedItems, err := store.ListJobs(context.Background(), JobListQuery{
+		WorkspaceID: "default",
+		Status:      "completed",
+		AppKey:      "echo",
+		Limit:       10,
+	})
+	if err != nil {
+		t.Fatalf("ListJobs completed returned error: %v", err)
+	}
+	if len(completedItems) != 1 || completedItems[0].Worker == nil || *completedItems[0].Worker != "worker-a" {
+		t.Fatalf("completed items = %#v", completedItems)
+	}
 
 	resumed, resumeJob, err := store.ResumeHumanTask(context.Background(), "human-a", json.RawMessage(`{"approved":true}`))
 	if err != nil {

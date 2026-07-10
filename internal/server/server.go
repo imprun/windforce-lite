@@ -2451,10 +2451,12 @@ func newJobStatus(workspaceID string, job state.Job, run state.Run) jobStatusRes
 	var worker *string
 	startedAt := job.StartedAt
 	var completedAt *time.Time
+	if job.LeaseOwner != "" {
+		worker = stringPtr(job.LeaseOwner)
+	}
 	switch job.State {
 	case state.JobRunning:
 		stateValue = "running"
-		worker = stringPtr(job.LeaseOwner)
 		if startedAt == nil {
 			startedAt = &job.UpdatedAt
 		}
