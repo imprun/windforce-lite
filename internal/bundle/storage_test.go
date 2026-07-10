@@ -13,6 +13,12 @@ func TestLocalStoreMaterializeAndFetch(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(sourceDir, ".git"), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.MkdirAll(filepath.Join(sourceDir, "node_modules", "dep"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(sourceDir, ".venv"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.MkdirAll(filepath.Join(sourceDir, "action"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -20,6 +26,12 @@ func TestLocalStoreMaterializeAndFetch(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(sourceDir, ".git", "config"), []byte("secret"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sourceDir, "node_modules", "dep", "index.js"), []byte("module.exports = {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sourceDir, ".venv", "pyvenv.cfg"), []byte("home = /python\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -45,5 +57,11 @@ func TestLocalStoreMaterializeAndFetch(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(fetchDir, ".git", "config")); !os.IsNotExist(err) {
 		t.Fatalf(".git directory should not be copied, stat err=%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(fetchDir, "node_modules", "dep", "index.js")); !os.IsNotExist(err) {
+		t.Fatalf("node_modules should not be copied, stat err=%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(fetchDir, ".venv", "pyvenv.cfg")); err != nil {
+		t.Fatalf(".venv should be copied like the canonical source store: %v", err)
 	}
 }

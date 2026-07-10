@@ -112,7 +112,7 @@ func copyTree(ctx context.Context, src string, dst string) error {
 
 func skipSourceDir(base string) bool {
 	switch base {
-	case ".git", "node_modules", ".venv", "__pycache__":
+	case ".git", "node_modules":
 		return true
 	default:
 		return false
