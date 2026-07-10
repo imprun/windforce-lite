@@ -304,6 +304,9 @@ python tools/windforce_control.py --api-url http://127.0.0.1:18090 register `
   --name echo --repo-url . --subpath examples/echo --creds-ref secrets/git/token
 python tools/windforce_control.py --api-url http://127.0.0.1:18090 sync --git-source-id 1
 python tools/windforce_control.py --api-url http://127.0.0.1:18090 sample --app-key sample_hello
+python tools/windforce_control.py --api-url http://127.0.0.1:18090 --pretty run-wait `
+  --app echo --action echo --input '{"message":"hello"}' --timeout-ms 5000
+python tools/windforce_control.py --api-url http://127.0.0.1:18090 --pretty jobs --status completed
 python tools/windforce_control.py --api-url http://127.0.0.1:18090 variables
 python tools/windforce_control.py --api-url http://127.0.0.1:18090 --pretty schema `
   --app echo --action echo

@@ -2,7 +2,8 @@
 	compose-up compose-db compose-build compose-down compose-reset compose-logs compose-ps postgres-dsn \
 	dev-standalone dev-standalone-postgres dev-api dev-worker worker-once \
 	windforce-variable-set windforce-git-token windforce-register windforce-sync windforce-sample \
-	windforce-schema windforce-openapi windforce-control-openapi
+	windforce-schema windforce-openapi windforce-control-openapi \
+	windforce-run windforce-run-wait windforce-jobs windforce-job windforce-job-result windforce-job-logs windforce-job-cancel
 
 APP := windforce-lite
 CMD := ./cmd/windforce-lite
@@ -38,6 +39,11 @@ WF_API_URL ?= http://127.0.0.1:$(WINDFORCE_LITE_API_PORT)
 WF_WORKSPACE ?= default
 WF_APP ?= echo
 WF_ACTION ?= echo
+WF_INPUT_JSON ?= {}
+WF_TIMEOUT_MS ?= 5000
+WF_JOB_ID ?=
+WF_JOB_STATUS ?=
+WF_TAIL_BYTES ?=
 WF_GIT_SOURCE_NAME ?= $(WF_APP)
 WF_GIT_SOURCE_ID ?= 1
 WF_REPO_URL ?= https://github.com/imprun/windforce-lite.git
@@ -78,6 +84,10 @@ help:
 	@echo "  windforce-schema       print WF_APP/WF_ACTION schemas from the control API"
 	@echo "  windforce-openapi      print WF_APP invocation OpenAPI from the control API"
 	@echo "  windforce-control-openapi print workspace control-plane OpenAPI"
+	@echo "  windforce-run          enqueue WF_APP/WF_ACTION with WF_INPUT_JSON"
+	@echo "  windforce-run-wait     run WF_APP/WF_ACTION and wait WF_TIMEOUT_MS"
+	@echo "  windforce-jobs         list jobs, optionally filtered by WF_JOB_STATUS"
+	@echo "  windforce-job/result/logs/cancel operate on WF_JOB_ID"
 	@echo "  compose-up             start Postgres and control-plane API"
 	@echo "  compose-db             start only Postgres"
 	@echo "  compose-build          build the control-plane API image"
@@ -158,6 +168,27 @@ windforce-openapi:
 
 windforce-control-openapi:
 	python tools/windforce_control.py --api-url "$(WF_API_URL)" --workspace "$(WF_WORKSPACE)" --pretty control-openapi
+
+windforce-run:
+	python tools/windforce_control.py --api-url "$(WF_API_URL)" --workspace "$(WF_WORKSPACE)" --pretty run --app "$(WF_APP)" --action "$(WF_ACTION)" --input "$(WF_INPUT_JSON)"
+
+windforce-run-wait:
+	python tools/windforce_control.py --api-url "$(WF_API_URL)" --workspace "$(WF_WORKSPACE)" --pretty run-wait --app "$(WF_APP)" --action "$(WF_ACTION)" --timeout-ms "$(WF_TIMEOUT_MS)" --input "$(WF_INPUT_JSON)"
+
+windforce-jobs:
+	python tools/windforce_control.py --api-url "$(WF_API_URL)" --workspace "$(WF_WORKSPACE)" --pretty jobs --status "$(WF_JOB_STATUS)"
+
+windforce-job:
+	python tools/windforce_control.py --api-url "$(WF_API_URL)" --workspace "$(WF_WORKSPACE)" --pretty job --job-id "$(WF_JOB_ID)"
+
+windforce-job-result:
+	python tools/windforce_control.py --api-url "$(WF_API_URL)" --workspace "$(WF_WORKSPACE)" --pretty job-result --job-id "$(WF_JOB_ID)"
+
+windforce-job-logs:
+	python tools/windforce_control.py --api-url "$(WF_API_URL)" --workspace "$(WF_WORKSPACE)" --pretty job-logs --job-id "$(WF_JOB_ID)" $(if $(WF_TAIL_BYTES),--tail-bytes "$(WF_TAIL_BYTES)",)
+
+windforce-job-cancel:
+	python tools/windforce_control.py --api-url "$(WF_API_URL)" --workspace "$(WF_WORKSPACE)" --pretty job-cancel --job-id "$(WF_JOB_ID)"
 
 clean:
 	rm -rf "$(WFL_TMP)"

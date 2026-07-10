@@ -13,6 +13,7 @@ import json
 import os
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 from typing import Any
 
@@ -112,6 +113,54 @@ def main(argv: list[str] | None = None) -> int:
     control_openapi = sub.add_parser("control-openapi", help="get workspace control-plane OpenAPI")
     control_openapi.set_defaults(func=cmd_control_openapi)
 
+    run = sub.add_parser("run", help="enqueue an action job")
+    run.add_argument("--app", required=True)
+    run.add_argument("--action", required=True)
+    add_json_input_args(run)
+    run.set_defaults(func=cmd_run)
+
+    run_wait = sub.add_parser("run-wait", help="run an action and wait for a terminal result")
+    run_wait.add_argument("--app", required=True)
+    run_wait.add_argument("--action", required=True)
+    run_wait.add_argument("--timeout-ms", type=int, default=None)
+    add_json_input_args(run_wait)
+    run_wait.set_defaults(func=cmd_run_wait)
+
+    webhook = sub.add_parser("webhook", help="invoke an action through the webhook route")
+    webhook.add_argument("--app", required=True)
+    webhook.add_argument("--action", required=True)
+    add_json_input_args(webhook)
+    webhook.set_defaults(func=cmd_webhook)
+
+    jobs = sub.add_parser("jobs", help="list jobs")
+    jobs.add_argument("--status", default="")
+    jobs.add_argument("--app", default="")
+    jobs.add_argument("--action", default="")
+    jobs.add_argument("--trigger-kind", dest="trigger_kind", default="")
+    jobs.add_argument("--limit", type=int, default=None)
+    jobs.add_argument("--cursor", default="")
+    jobs.add_argument("--since", default="")
+    jobs.add_argument("--until", default="")
+    jobs.set_defaults(func=cmd_jobs)
+
+    job = sub.add_parser("job", help="get one job status")
+    job.add_argument("--job-id", required=True)
+    job.set_defaults(func=cmd_job)
+
+    job_result = sub.add_parser("job-result", help="get or poll one job result")
+    job_result.add_argument("--job-id", required=True)
+    job_result.set_defaults(func=cmd_job_result)
+
+    job_logs = sub.add_parser("job-logs", help="get one job log stream")
+    job_logs.add_argument("--job-id", required=True)
+    job_logs.add_argument("--tail-bytes", type=int, default=None)
+    job_logs.set_defaults(func=cmd_job_logs)
+
+    job_cancel = sub.add_parser("job-cancel", help="cancel one queued or running job")
+    job_cancel.add_argument("--job-id", required=True)
+    job_cancel.add_argument("--reason", default="")
+    job_cancel.set_defaults(func=cmd_job_cancel)
+
     variables = sub.add_parser("variables", help="list workspace variables")
     variables.set_defaults(func=cmd_variables)
 
@@ -149,6 +198,9 @@ def main(argv: list[str] | None = None) -> int:
     except APIError as exc:
         print_json(exc.payload, args.pretty, stream=sys.stderr)
         return 1
+    if isinstance(payload, RawOutput):
+        sys.stdout.write(str(payload))
+        return 0
     print_json(payload, args.pretty)
     return 0
 
@@ -168,6 +220,16 @@ class APIError(RuntimeError):
     def __init__(self, payload: Any):
         self.payload = payload
         super().__init__(str(payload))
+
+
+class RawOutput(str):
+    pass
+
+
+def add_json_input_args(parser: argparse.ArgumentParser) -> None:
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("--input", dest="input_json", help="JSON request body (default: {})")
+    group.add_argument("--input-file", help="file containing the JSON request body, or '-' for stdin")
 
 
 def cmd_register(args: argparse.Namespace) -> Any:
@@ -260,6 +322,72 @@ def cmd_control_openapi(args: argparse.Namespace) -> Any:
     return request(args, "GET", f"/api/w/{quote_path(args.workspace)}/openapi.json")
 
 
+def cmd_run(args: argparse.Namespace) -> Any:
+    return request(
+        args,
+        "POST",
+        f"/api/w/{quote_path(args.workspace)}/jobs/run/{quote_path(args.app)}/{quote_path(args.action)}",
+        load_json_body(args),
+    )
+
+
+def cmd_run_wait(args: argparse.Namespace) -> Any:
+    query = query_string({"timeout_ms": args.timeout_ms})
+    return request(
+        args,
+        "POST",
+        f"/api/w/{quote_path(args.workspace)}/jobs/run/{quote_path(args.app)}/{quote_path(args.action)}/wait{query}",
+        load_json_body(args),
+    )
+
+
+def cmd_webhook(args: argparse.Namespace) -> Any:
+    return request(
+        args,
+        "POST",
+        f"/api/w/{quote_path(args.workspace)}/jobs/webhook/{quote_path(args.app)}/{quote_path(args.action)}",
+        load_json_body(args),
+    )
+
+
+def cmd_jobs(args: argparse.Namespace) -> Any:
+    query = query_string(
+        {
+            "status": args.status,
+            "app": args.app,
+            "action": args.action,
+            "trigger_kind": args.trigger_kind,
+            "limit": args.limit,
+            "cursor": args.cursor,
+            "since": args.since,
+            "until": args.until,
+        }
+    )
+    return request(args, "GET", f"/api/w/{quote_path(args.workspace)}/jobs{query}")
+
+
+def cmd_job(args: argparse.Namespace) -> Any:
+    return request(args, "GET", f"/api/w/{quote_path(args.workspace)}/jobs/{quote_path(args.job_id)}")
+
+
+def cmd_job_result(args: argparse.Namespace) -> Any:
+    return request(args, "GET", f"/api/w/{quote_path(args.workspace)}/jobs/{quote_path(args.job_id)}/result")
+
+
+def cmd_job_logs(args: argparse.Namespace) -> Any:
+    query = query_string({"tail_bytes": args.tail_bytes})
+    return request_raw(args, "GET", f"/api/w/{quote_path(args.workspace)}/jobs/{quote_path(args.job_id)}/logs{query}")
+
+
+def cmd_job_cancel(args: argparse.Namespace) -> Any:
+    return request(
+        args,
+        "POST",
+        f"/api/w/{quote_path(args.workspace)}/jobs/{quote_path(args.job_id)}/cancel",
+        compact({"reason": args.reason}),
+    )
+
+
 def cmd_variables(args: argparse.Namespace) -> Any:
     return request(args, "GET", f"/api/w/{quote_path(args.workspace)}/variables")
 
@@ -334,19 +462,12 @@ def get_schema(args: argparse.Namespace) -> dict[str, Any]:
     return payload
 
 
-def request(args: argparse.Namespace, method: str, path: str, body: dict[str, Any] | None = None) -> Any:
+def request(args: argparse.Namespace, method: str, path: str, body: Any | None = None) -> Any:
     url = args.api_url.rstrip("/") + path
     data = None
-    headers = {"Accept": "application/json"}
     if body is not None:
         data = json.dumps(body).encode("utf-8")
-        headers["Content-Type"] = "application/json"
-    token = os.environ.get(args.auth_token_env, "").strip()
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
-    actor = str(getattr(args, "actor", "") or "").strip()
-    if actor:
-        headers["X-Windforce-Actor"] = actor
+    headers = request_headers(args, body is not None)
     req = urllib.request.Request(url, data=data, headers=headers, method=method)
     try:
         with urllib.request.urlopen(req, timeout=60) as response:
@@ -361,6 +482,37 @@ def request(args: argparse.Namespace, method: str, path: str, body: dict[str, An
         raise APIError(payload) from exc
     except urllib.error.URLError as exc:
         raise APIError({"error": str(exc.reason), "url": url}) from exc
+
+
+def request_raw(args: argparse.Namespace, method: str, path: str) -> RawOutput:
+    url = args.api_url.rstrip("/") + path
+    req = urllib.request.Request(url, headers=request_headers(args, False), method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=60) as response:
+            return RawOutput(response.read().decode("utf-8", errors="replace"))
+    except urllib.error.HTTPError as exc:
+        payload = decode_response(exc.read())
+        if isinstance(payload, dict):
+            payload.setdefault("status", exc.code)
+            payload.setdefault("url", url)
+        else:
+            payload = {"status": exc.code, "url": url, "error": payload}
+        raise APIError(payload) from exc
+    except urllib.error.URLError as exc:
+        raise APIError({"error": str(exc.reason), "url": url}) from exc
+
+
+def request_headers(args: argparse.Namespace, has_json_body: bool) -> dict[str, str]:
+    headers = {"Accept": "application/json"}
+    if has_json_body:
+        headers["Content-Type"] = "application/json"
+    token = os.environ.get(args.auth_token_env, "").strip()
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    actor = str(getattr(args, "actor", "") or "").strip()
+    if actor:
+        headers["X-Windforce-Actor"] = actor
+    return headers
 
 
 def decode_response(data: bytes) -> Any:
@@ -381,6 +533,28 @@ def print_json(payload: Any, pretty: bool, stream: Any = sys.stdout) -> None:
 
 def compact(payload: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in payload.items() if value not in ("", None)}
+
+
+def query_string(params: dict[str, Any]) -> str:
+    compacted = compact(params)
+    if not compacted:
+        return ""
+    return "?" + urllib.parse.urlencode(compacted)
+
+
+def load_json_body(args: argparse.Namespace) -> Any:
+    if getattr(args, "input_file", None):
+        if args.input_file == "-":
+            raw = sys.stdin.read()
+        else:
+            with open(args.input_file, "r", encoding="utf-8") as stream:
+                raw = stream.read()
+    else:
+        raw = getattr(args, "input_json", None) or "{}"
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise APIError({"error": f"invalid JSON input: {exc.msg}"}) from exc
 
 
 def quote_path(value: str) -> str:
