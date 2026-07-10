@@ -2087,6 +2087,53 @@ func TestCanonicalRegisterGitSourcePreservesRawSubpath(t *testing.T) {
 	}
 }
 
+func TestCanonicalGitSourcesListOrdersByID(t *testing.T) {
+	tempDir := t.TempDir()
+	handler := New(Config{
+		GitSources: gitsource.NewFileRegistry(filepath.Join(tempDir, "git-sources.json")),
+		EnableAPI:  true,
+	})
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	for _, body := range []string{
+		`{"name":"z-source","repo_url":"file:///tmp/z-source"}`,
+		`{"name":"a-source","repo_url":"file:///tmp/a-source"}`,
+	} {
+		resp, err := http.Post(server.URL+"/api/w/ws-a/git_sources", "application/json", bytes.NewBufferString(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if resp.StatusCode != http.StatusCreated {
+			data, _ := io.ReadAll(resp.Body)
+			_ = resp.Body.Close()
+			t.Fatalf("register status = %d, want %d: %s", resp.StatusCode, http.StatusCreated, data)
+		}
+		_ = resp.Body.Close()
+	}
+
+	resp, err := http.Get(server.URL + "/api/w/ws-a/git_sources")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("list status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	var sources []struct {
+		ID   int64  `json:"id"`
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&sources); err != nil {
+		t.Fatal(err)
+	}
+	if len(sources) != 2 ||
+		sources[0].ID != 1 || sources[0].Name != "z-source" ||
+		sources[1].ID != 2 || sources[1].Name != "a-source" {
+		t.Fatalf("sources = %#v, want id order", sources)
+	}
+}
+
 func TestCanonicalAppLookupIsWorkspaceScoped(t *testing.T) {
 	tempDir := t.TempDir()
 	fileCatalog := catalog.NewFileCatalog(filepath.Join(tempDir, "catalog.json"))

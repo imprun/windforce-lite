@@ -275,7 +275,10 @@ func (h *Handler) handleCanonicalGitSources(w http.ResponseWriter, r *http.Reque
 		items = append(items, newCanonicalGitSourceView(source))
 	}
 	sort.Slice(items, func(i, j int) bool {
-		return items[i].Name < items[j].Name
+		if items[i].ID == items[j].ID {
+			return items[i].Name < items[j].Name
+		}
+		return items[i].ID < items[j].ID
 	})
 	writeJSON(w, http.StatusOK, items)
 }
