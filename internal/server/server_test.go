@@ -3060,8 +3060,9 @@ func TestCanonicalGitSourceProbePatchAndDelete(t *testing.T) {
 
 func TestCanonicalWorkerTagsAPI(t *testing.T) {
 	tempDir := t.TempDir()
+	ctx := context.Background()
 	fileCatalog := catalog.NewFileCatalog(filepath.Join(tempDir, "catalog.json"))
-	if err := fileCatalog.UpsertDeployment(context.Background(), contract.Deployment{
+	deployment := contract.Deployment{
 		Workspace:   "ws-a",
 		GitSourceID: "source-a",
 		App:         "echo",
@@ -3069,10 +3070,11 @@ func TestCanonicalWorkerTagsAPI(t *testing.T) {
 		Actions: map[string]contract.Action{
 			"echo": {Action: "echo", Command: []string{"helper"}},
 		},
-	}); err != nil {
+	}
+	if err := fileCatalog.UpsertDeployment(ctx, deployment); err != nil {
 		t.Fatal(err)
 	}
-	if err := fileCatalog.UpsertDeployment(context.Background(), contract.Deployment{
+	foreignDeployment := contract.Deployment{
 		Workspace:   "ws-b",
 		GitSourceID: "source-b",
 		App:         "other",
@@ -3080,11 +3082,25 @@ func TestCanonicalWorkerTagsAPI(t *testing.T) {
 		Actions: map[string]contract.Action{
 			"other": {Action: "other", Command: []string{"helper"}},
 		},
-	}); err != nil {
+	}
+	if err := fileCatalog.UpsertDeployment(ctx, foreignDeployment); err != nil {
+		t.Fatal(err)
+	}
+	store := state.NewLocalStore(filepath.Join(tempDir, "state.json"))
+	run := state.NewRun("windforce", "run-a", "echo", "echo", deployment, json.RawMessage(`{}`))
+	job := state.NewActionJob(run, nil)
+	job.Payload.Tag = "legacy-queue"
+	if err := store.CreateRunAndEnqueue(ctx, run, job); err != nil {
+		t.Fatal(err)
+	}
+	foreignRun := state.NewRun("windforce", "run-b", "other", "other", foreignDeployment, json.RawMessage(`{}`))
+	foreignJob := state.NewActionJob(foreignRun, nil)
+	foreignJob.Payload.Tag = "foreign-queue"
+	if err := store.CreateRunAndEnqueue(ctx, foreignRun, foreignJob); err != nil {
 		t.Fatal(err)
 	}
 
-	server := httptest.NewServer(New(Config{Catalog: fileCatalog, EnableAPI: true}))
+	server := httptest.NewServer(New(Config{Store: store, Catalog: fileCatalog, EnableAPI: true}))
 	defer server.Close()
 
 	resp, err := http.Get(server.URL + "/api/w/ws-a/worker-tags")
@@ -3107,8 +3123,14 @@ func TestCanonicalWorkerTagsAPI(t *testing.T) {
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatal(err)
 	}
-	if len(body.Tags) != 1 || body.Tags[0].Tag != "default" || body.Tags[0].LiveWorkers != 0 ||
-		len(body.Tags[0].Capabilities) != 0 || len(body.Tags[0].Workers) != 0 || body.DedicatedTag != nil {
+	seen := map[string]bool{}
+	for _, item := range body.Tags {
+		seen[item.Tag] = true
+		if item.LiveWorkers != 0 || len(item.Capabilities) != 0 || len(item.Workers) != 0 {
+			t.Fatalf("worker-tags item = %#v", item)
+		}
+	}
+	if len(body.Tags) != 2 || !seen["default"] || !seen["legacy-queue"] || seen["foreign-queue"] || body.DedicatedTag != nil {
 		t.Fatalf("worker-tags body = %#v", body)
 	}
 }

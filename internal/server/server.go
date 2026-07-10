@@ -893,12 +893,26 @@ func (h *Handler) handleCanonicalWorkerTags(w http.ResponseWriter, r *http.Reque
 	if !ok {
 		return
 	}
+	workspaceID = contract.NormalizeWorkspace(workspaceID)
 	tags := map[string]struct{}{}
 	for _, deployment := range canonicalDeployments(snapshot, workspaceID) {
 		tags[defaultRouteTag()] = struct{}{}
 		tags[contract.EffectiveRouteTagForApp(deployment)] = struct{}{}
 		for _, action := range deployment.Actions {
 			tags[contract.EffectiveRouteTagForAction(deployment, action)] = struct{}{}
+		}
+	}
+	if h.store != nil {
+		items, err := h.store.ListJobs(r.Context(), state.JobListQuery{WorkspaceID: workspaceID, Status: "queued"})
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		for _, item := range items {
+			tag := strings.TrimSpace(item.Tag)
+			if tag != "" {
+				tags[tag] = struct{}{}
+			}
 		}
 	}
 	writeJSON(w, http.StatusOK, newCanonicalWorkerTagsView(tags))
