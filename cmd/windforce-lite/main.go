@@ -178,6 +178,7 @@ func runServer(args []string, mode string) int {
 	databaseURL := flags.String("database-url", "", "PostgreSQL database URL for --state-backend postgres")
 	migrate := flags.Bool("migrate", false, "run state backend schema migration before starting")
 	adminTokenEnv := flags.String("admin-token-env", "", "environment variable that contains the admin/API bearer token")
+	jobTokenSecretEnv := flags.String("job-token-secret-env", "", "environment variable that contains the WF_TOKEN signing secret; defaults to admin token")
 	baseURL := flags.String("base-url", "", "public API base URL injected into job ctx helpers")
 	storeDir := flags.String("store", defaultStoreDir(), "bundle store directory")
 	catalogPath := flags.String("catalog", defaultCatalogPath(), "catalog JSON path")
@@ -206,17 +207,19 @@ func runServer(args []string, mode string) int {
 	fileCatalog := catalog.NewFileCatalog(*catalogPath)
 	gitSources := gitsource.NewFileRegistry(*gitSourcesPath)
 	adminToken := tokenFromEnv(*adminTokenEnv)
+	jobTokenSecret := firstNonEmpty(tokenFromEnv(*jobTokenSecretEnv), adminToken)
 	runtimeBaseURL := strings.TrimSpace(*baseURL)
 	if runtimeBaseURL == "" && mode == "standalone" {
 		runtimeBaseURL = localBaseURL(*addr)
 	}
 	handler := server.New(server.Config{
-		Store:      stateStore,
-		Catalog:    fileCatalog,
-		Syncer:     &syncer.Syncer{Store: bundle.NewLocalStore(*storeDir), Catalog: fileCatalog},
-		GitSources: gitSources,
-		EnableAPI:  mode == "api" || mode == "standalone",
-		AdminToken: adminToken,
+		Store:          stateStore,
+		Catalog:        fileCatalog,
+		Syncer:         &syncer.Syncer{Store: bundle.NewLocalStore(*storeDir), Catalog: fileCatalog},
+		GitSources:     gitSources,
+		EnableAPI:      mode == "api" || mode == "standalone",
+		AdminToken:     adminToken,
+		JobTokenSecret: jobTokenSecret,
 	})
 
 	if mode == "standalone" {
@@ -226,7 +229,7 @@ func runServer(args []string, mode string) int {
 				Store:          bundle.NewLocalStore(*storeDir),
 				CacheRoot:      *cacheRoot,
 				BaseURL:        runtimeBaseURL,
-				APIToken:       adminToken,
+				JobTokenSecret: jobTokenSecret,
 				BunPath:        *bunPath,
 				PythonPath:     *pythonPath,
 				GoPath:         *goPath,
@@ -267,7 +270,8 @@ func runWorker(args []string) int {
 	goPath := flags.String("go-path", "", "go executable path")
 	prepareTimeout := flags.Duration("prepare-timeout", 0, "source prepare timeout; defaults to 5m")
 	baseURL := flags.String("base-url", "", "public API base URL injected into job ctx helpers")
-	apiTokenEnv := flags.String("api-token-env", "", "environment variable that contains the API bearer token for ctx helpers")
+	apiTokenEnv := flags.String("api-token-env", "", "deprecated fallback for --job-token-secret-env")
+	jobTokenSecretEnv := flags.String("job-token-secret-env", "", "environment variable that contains the WF_TOKEN signing secret")
 	poll := flags.Duration("poll", 500*time.Millisecond, "job poll interval")
 	leaseTTL := flags.Duration("lease", 30*time.Second, "job lease TTL")
 	workerID := flags.String("worker-id", "", "worker identity")
@@ -285,13 +289,14 @@ func runWorker(args []string) int {
 		return 1
 	}
 	defer closeState()
+	jobTokenSecret := firstNonEmpty(tokenFromEnv(*jobTokenSecretEnv), tokenFromEnv(*apiTokenEnv))
 	processor := worker.Processor{
 		Store: stateStore,
 		Runner: runtime.Runner{
 			Store:          bundle.NewLocalStore(*storeDir),
 			CacheRoot:      *cacheRoot,
 			BaseURL:        strings.TrimSpace(*baseURL),
-			APIToken:       tokenFromEnv(*apiTokenEnv),
+			JobTokenSecret: jobTokenSecret,
 			BunPath:        *bunPath,
 			PythonPath:     *pythonPath,
 			GoPath:         *goPath,
@@ -346,6 +351,15 @@ func tokenFromEnv(name string) string {
 		return ""
 	}
 	return os.Getenv(name)
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }
 
 func localBaseURL(addr string) string {

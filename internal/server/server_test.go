@@ -23,6 +23,7 @@ import (
 	"github.com/imprun/windforce-lite/internal/gitsource"
 	"github.com/imprun/windforce-lite/internal/state"
 	"github.com/imprun/windforce-lite/internal/syncer"
+	"github.com/imprun/windforce-lite/internal/token"
 )
 
 func TestAdapterTriggerCreatesRunAndAPIReadsIt(t *testing.T) {
@@ -664,6 +665,108 @@ func TestCanonicalVariableAppScopeShadowing(t *testing.T) {
 	}
 	if value, code := reveal("token", "", jobA); code != http.StatusOK || value != "shared-value" {
 		t.Fatalf("post-delete appa read = %d %q, want shared fallback", code, value)
+	}
+}
+
+func TestJobTokenAuthorizesOnlySDKCallbacks(t *testing.T) {
+	tempDir := t.TempDir()
+	store := state.NewLocalStore(filepath.Join(tempDir, "state.json"))
+	if err := store.SetVariable(context.Background(), "ws-a", "", "config/token", "shared", true, ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetVariable(context.Background(), "ws-a", "echo", "config/token", "scoped", true, ""); err != nil {
+		t.Fatal(err)
+	}
+	deployment := contract.Deployment{
+		Workspace: "ws-a",
+		App:       "echo",
+		Commit:    "commit-a",
+		Actions: map[string]contract.Action{
+			"run": {Action: "run"},
+		},
+	}
+	run := state.NewRun("windforce", "run-job-token", "echo", "run", deployment, json.RawMessage(`{}`))
+	job := state.NewActionJob(run, nil)
+	if err := store.CreateRunAndEnqueue(context.Background(), run, job); err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(New(Config{
+		Store:          store,
+		EnableAPI:      true,
+		AdminToken:     "admin-token",
+		JobTokenSecret: "job-secret",
+	}))
+	defer server.Close()
+
+	jobToken := token.MintJob("job-secret", token.JobClaims{
+		Workspace: "ws-a",
+		JobID:     job.ID,
+		Subject:   "runner@example.test",
+		Exp:       time.Now().Add(time.Minute).Unix(),
+	})
+	req, err := http.NewRequest(http.MethodGet, server.URL+"/api/w/ws-a/variables/get/p/config/token", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "Bearer "+jobToken)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("job token variable status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	var body struct {
+		Value string `json:"value"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Value != "scoped" {
+		t.Fatalf("job-scoped variable = %q, want scoped", body.Value)
+	}
+
+	forbiddenReq, err := http.NewRequest(http.MethodGet, server.URL+"/api/w/ws-a/apps", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	forbiddenReq.Header.Set("Authorization", "Bearer "+jobToken)
+	forbiddenResp, err := http.DefaultClient.Do(forbiddenReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = forbiddenResp.Body.Close()
+	if forbiddenResp.StatusCode != http.StatusForbidden {
+		t.Fatalf("job token control-plane status = %d, want %d", forbiddenResp.StatusCode, http.StatusForbidden)
+	}
+
+	resumeReq, err := http.NewRequest(http.MethodPost, server.URL+"/api/w/ws-a/flow/resume-urls", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resumeReq.Header.Set("Authorization", "Bearer "+jobToken)
+	resumeResp, err := http.DefaultClient.Do(resumeReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resumeResp.Body.Close()
+	if resumeResp.StatusCode == http.StatusForbidden {
+		t.Fatalf("job token must pass SDK callback auth for flow resume URLs")
+	}
+
+	crossWorkspaceReq, err := http.NewRequest(http.MethodGet, server.URL+"/api/w/ws-b/variables/get/p/config/token", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	crossWorkspaceReq.Header.Set("Authorization", "Bearer "+jobToken)
+	crossWorkspaceResp, err := http.DefaultClient.Do(crossWorkspaceReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = crossWorkspaceResp.Body.Close()
+	if crossWorkspaceResp.StatusCode != http.StatusForbidden {
+		t.Fatalf("cross-workspace job token status = %d, want %d", crossWorkspaceResp.StatusCode, http.StatusForbidden)
 	}
 }
 

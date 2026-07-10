@@ -7,10 +7,12 @@ import (
 	"os/exec"
 	"path/filepath"
 	goruntime "runtime"
+	"strings"
 	"testing"
 
 	"github.com/imprun/windforce-lite/internal/bundle"
 	"github.com/imprun/windforce-lite/internal/contract"
+	"github.com/imprun/windforce-lite/internal/token"
 )
 
 func TestRunnerFetchesBundleAndRunsAction(t *testing.T) {
@@ -519,8 +521,8 @@ func TestRunnerDoesNotMarkFailedPrepareReady(t *testing.T) {
 
 func TestRunnerJobEnvIncludesSDKCallbackEndpoint(t *testing.T) {
 	runner := Runner{
-		BaseURL:  "http://127.0.0.1:18080",
-		APIToken: "api-token",
+		BaseURL:        "http://127.0.0.1:18080",
+		JobTokenSecret: "token-secret",
 	}
 	env := runner.jobEnv(RunRequest{
 		JobID:       "job-a",
@@ -542,7 +544,6 @@ func TestRunnerJobEnvIncludesSDKCallbackEndpoint(t *testing.T) {
 
 	for _, want := range []string{
 		"WF_BASE_URL=http://127.0.0.1:18080",
-		"WF_TOKEN=api-token",
 		"WF_STATE_PATH=echo/run",
 		"WF_EMAIL=runner@example.test",
 		"WF_USERNAME=runner@example.test",
@@ -555,6 +556,14 @@ func TestRunnerJobEnvIncludesSDKCallbackEndpoint(t *testing.T) {
 		if !containsEnv(env, want) {
 			t.Fatalf("env missing %q in %#v", want, env)
 		}
+	}
+	tokenValue := envValue(env, "WF_TOKEN")
+	claims, ok := token.VerifyJob("token-secret", tokenValue)
+	if !ok {
+		t.Fatalf("WF_TOKEN is not a valid job token: %q", tokenValue)
+	}
+	if claims.Workspace != "ws-a" || claims.JobID != "job-a" || claims.Subject != "delegate@example.test" {
+		t.Fatalf("job token claims = %#v", claims)
 	}
 
 	emptyRunner := Runner{}
@@ -740,6 +749,16 @@ func containsEnv(values []string, want string) bool {
 		}
 	}
 	return false
+}
+
+func envValue(values []string, key string) string {
+	prefix := key + "="
+	for _, value := range values {
+		if strings.HasPrefix(value, prefix) {
+			return strings.TrimPrefix(value, prefix)
+		}
+	}
+	return ""
 }
 
 func containsEnvPrefix(values []string, prefix string) bool {

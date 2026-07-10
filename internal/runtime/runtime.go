@@ -14,12 +14,14 @@ import (
 	"github.com/imprun/windforce-lite/internal/contract"
 	"github.com/imprun/windforce-lite/internal/executor"
 	"github.com/imprun/windforce-lite/internal/runner"
+	"github.com/imprun/windforce-lite/internal/token"
 )
 
 type Runner struct {
 	Store          bundle.Store
 	CacheRoot      string
 	BaseURL        string
+	JobTokenSecret string
 	APIToken       string
 	BunPath        string
 	PythonPath     string
@@ -336,8 +338,27 @@ func (r *Runner) jobEnv(req RunRequest, action contract.Action) []string {
 		add("HTTPS_PROXY", proxyURL)
 	}
 	add("WF_BASE_URL", r.BaseURL)
-	add("WF_TOKEN", r.APIToken)
+	add("WF_TOKEN", r.jobToken(req, action, workspace, permissionedAs))
 	return env
+}
+
+func (r *Runner) jobToken(req RunRequest, action contract.Action, workspace string, permissionedAs string) string {
+	secret := strings.TrimSpace(firstNonEmpty(r.JobTokenSecret, r.APIToken))
+	if secret == "" || req.JobID == "" {
+		return strings.TrimSpace(r.APIToken)
+	}
+	expiresAt := int64(0)
+	if timeout := actionTimeout(req, action); timeout > 0 {
+		expiresAt = time.Now().Add(timeout + 60*time.Second).Unix()
+	} else {
+		expiresAt = time.Now().Add(time.Hour).Unix()
+	}
+	return token.MintJob(secret, token.JobClaims{
+		Workspace: workspace,
+		JobID:     req.JobID,
+		Subject:   permissionedAs,
+		Exp:       expiresAt,
+	})
 }
 
 func actionTimeout(req RunRequest, action contract.Action) time.Duration {

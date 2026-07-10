@@ -26,6 +26,7 @@ import (
 	sourcepkg "github.com/imprun/windforce-lite/internal/source"
 	"github.com/imprun/windforce-lite/internal/state"
 	"github.com/imprun/windforce-lite/internal/syncer"
+	"github.com/imprun/windforce-lite/internal/token"
 )
 
 type Catalog interface {
@@ -60,6 +61,7 @@ type Config struct {
 	TriggerAdapters []TriggerAdapter
 	TriggerToken    string
 	AdminToken      string
+	JobTokenSecret  string
 	SampleRoot      string
 	Wait            time.Duration
 }
@@ -74,9 +76,23 @@ type Handler struct {
 	triggerAdapters []TriggerAdapter
 	triggerToken    string
 	adminToken      string
+	jobTokenSecret  string
 	sampleRoot      string
 	wait            time.Duration
 	syncLocks       sync.Map
+}
+
+type jobPrincipal struct {
+	Workspace string
+	JobID     string
+	Subject   string
+}
+
+type principalContextKey struct{}
+
+func jobPrincipalFrom(ctx context.Context) *jobPrincipal {
+	principal, _ := ctx.Value(principalContextKey{}).(*jobPrincipal)
+	return principal
 }
 
 func New(config Config) http.Handler {
@@ -90,6 +106,7 @@ func New(config Config) http.Handler {
 		triggerAdapters: append([]TriggerAdapter(nil), config.TriggerAdapters...),
 		triggerToken:    config.TriggerToken,
 		adminToken:      config.AdminToken,
+		jobTokenSecret:  config.JobTokenSecret,
 		sampleRoot:      config.SampleRoot,
 		wait:            config.Wait,
 	}
@@ -115,11 +132,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if h.enableAPI {
-		if !authorized(r, h.adminToken) {
-			writeError(w, http.StatusUnauthorized, "unauthorized")
+		authorizedRequest, status, message := h.authorizeAPIRequest(r)
+		if status != 0 {
+			writeError(w, status, message)
 			return
 		}
-		if h.handleAPI(w, r) {
+		if h.handleAPI(w, authorizedRequest) {
 			return
 		}
 	}
@@ -2101,6 +2119,9 @@ func (h *Handler) handleGetVariable(w http.ResponseWriter, r *http.Request, work
 
 func (h *Handler) jobVariableScope(r *http.Request, workspaceID string) (string, bool, error) {
 	jobID := strings.TrimSpace(r.Header.Get("X-Windforce-Job-ID"))
+	if principal := jobPrincipalFrom(r.Context()); principal != nil && principal.JobID != "" {
+		jobID = principal.JobID
+	}
 	if jobID == "" {
 		return "", false, nil
 	}
@@ -2854,14 +2875,73 @@ func firstPresentStringPtr(values ...*string) *string {
 	return nil
 }
 
-func authorized(r *http.Request, token string) bool {
-	if token == "" {
+func (h *Handler) authorizeAPIRequest(r *http.Request) (*http.Request, int, string) {
+	bearerToken := bearer(r)
+	if token.IsJobToken(bearerToken) {
+		claims, ok := token.VerifyJobAny([]string{h.jobTokenSecret}, bearerToken)
+		if !ok {
+			return r, http.StatusUnauthorized, "unauthorized"
+		}
+		if !isJobSDKCallback(r) {
+			return r, http.StatusForbidden, "job token may only call SDK callback endpoints"
+		}
+		if workspace := workspaceFromAPIPath(r.URL.Path); workspace != "" && workspace != claims.Workspace {
+			return r, http.StatusForbidden, "job token workspace mismatch"
+		}
+		principal := &jobPrincipal{
+			Workspace: claims.Workspace,
+			JobID:     claims.JobID,
+			Subject:   claims.Subject,
+		}
+		return r.WithContext(context.WithValue(r.Context(), principalContextKey{}, principal)), 0, ""
+	}
+	if !authorized(r, h.adminToken) {
+		return r, http.StatusUnauthorized, "unauthorized"
+	}
+	return r, 0, ""
+}
+
+func bearer(r *http.Request) string {
+	h := r.Header.Get("Authorization")
+	if strings.HasPrefix(h, "Bearer ") {
+		return strings.TrimSpace(strings.TrimPrefix(h, "Bearer "))
+	}
+	return ""
+}
+
+func isJobSDKCallback(r *http.Request) bool {
+	path := r.URL.Path
+	if !strings.HasPrefix(path, "/api/w/") {
+		return false
+	}
+	if r.Method == http.MethodGet && strings.Contains(path, "/variables/get/p/") {
 		return true
 	}
-	if r.Header.Get("Authorization") == "Bearer "+token {
+	if r.Method == http.MethodGet && strings.Contains(path, "/resources/get/p/") {
 		return true
 	}
-	if r.Header.Get("X-Windforce-Token") == token {
+	if r.Method == http.MethodPost && strings.HasSuffix(path, "/flow/resume-urls") {
+		return true
+	}
+	return (r.Method == http.MethodGet || r.Method == http.MethodPost) && strings.HasSuffix(path, "/state")
+}
+
+func workspaceFromAPIPath(path string) string {
+	parts := splitPath(path)
+	if len(parts) >= 3 && parts[0] == "api" && parts[1] == "w" {
+		return parts[2]
+	}
+	return ""
+}
+
+func authorized(r *http.Request, adminToken string) bool {
+	if adminToken == "" {
+		return true
+	}
+	if r.Header.Get("Authorization") == "Bearer "+adminToken {
+		return true
+	}
+	if r.Header.Get("X-Windforce-Token") == adminToken {
 		return true
 	}
 	return false

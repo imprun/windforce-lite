@@ -344,12 +344,16 @@ go run ./cmd/windforce-lite worker `
   --database-url $env:WINDFORCE_DATABASE_URL
 ```
 
-API token checks are optional for local development. Set token values through
-environment variables and pass only the variable names to the process:
+API token checks are optional for local development. `--admin-token-env` gates
+the control-plane API. Worker scripts receive `WF_TOKEN` as a short-lived
+job token signed with `--job-token-secret-env`; when that flag is omitted,
+the admin token value is reused as the local signing secret so the raw admin
+token is not injected into scripts:
 
 ```powershell
 go run ./cmd/windforce-lite api `
-  --admin-token-env WINDFORCE_ADMIN_TOKEN
+  --admin-token-env WINDFORCE_ADMIN_TOKEN `
+  --job-token-secret-env WINDFORCE_JOB_TOKEN_SECRET
 ```
 
 ## Runtime architecture

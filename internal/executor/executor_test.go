@@ -42,8 +42,8 @@ func TestRunPythonBuildsCanonicalCtxHelpers(t *testing.T) {
 		}
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api/w/ws-a/variables/get/p/secret" && r.URL.RawQuery == "":
-			if r.Header.Get("X-Windforce-Job-ID") != "job-a" {
-				t.Errorf("job id header = %q", r.Header.Get("X-Windforce-Job-ID"))
+			if r.Header.Get("X-Windforce-Job-ID") != "" {
+				t.Errorf("unexpected job id header = %q", r.Header.Get("X-Windforce-Job-ID"))
 			}
 			writeJSON(w, map[string]string{"value": "var-ok"})
 		case r.Method == http.MethodGet && r.URL.Path == "/api/w/ws-a/resources/get/p/browser":
@@ -236,13 +236,13 @@ func TestRunRejectsWhitespaceScriptLangCanonically(t *testing.T) {
 	}
 }
 
-func TestGeneratedWrappersSendJobIdentityForVariableReads(t *testing.T) {
+func TestGeneratedWrappersUseJobTokenForVariableReads(t *testing.T) {
 	ts := wrapper("main.ts")
 	if strings.Contains(ts, `?app=`) {
 		t.Fatalf("typescript wrapper still passes app scope to variables.get:\n%s", ts)
 	}
-	if !strings.Contains(ts, `reqHeaders["X-Windforce-Job-ID"] = jobID`) {
-		t.Fatalf("typescript wrapper does not pass job identity:\n%s", ts)
+	if strings.Contains(ts, `X-Windforce-Job-ID`) {
+		t.Fatalf("typescript wrapper should not pass job identity outside WF_TOKEN:\n%s", ts)
 	}
 	if !strings.Contains(ts, `app: APP`) {
 		t.Fatalf("typescript wrapper does not reuse APP in ctx.app:\n%s", ts)
@@ -252,8 +252,8 @@ func TestGeneratedWrappersSendJobIdentityForVariableReads(t *testing.T) {
 	if strings.Contains(py, `?app=`) {
 		t.Fatalf("python wrapper still passes app scope to variables.get:\n%s", py)
 	}
-	if !strings.Contains(py, `headers["X-Windforce-Job-ID"] = job_id`) {
-		t.Fatalf("python wrapper does not pass job identity:\n%s", py)
+	if strings.Contains(py, `X-Windforce-Job-ID`) {
+		t.Fatalf("python wrapper should not pass job identity outside WF_TOKEN:\n%s", py)
 	}
 	if !strings.Contains(py, `app=_APP`) {
 		t.Fatalf("python wrapper does not reuse _APP in ctx.app:\n%s", py)

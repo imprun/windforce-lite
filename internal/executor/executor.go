@@ -271,8 +271,6 @@ try { const h = env("WF_TRIGGER_HEADERS"); if (h) headers = JSON.parse(h) } catc
 
 async function api(method, path, body) {
   const reqHeaders = { Authorization: "Bearer " + TOKEN, "Content-Type": "application/json" }
-  const jobID = env("WF_JOB_ID")
-  if (jobID) reqHeaders["X-Windforce-Job-ID"] = jobID
   return fetch(BASE + "/api/w/" + WS + path, {
     method,
     headers: reqHeaders,
@@ -422,9 +420,6 @@ def _call(method, url, headers, body):
 def _api(method, path, body=None):
     url = _BASE + "/api/w/" + _WS + path
     headers = {"Authorization": "Bearer " + _TOKEN, "Content-Type": "application/json"}
-    job_id = _env("WF_JOB_ID")
-    if job_id:
-        headers["X-Windforce-Job-ID"] = job_id
     return _call(method, url, headers, body)
 
 
