@@ -127,6 +127,12 @@ type Lease struct {
 	AcquiredAt time.Time
 }
 
+type HeartbeatResult struct {
+	CanceledBy     *string
+	CanceledReason *string
+	StillOwned     bool
+}
+
 type HumanTask struct {
 	ID          string          `json:"id"`
 	RunID       string          `json:"runId"`
@@ -283,6 +289,7 @@ type Store interface {
 	GetResource(ctx context.Context, workspaceID string, path string) (Resource, bool, error)
 	ClaimJob(ctx context.Context, workerID string, leaseTTL time.Duration) (Job, Lease, error)
 	ClaimJobForTags(ctx context.Context, workerID string, tags []string, leaseTTL time.Duration) (Job, Lease, error)
+	HeartbeatJob(ctx context.Context, lease Lease, leaseTTL time.Duration) (HeartbeatResult, error)
 	CompleteJobSucceeded(ctx context.Context, lease Lease, result contract.JobResult) error
 	CompleteJobFailed(ctx context.Context, lease Lease, result contract.JobResult) error
 	CompleteJobWaitingHuman(ctx context.Context, lease Lease, result contract.JobResult, task HumanTask) error
@@ -812,6 +819,28 @@ func (s *LocalStore) ClaimJobForTags(ctx context.Context, workerID string, tags 
 	return claimed, lease, nil
 }
 
+func (s *LocalStore) HeartbeatJob(ctx context.Context, lease Lease, leaseTTL time.Duration) (HeartbeatResult, error) {
+	if leaseTTL <= 0 {
+		leaseTTL = defaultLeaseTime
+	}
+	var result HeartbeatResult
+	err := s.update(ctx, func(snapshot *Snapshot, now time.Time) error {
+		job, ok := snapshot.Jobs[lease.JobID]
+		if !ok || job.State != JobRunning || job.LeaseOwner != lease.WorkerID || job.Attempt != lease.Attempt {
+			return nil
+		}
+		expiresAt := now.Add(leaseTTL)
+		job.LeaseExpiresAt = &expiresAt
+		job.UpdatedAt = now
+		snapshot.Jobs[job.ID] = job
+		result.StillOwned = true
+		result.CanceledBy = cloneStringPtr(job.CanceledBy)
+		result.CanceledReason = cloneStringPtr(job.CanceledReason)
+		return nil
+	})
+	return result, err
+}
+
 func (s *LocalStore) CompleteJobSucceeded(ctx context.Context, lease Lease, result contract.JobResult) error {
 	return s.update(ctx, func(snapshot *Snapshot, now time.Time) error {
 		job, run, err := leasedJobAndRun(snapshot, lease, now)
@@ -1218,7 +1247,7 @@ func leasedJobAndRun(snapshot *Snapshot, lease Lease, now time.Time) (Job, Run, 
 	if !ok {
 		return Job{}, Run{}, fmt.Errorf("%w: job %q", ErrNotFound, lease.JobID)
 	}
-	if job.State != JobRunning || job.LeaseOwner != lease.WorkerID {
+	if job.State != JobRunning || job.LeaseOwner != lease.WorkerID || job.Attempt != lease.Attempt {
 		return Job{}, Run{}, fmt.Errorf("%w: job %q", ErrInvalidLease, lease.JobID)
 	}
 	if job.LeaseExpiresAt != nil && job.LeaseExpiresAt.Before(now) {
@@ -1677,6 +1706,14 @@ func stringPtr(value string) *string {
 		return nil
 	}
 	return &value
+}
+
+func cloneStringPtr(value *string) *string {
+	if value == nil {
+		return nil
+	}
+	clone := *value
+	return &clone
 }
 
 func numericStringPtr(value string) *int64 {

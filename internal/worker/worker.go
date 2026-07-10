@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/imprun/windforce-lite/internal/contract"
@@ -13,13 +14,14 @@ import (
 )
 
 type Processor struct {
-	Store           state.Store
-	Runner          actionruntime.Runner
-	WorkerID        string
-	Group           string
-	Tags            []string
-	EgressProxyAddr string
-	LeaseTTL        time.Duration
+	Store             state.Store
+	Runner            actionruntime.Runner
+	WorkerID          string
+	Group             string
+	Tags              []string
+	EgressProxyAddr   string
+	LeaseTTL          time.Duration
+	HeartbeatInterval time.Duration
 }
 
 func (p *Processor) ProcessOne(ctx context.Context) (bool, error) {
@@ -43,7 +45,11 @@ func (p *Processor) ProcessOne(ctx context.Context) (bool, error) {
 		workspaceID = job.Payload.PinnedDeployment().SourceWorkspace()
 	}
 	workspaceID = contract.NormalizeWorkspace(workspaceID)
-	result, runErr := p.Runner.Run(ctx, actionruntime.RunRequest{
+	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	stopHeartbeat := p.startHeartbeat(lease, cancel)
+	defer stopHeartbeat()
+	result, runErr := p.Runner.Run(runCtx, actionruntime.RunRequest{
 		JobID:           job.ID,
 		WorkspaceID:     workspaceID,
 		Deployment:      job.Payload.PinnedDeployment(),
@@ -91,6 +97,55 @@ func (p *Processor) ProcessOne(ctx context.Context) (bool, error) {
 		return completeProcessed(p.Store.CompleteJobWaitingHuman(ctx, lease, result, task))
 	}
 	return completeProcessed(p.Store.CompleteJobSucceeded(ctx, lease, result))
+}
+
+func (p *Processor) startHeartbeat(lease state.Lease, cancel context.CancelFunc) func() {
+	interval := p.effectiveHeartbeatInterval()
+	done := make(chan struct{})
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				heartbeat, err := p.Store.HeartbeatJob(context.Background(), lease, p.LeaseTTL)
+				if err != nil {
+					log.Printf("worker heartbeat job %s: %v", lease.JobID, err)
+					continue
+				}
+				if !heartbeat.StillOwned {
+					cancel()
+					return
+				}
+				if heartbeat.CanceledBy != nil {
+					cancel()
+					return
+				}
+			}
+		}
+	}()
+	return func() {
+		close(done)
+	}
+}
+
+func (p *Processor) effectiveHeartbeatInterval() time.Duration {
+	if p.HeartbeatInterval > 0 {
+		return p.HeartbeatInterval
+	}
+	if p.LeaseTTL > 0 {
+		interval := p.LeaseTTL / 3
+		if interval < 10*time.Millisecond {
+			return 10 * time.Millisecond
+		}
+		if interval > 10*time.Second {
+			return 10 * time.Second
+		}
+		return interval
+	}
+	return 10 * time.Second
 }
 
 func completeProcessed(err error) (bool, error) {

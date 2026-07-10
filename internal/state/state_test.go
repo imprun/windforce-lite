@@ -3,6 +3,7 @@ package state
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"strings"
 	"testing"
@@ -105,6 +106,30 @@ func TestPostgresStoreClaimJobEnforcesMaxConcurrent(t *testing.T) {
 		t.Fatalf("TRUNCATE returned error: %v", err)
 	}
 	exerciseStoreMaxConcurrent(t, store)
+}
+
+func TestLocalStoreHeartbeatExtendsLease(t *testing.T) {
+	store := NewLocalStore(t.TempDir() + "/state.json")
+	exerciseStoreHeartbeatExtendsLease(t, store)
+}
+
+func TestPostgresStoreHeartbeatExtendsLease(t *testing.T) {
+	dsn := os.Getenv("WINDFORCE_LITE_POSTGRES_TEST_DSN")
+	if dsn == "" {
+		t.Skip("WINDFORCE_LITE_POSTGRES_TEST_DSN is not set")
+	}
+	store, err := OpenPostgresStore(context.Background(), dsn)
+	if err != nil {
+		t.Fatalf("OpenPostgresStore returned error: %v", err)
+	}
+	defer store.Close()
+	if err := store.Migrate(context.Background()); err != nil {
+		t.Fatalf("Migrate returned error: %v", err)
+	}
+	if _, err := store.pool.Exec(context.Background(), `TRUNCATE job_logs, run_events, human_tasks, jobs, runs RESTART IDENTITY CASCADE`); err != nil {
+		t.Fatalf("TRUNCATE returned error: %v", err)
+	}
+	exerciseStoreHeartbeatExtendsLease(t, store)
 }
 
 func TestLocalStoreClaimJobForTags(t *testing.T) {
@@ -234,6 +259,44 @@ func TestActionJobDefaultsActorAudit(t *testing.T) {
 	}
 	if job.Payload.CreatedBy != "system" || job.Payload.PermissionedAs != "system" {
 		t.Fatalf("job actor = %q/%q", job.Payload.CreatedBy, job.Payload.PermissionedAs)
+	}
+}
+
+func exerciseStoreHeartbeatExtendsLease(t *testing.T, store Store) {
+	t.Helper()
+	ttl := 100 * time.Millisecond
+	deployment := contract.Deployment{
+		Workspace: "default",
+		App:       "echo",
+		Commit:    "commit-a",
+		Actions: map[string]contract.Action{
+			"echo": {Action: "echo", Command: []string{"helper"}},
+		},
+	}
+	run := NewRun("windforce", "run-heartbeat", "echo", "echo", deployment, json.RawMessage(`{}`))
+	job := NewActionJob(run, nil)
+	if err := store.CreateRunAndEnqueue(context.Background(), run, job); err != nil {
+		t.Fatalf("CreateRunAndEnqueue returned error: %v", err)
+	}
+	claimed, lease, err := store.ClaimJob(context.Background(), "worker-a", ttl)
+	if err != nil {
+		t.Fatalf("ClaimJob returned error: %v", err)
+	}
+	if claimed.ID != job.ID {
+		t.Fatalf("claimed job = %s, want %s", claimed.ID, job.ID)
+	}
+	time.Sleep(70 * time.Millisecond)
+	heartbeat, err := store.HeartbeatJob(context.Background(), lease, ttl)
+	if err != nil {
+		t.Fatalf("HeartbeatJob returned error: %v", err)
+	}
+	if !heartbeat.StillOwned {
+		t.Fatalf("HeartbeatJob StillOwned = false")
+	}
+	time.Sleep(50 * time.Millisecond)
+	_, _, err = store.ClaimJob(context.Background(), "worker-b", ttl)
+	if !errors.Is(err, ErrNoQueuedJob) {
+		t.Fatalf("ClaimJob after heartbeat error = %v, want ErrNoQueuedJob", err)
 	}
 }
 

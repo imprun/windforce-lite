@@ -702,6 +702,40 @@ WHERE id=$3 AND state IN ($4, $5)
 	return claimed, lease, nil
 }
 
+func (s *PostgresStore) HeartbeatJob(ctx context.Context, lease Lease, leaseTTL time.Duration) (HeartbeatResult, error) {
+	if leaseTTL <= 0 {
+		leaseTTL = defaultLeaseTime
+	}
+	now := time.Now().UTC()
+	expiresAt := now.Add(leaseTTL)
+	var result HeartbeatResult
+	err := s.withTx(ctx, func(tx pgx.Tx) error {
+		var canceledBy sql.NullString
+		var canceledReason sql.NullString
+		err := tx.QueryRow(ctx, `
+UPDATE jobs
+SET lease_expires_at=$1, updated_at=$2
+WHERE id=$3 AND state=$4 AND lease_owner=$5 AND attempt=$6
+RETURNING canceled_by, canceled_reason
+`, expiresAt, now, lease.JobID, string(JobRunning), lease.WorkerID, lease.Attempt).Scan(&canceledBy, &canceledReason)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		result.StillOwned = true
+		if canceledBy.Valid {
+			result.CanceledBy = &canceledBy.String
+		}
+		if canceledReason.Valid {
+			result.CanceledReason = &canceledReason.String
+		}
+		return nil
+	})
+	return result, err
+}
+
 func postgresMaxConcurrentReached(ctx context.Context, tx pgx.Tx, candidate Job) (bool, error) {
 	limit, ok := jobMaxConcurrent(candidate)
 	if !ok {
@@ -1193,7 +1227,7 @@ func leasedJobAndRunPostgres(ctx context.Context, tx pgx.Tx, lease Lease) (Job, 
 		return Job{}, Run{}, err
 	}
 	now := time.Now().UTC()
-	if job.State != JobRunning || job.LeaseOwner != lease.WorkerID {
+	if job.State != JobRunning || job.LeaseOwner != lease.WorkerID || job.Attempt != lease.Attempt {
 		return Job{}, Run{}, fmt.Errorf("%w: job %q", ErrInvalidLease, lease.JobID)
 	}
 	if job.LeaseExpiresAt != nil && job.LeaseExpiresAt.Before(now) {

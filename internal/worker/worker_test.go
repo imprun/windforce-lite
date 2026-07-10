@@ -180,6 +180,58 @@ func TestProcessorCreatesHumanTask(t *testing.T) {
 	}
 }
 
+func TestProcessorHeartbeatCancelsRunningAction(t *testing.T) {
+	processor, stateStore, run := newProcessorTestHarness(t, "sleep")
+	processor.LeaseTTL = 200 * time.Millisecond
+	processor.HeartbeatInterval = 20 * time.Millisecond
+
+	done := make(chan error, 1)
+	start := time.Now()
+	go func() {
+		processed, err := processor.ProcessOne(context.Background())
+		if err != nil {
+			done <- err
+			return
+		}
+		if !processed {
+			done <- fmt.Errorf("ProcessOne processed no job")
+			return
+		}
+		done <- nil
+	}()
+
+	jobID := waitForRunningJob(t, stateStore, run.ID)
+	cancelResult, err := stateStore.CancelJob(context.Background(), "workspace-a", jobID, "operator@example.test", "stop")
+	if err != nil {
+		t.Fatalf("CancelJob returned error: %v", err)
+	}
+	if !cancelResult.SoftCanceled {
+		t.Fatalf("CancelJob result = %#v, want soft cancel", cancelResult)
+	}
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("ProcessOne returned error: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("ProcessOne did not stop after cancel")
+	}
+	if elapsed := time.Since(start); elapsed >= 4*time.Second {
+		t.Fatalf("ProcessOne waited for the helper sleep instead of canceling: %s", elapsed)
+	}
+	completed, err := stateStore.GetRun(context.Background(), run.ID)
+	if err != nil {
+		t.Fatalf("GetRun returned error: %v", err)
+	}
+	if completed.State != state.RunCanceled {
+		t.Fatalf("run state = %s, want %s", completed.State, state.RunCanceled)
+	}
+	if completed.Result == nil || completed.Result.Error != "job canceled" {
+		t.Fatalf("completed result = %#v", completed.Result)
+	}
+}
+
 func newProcessorTestHarness(t *testing.T, helperMode string) (Processor, *state.LocalStore, state.Run) {
 	t.Helper()
 	tempDir := t.TempDir()
@@ -226,6 +278,25 @@ func newProcessorTestHarness(t *testing.T, helperMode string) (Processor, *state
 	}, stateStore, run
 }
 
+func waitForRunningJob(t *testing.T, stateStore *state.LocalStore, runID string) string {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		snapshot, err := stateStore.Load(context.Background())
+		if err != nil {
+			t.Fatalf("Load returned error: %v", err)
+		}
+		for _, job := range snapshot.Jobs {
+			if job.RunID == runID && job.State == state.JobRunning {
+				return job.ID
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("job for run %s did not reach running state", runID)
+	return ""
+}
+
 func TestWorkerHelperProcess(t *testing.T) {
 	mode := ""
 	for index, arg := range os.Args {
@@ -266,6 +337,12 @@ func TestWorkerHelperProcess(t *testing.T) {
 		fmt.Println("failure stdout")
 		fmt.Fprintln(os.Stderr, "failure stderr")
 		os.Exit(7)
+	case "sleep":
+		time.Sleep(5 * time.Second)
+		if err := os.WriteFile(os.Getenv("WF_RESULT_JSON"), []byte(`{"ok":true}`), 0o644); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(2)
+		}
 	default:
 		os.Exit(2)
 	}
