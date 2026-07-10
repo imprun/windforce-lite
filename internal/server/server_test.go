@@ -1257,6 +1257,38 @@ func TestCanonicalJobWebhookAPI(t *testing.T) {
 	if _, ok := headers["Cookie"]; ok {
 		t.Fatalf("cookie header should be denied: %#v", headers)
 	}
+
+	rawReq, err := http.NewRequest(http.MethodPost, server.URL+"/api/w/ws-a/jobs/webhook/echo/echo", bytes.NewBufferString(`not-json <xml/>`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rawResp, err := http.DefaultClient.Do(rawReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rawResp.Body.Close()
+	if rawResp.StatusCode != http.StatusCreated {
+		t.Fatalf("raw webhook status = %d, want %d", rawResp.StatusCode, http.StatusCreated)
+	}
+	var rawWebhookResponse struct {
+		JobID string `json:"job_id"`
+	}
+	if err := json.NewDecoder(rawResp.Body).Decode(&rawWebhookResponse); err != nil {
+		t.Fatal(err)
+	}
+	rawJob, _, found, err := store.GetJob(context.Background(), "ws-a", rawWebhookResponse.JobID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatalf("raw webhook job not found")
+	}
+	if err := json.Unmarshal(rawJob.Payload.Input, &raw); err != nil {
+		t.Fatalf("raw webhook input is not a JSON string: %v input=%s", err, rawJob.Payload.Input)
+	}
+	if raw != `not-json <xml/>` {
+		t.Fatalf("raw webhook payload = %q", raw)
+	}
 }
 
 func TestCanonicalJobRunBodyValidationMatchesCanonicalAPI(t *testing.T) {
