@@ -2931,9 +2931,6 @@ func isJobSDKCallback(r *http.Request) bool {
 	if r.Method == http.MethodGet && strings.Contains(path, "/resources/get/p/") {
 		return true
 	}
-	if r.Method == http.MethodPost && strings.HasSuffix(path, "/flow/resume-urls") {
-		return true
-	}
 	return (r.Method == http.MethodGet || r.Method == http.MethodPost) && strings.HasSuffix(path, "/state")
 }
 

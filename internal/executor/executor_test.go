@@ -55,8 +55,6 @@ func TestRunPythonBuildsCanonicalCtxHelpers(t *testing.T) {
 				t.Errorf("decode state body: %v", err)
 			}
 			writeJSON(w, map[string]bool{"ok": true})
-		case r.Method == http.MethodPost && r.URL.Path == "/api/w/ws-a/flow/resume-urls" && r.URL.Query().Get("approver") == "owner@example.test":
-			writeJSON(w, map[string]string{"approve": "https://example.test/approve"})
 		case r.Method == http.MethodPost && r.URL.Path == "/custom":
 			writeJSON(w, map[string]string{"custom": r.Header.Get("Authorization")})
 		default:
@@ -74,14 +72,13 @@ async def main(ctx):
     before = await ctx.state.get()
     await ctx.state.set({"message": ctx.input["message"]})
     custom = await (await ctx.http.fetch("/custom", method="POST", body={"x": 1})).json()
-    approval = await ctx.approval.get_resume_urls("owner@example.test")
     return {
         "variable": variable,
         "resource": resource,
         "before": before,
         "custom": custom,
-        "approval": approval,
-        "resume": ctx.flow.resume_value,
+        "has_approval": hasattr(ctx, "approval"),
+        "has_flow": hasattr(ctx, "flow"),
         "headers": ctx.trigger.headers,
         "job": {"id": ctx.job.id, "workspace": ctx.job.workspace, "tag": ctx.job.tag},
     }
@@ -103,7 +100,7 @@ async def main(ctx):
 			"WF_ACTION=echo",
 			"WF_TAG=default",
 			"WF_STATE_PATH=demo/echo",
-			"WF_TRIGGER_KIND=flow_resume",
+			"WF_TRIGGER_KIND=api",
 			`WF_TRIGGER_HEADERS={"X-Test":"ok"}`,
 		},
 	})
@@ -120,22 +117,21 @@ async def main(ctx):
 		t.Fatalf("state set body = %#v", stateSetBody)
 	}
 	var output struct {
-		Variable string            `json:"variable"`
-		Resource map[string]string `json:"resource"`
-		Before   map[string]string `json:"before"`
-		Custom   map[string]string `json:"custom"`
-		Approval map[string]string `json:"approval"`
-		Resume   map[string]string `json:"resume"`
-		Headers  map[string]string `json:"headers"`
-		Job      map[string]string `json:"job"`
+		Variable    string            `json:"variable"`
+		Resource    map[string]string `json:"resource"`
+		Before      map[string]string `json:"before"`
+		Custom      map[string]string `json:"custom"`
+		HasApproval bool              `json:"has_approval"`
+		HasFlow     bool              `json:"has_flow"`
+		Headers     map[string]string `json:"headers"`
+		Job         map[string]string `json:"job"`
 	}
 	if err := json.Unmarshal(res.Result, &output); err != nil {
 		t.Fatalf("result is not JSON: %v", err)
 	}
 	if output.Variable != "var-ok" || output.Resource["resource"] != "browser-ok" ||
 		output.Before["state"] != "before" || output.Custom["custom"] != "Bearer job-token" ||
-		output.Approval["approve"] == "" || output.Resume["message"] != "hello" ||
-		output.Headers["X-Test"] != "ok" || output.Job["id"] != "job-a" ||
+		output.HasApproval || output.HasFlow || output.Headers["X-Test"] != "ok" || output.Job["id"] != "job-a" ||
 		output.Job["workspace"] != "ws-a" || output.Job["tag"] != "default" {
 		t.Fatalf("output = %#v", output)
 	}

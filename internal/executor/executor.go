@@ -330,17 +330,6 @@ const ctx = {
       return fetch(url, { ...init, headers })
     },
   },
-  approval: {
-    async getResumeUrls(approver) {
-      const q = approver ? "?approver=" + encodeURIComponent(approver) : ""
-      const r = await api("POST", "/flow/resume-urls" + q)
-      if (!r.ok) throw new Error("approval.getResumeUrls failed: " + r.status)
-      return r.json()
-    },
-  },
-  flow: {
-    resumeValue: KIND === "flow_resume" ? input : undefined,
-  },
 }
 
 try {
@@ -481,17 +470,6 @@ class _Http:
         return _Response(status, raw)
 
 
-class _Approval:
-    async def get_resume_urls(self, approver=None):
-        q = ""
-        if approver:
-            q = "?approver=" + urllib.parse.quote(approver, safe="")
-        status, raw = await asyncio.to_thread(_api, "POST", "/flow/resume-urls" + q)
-        if status < 200 or status >= 300:
-            raise RuntimeError("approval.get_resume_urls failed: " + str(status))
-        return json.loads(raw)
-
-
 class _Logger:
     def info(self, *a):
         print(*a)
@@ -532,8 +510,6 @@ _ctx = SimpleNamespace(
     resources=_Resources(),
     state=_State(),
     http=_Http(),
-    approval=_Approval(),
-    flow=SimpleNamespace(resume_value=(_input if _KIND == "flow_resume" else None)),
 )
 
 

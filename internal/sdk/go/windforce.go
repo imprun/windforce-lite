@@ -8,7 +8,7 @@
 //	import wf "windforce-client"
 //
 //	var Main = wf.CreateApp(wf.App{Actions: wf.Actions{
-//		"approval.sync": func(ctx *wf.Context) (any, error) { return ctx.Input, nil },
+//		"echo.sync": func(ctx *wf.Context) (any, error) { return ctx.Input, nil },
 //	}})
 //
 // The worker compiles a generated wrapper alongside the author code; that wrapper's
@@ -93,15 +93,6 @@ type Context struct {
 	Resources Resources // ctx.Resources.Get(path) — resources (json)
 	State     State     // per-action persisted state
 	Http      Http      // auth-preset fetch (the only escape hatch)
-	Approval  Approval  // mint approve/reject resume URLs for an upcoming approval (flow HITL, Model A)
-	Flow      Flow      // flow-step context; Flow.ResumeValue is set on the step after an approval
-}
-
-// Flow carries flow-step context an action may read. ResumeValue is the approver's
-// submitted value, set ONLY on the action that runs immediately after an approval
-// resolves (it is also delivered as ctx.Input); nil for any other step.
-type Flow struct {
-	ResumeValue any
 }
 
 // Trigger describes what created the run (ADR-0014 §5).
@@ -209,47 +200,6 @@ func (Resources) Get(path string) (any, error) {
 		return nil, err
 	}
 	return v, nil
-}
-
-// Approval mints the approve/reject resume URLs for the approval step that immediately
-// FOLLOWS the calling flow step (Model A, ADR-0053). The server computes the HMAC
-// signatures; the SDK only carries the returned URLs, which the action delivers itself
-// (email/Slack/...). Only a running flow-step job may mint.
-type Approval struct{}
-
-// ResumeURLs is the mint response: the approve/reject URLs, their shared resume slot, the
-// upcoming approval step's index, and the URLs' expiry (unix seconds).
-type ResumeURLs struct {
-	Approve   string `json:"approve"`
-	Reject    string `json:"reject"`
-	ResumeID  int    `json:"resume_id"`
-	StepIndex int    `json:"step_index"`
-	ExpiresAt int64  `json:"expires_at"`
-}
-
-// GetResumeURLs mints the URLs for the upcoming approval (POST /flow/resume-urls). approver
-// scopes the resume slot (one slot per approver); it is required for a multi-approval
-// (requiredEvents>1) step and optional for a single-approval one. Mirrors the TS/Python
-// ctx.approval.getResumeUrls.
-func (Approval) GetResumeURLs(approver string) (ResumeURLs, error) {
-	var out ResumeURLs
-	path := "/flow/resume-urls"
-	if approver != "" {
-		path += "?approver=" + url.QueryEscape(approver)
-	}
-	resp, err := cpDo(http.MethodPost, path, nil)
-	if err != nil {
-		return out, err
-	}
-	defer resp.Body.Close()
-	b, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode/100 != 2 {
-		return out, fmt.Errorf("approval.GetResumeURLs: %d %s", resp.StatusCode, strings.TrimSpace(string(b)))
-	}
-	if err := json.Unmarshal(b, &out); err != nil {
-		return out, err
-	}
-	return out, nil
 }
 
 // State is the per-action persisted state (ADR-0014 §10), keyed by WF_STATE_PATH which is
@@ -366,11 +316,6 @@ func newContext() (*Context, error) {
 	// webhook raw body is the same value as ctx.Input (a JSON string passthrough).
 	if c.Trigger.Kind == "webhook" {
 		c.Trigger.Raw = string(raw)
-	}
-	// The step right after an approval (trigger kind "flow_resume") gets the approver's
-	// value as ctx.Input; surface it by name as ctx.Flow.ResumeValue.
-	if c.Trigger.Kind == "flow_resume" {
-		c.Flow.ResumeValue = input
 	}
 	if hdrs := os.Getenv("WF_TRIGGER_HEADERS"); hdrs != "" {
 		_ = json.Unmarshal([]byte(hdrs), &c.Trigger.Headers)

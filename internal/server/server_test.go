@@ -756,8 +756,8 @@ func TestJobTokenAuthorizesOnlySDKCallbacks(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = resumeResp.Body.Close()
-	if resumeResp.StatusCode == http.StatusForbidden {
-		t.Fatalf("job token must pass SDK callback auth for flow resume URLs")
+	if resumeResp.StatusCode != http.StatusForbidden {
+		t.Fatalf("job token flow resume URL status = %d, want %d", resumeResp.StatusCode, http.StatusForbidden)
 	}
 
 	crossWorkspaceReq, err := http.NewRequest(http.MethodGet, server.URL+"/api/w/ws-b/variables/get/p/config/token", nil)

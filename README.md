@@ -263,6 +263,13 @@ Implemented control-plane endpoints:
 - `POST /api/w/{workspace}/resources`
 - `GET /api/w/{workspace}/resources/get/p/{path}`
 
+The lite script context exposes the implemented basic helpers:
+`ctx.variables`, `ctx.resources`, `ctx.state`, `ctx.http`, `ctx.logger`,
+and the run identity fields. Full Windforce flow approval URL minting
+(`ctx.approval.getResumeUrls` / `POST /flow/resume-urls`) depends on the full
+flow-run/step model and is intentionally not part of the lite basic control
+plane. Lite HITL uses the `WAITING_HUMAN` human-task resume API instead.
+
 `git_sources` responses follow the canonical control-plane shape: `id` is the
 numeric source identifier used by `{gitSourceId}` routes, and `name` is the
 human-readable source name. Control-plane integrations, including the lite CLI,
