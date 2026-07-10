@@ -25,6 +25,11 @@ import (
 
 var version = "dev"
 
+const (
+	defaultLogFlushInterval = 2 * time.Second
+	defaultLogCapBytes      = 20 << 20
+)
+
 func main() {
 	os.Exit(run(os.Args[1:]))
 }
@@ -77,6 +82,8 @@ func runServer(args []string, mode string) int {
 	prepareTimeout := flags.Duration("prepare-timeout", 0, "source prepare timeout; defaults to 5m")
 	poll := flags.Duration("poll", 500*time.Millisecond, "standalone worker poll interval")
 	leaseTTL := flags.Duration("lease", 30*time.Second, "worker job lease TTL")
+	logFlushInterval := flags.Duration("log-flush-interval", defaultLogFlushInterval, "worker log flush interval")
+	logCapBytes := flags.Int("log-cap-bytes", defaultLogCapBytes, "per-job log size cap in bytes; 0 disables the cap")
 	workerID := flags.String("worker-id", "", "worker identity for standalone processing")
 	workerGroup := flags.String("worker-group", "default", "worker group name exposed to action ctx")
 	egressProxy := flags.String("egress-proxy", "", "host:port of a co-located egress proxy sidecar")
@@ -127,11 +134,13 @@ func runServer(args []string, mode string) int {
 				GoPath:         *goPath,
 				PrepareTimeout: *prepareTimeout,
 			},
-			WorkerID:        *workerID,
-			Group:           *workerGroup,
-			Tags:            parseTags(*workerTags),
-			EgressProxyAddr: strings.TrimSpace(*egressProxy),
-			LeaseTTL:        *leaseTTL,
+			WorkerID:         *workerID,
+			Group:            *workerGroup,
+			Tags:             parseTags(*workerTags),
+			EgressProxyAddr:  strings.TrimSpace(*egressProxy),
+			LeaseTTL:         *leaseTTL,
+			LogFlushInterval: *logFlushInterval,
+			LogCapBytes:      *logCapBytes,
 		}
 		go func() {
 			if err := processor.RunLoop(context.Background(), *poll); err != nil {
@@ -168,6 +177,8 @@ func runWorker(args []string) int {
 	secretKeyPreviousEnv := flags.String("secret-key-previous-env", "SECRET_KEY_PREVIOUS", "environment variable that contains the previous instance secret during rotation")
 	poll := flags.Duration("poll", 500*time.Millisecond, "job poll interval")
 	leaseTTL := flags.Duration("lease", 30*time.Second, "job lease TTL")
+	logFlushInterval := flags.Duration("log-flush-interval", defaultLogFlushInterval, "worker log flush interval")
+	logCapBytes := flags.Int("log-cap-bytes", defaultLogCapBytes, "per-job log size cap in bytes; 0 disables the cap")
 	workerID := flags.String("worker-id", "", "worker identity")
 	workerGroup := flags.String("worker-group", "default", "worker group name exposed to action ctx")
 	egressProxy := flags.String("egress-proxy", "", "host:port of a co-located egress proxy sidecar")
@@ -199,11 +210,13 @@ func runWorker(args []string) int {
 			GoPath:         *goPath,
 			PrepareTimeout: *prepareTimeout,
 		},
-		WorkerID:        *workerID,
-		Group:           *workerGroup,
-		Tags:            parseTags(*workerTags),
-		EgressProxyAddr: strings.TrimSpace(*egressProxy),
-		LeaseTTL:        *leaseTTL,
+		WorkerID:         *workerID,
+		Group:            *workerGroup,
+		Tags:             parseTags(*workerTags),
+		EgressProxyAddr:  strings.TrimSpace(*egressProxy),
+		LeaseTTL:         *leaseTTL,
+		LogFlushInterval: *logFlushInterval,
+		LogCapBytes:      *logCapBytes,
 	}
 	if *once {
 		processed, err := processor.ProcessOne(context.Background())

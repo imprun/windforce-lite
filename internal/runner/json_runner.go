@@ -6,24 +6,25 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
 )
 
 // JSONSubprocessRequest describes one action subprocess execution.
 type JSONSubprocessRequest struct {
-	WorkDir    string
-	Command    []string
-	InputPath  string
-	OutputPath string
-	App        string
-	Action     string
-	Timeout    time.Duration
-	Env        []string
-	LogSink    func([]byte)
+	WorkDir     string
+	Command     []string
+	InputPath   string
+	OutputPath  string
+	App         string
+	Action      string
+	Timeout     time.Duration
+	Env         []string
+	LogSink     func([]byte)
+	LogCapBytes int
 }
 
 // JSONSubprocessResult captures process output. Non-zero exit is represented
@@ -50,6 +51,7 @@ type ActionAdapterSubprocessRequest struct {
 	Timeout     time.Duration
 	Env         []string
 	LogSink     func([]byte)
+	LogCapBytes int
 }
 
 // RunJSONSubprocess executes an action subprocess with file-based JSON IO.
@@ -80,10 +82,12 @@ func RunJSONSubprocess(ctx context.Context, req JSONSubprocessRequest) (JSONSubp
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	cmd.Stdout = logWriter(&stdout, req.LogSink)
-	cmd.Stderr = logWriter(&stderr, req.LogSink)
+	logs := newLogLimiter(req.LogCapBytes, req.LogSink)
+	cmd.Stdout = logs.writer(&stdout)
+	cmd.Stderr = logs.writer(&stderr)
 
 	err := cmd.Run()
+	logs.finalize(&stdout)
 	exitCode := 0
 	if cmd.ProcessState != nil {
 		exitCode = cmd.ProcessState.ExitCode()
@@ -155,10 +159,12 @@ func RunActionAdapterSubprocess(ctx context.Context, req ActionAdapterSubprocess
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	cmd.Stdout = logWriter(&stdout, req.LogSink)
-	cmd.Stderr = logWriter(&stderr, req.LogSink)
+	logs := newLogLimiter(req.LogCapBytes, req.LogSink)
+	cmd.Stdout = logs.writer(&stdout)
+	cmd.Stderr = logs.writer(&stderr)
 
 	err = cmd.Run()
+	logs.finalize(&stdout)
 	processResult := JSONSubprocessResult{
 		ExitCode:   0,
 		Stdout:     stdout.String(),
@@ -199,22 +205,66 @@ func RunActionAdapterSubprocess(ctx context.Context, req ActionAdapterSubprocess
 	return adapterResult, nil
 }
 
-func logWriter(buffer *bytes.Buffer, sink func([]byte)) io.Writer {
-	if sink == nil {
-		return buffer
-	}
-	return io.MultiWriter(buffer, logSinkWriter{sink: sink})
+func newLogLimiter(capBytes int, sink func([]byte)) *logLimiter {
+	return &logLimiter{cap: capBytes, sink: sink}
 }
 
-type logSinkWriter struct {
-	sink func([]byte)
+type logLimiter struct {
+	mu        sync.Mutex
+	cap       int
+	total     int
+	truncated bool
+	sink      func([]byte)
 }
 
-func (w logSinkWriter) Write(chunk []byte) (int, error) {
-	if len(chunk) > 0 {
-		w.sink(append([]byte(nil), chunk...))
+func (l *logLimiter) writer(buffer *bytes.Buffer) limitedLogWriter {
+	return limitedLogWriter{buffer: buffer, limiter: l}
+}
+
+func (l *logLimiter) finalize(markerBuffer *bytes.Buffer) {
+	l.mu.Lock()
+	truncated := l.truncated
+	sink := l.sink
+	l.mu.Unlock()
+	if !truncated {
+		return
 	}
-	return len(chunk), nil
+	marker := []byte("\n[log truncated: job exceeded log size cap]\n")
+	markerBuffer.Write(marker)
+	if sink != nil {
+		sink(append([]byte(nil), marker...))
+	}
+}
+
+type limitedLogWriter struct {
+	buffer  *bytes.Buffer
+	limiter *logLimiter
+}
+
+func (w limitedLogWriter) Write(chunk []byte) (int, error) {
+	if len(chunk) == 0 {
+		return 0, nil
+	}
+	w.limiter.mu.Lock()
+	defer w.limiter.mu.Unlock()
+
+	originalLen := len(chunk)
+	if w.limiter.cap > 0 {
+		if w.limiter.total >= w.limiter.cap {
+			w.limiter.truncated = true
+			return originalLen, nil
+		}
+		if w.limiter.total+len(chunk) > w.limiter.cap {
+			chunk = chunk[:w.limiter.cap-w.limiter.total]
+			w.limiter.truncated = true
+		}
+	}
+	w.buffer.Write(chunk)
+	w.limiter.total += len(chunk)
+	if w.limiter.sink != nil {
+		w.limiter.sink(append([]byte(nil), chunk...))
+	}
+	return originalLen, nil
 }
 
 func joinLogText(left string, right string) string {

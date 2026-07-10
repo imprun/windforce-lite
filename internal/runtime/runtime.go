@@ -30,23 +30,25 @@ type Runner struct {
 }
 
 type RunRequest struct {
-	JobID           string
-	WorkspaceID     string
-	Deployment      contract.Deployment
-	Action          string
-	Input           json.RawMessage
-	TriggerKind     string
-	TriggerHeaders  json.RawMessage
-	Tag             string
-	RunnablePath    string
-	InputPath       string
-	OutputPath      string
-	Timeout         time.Duration
-	CreatedBy       string
-	PermissionedAs  string
-	WorkerGroup     string
-	EgressProxyAddr string
-	LogSink         func([]byte)
+	JobID            string
+	WorkspaceID      string
+	Deployment       contract.Deployment
+	Action           string
+	Input            json.RawMessage
+	TriggerKind      string
+	TriggerHeaders   json.RawMessage
+	Tag              string
+	RunnablePath     string
+	InputPath        string
+	OutputPath       string
+	Timeout          time.Duration
+	CreatedBy        string
+	PermissionedAs   string
+	WorkerGroup      string
+	EgressProxyAddr  string
+	LogSink          func([]byte)
+	LogFlushInterval time.Duration
+	LogCapBytes      int
 }
 
 const actionAdapterProtocolVersion = "windforce.action-adapter/v1"
@@ -155,15 +157,16 @@ func (r *Runner) Run(ctx context.Context, req RunRequest) (contract.JobResult, e
 	switch adapterType {
 	case contract.ActionAdapterJSONFile:
 		execResult, execErr = runner.RunJSONSubprocess(ctx, runner.JSONSubprocessRequest{
-			WorkDir:    sourceDir,
-			Command:    action.Command,
-			InputPath:  inputPath,
-			OutputPath: outputPath,
-			App:        req.Deployment.App,
-			Action:     req.Action,
-			Timeout:    timeout,
-			Env:        env,
-			LogSink:    req.LogSink,
+			WorkDir:     sourceDir,
+			Command:     action.Command,
+			InputPath:   inputPath,
+			OutputPath:  outputPath,
+			App:         req.Deployment.App,
+			Action:      req.Action,
+			Timeout:     timeout,
+			Env:         env,
+			LogSink:     req.LogSink,
+			LogCapBytes: req.LogCapBytes,
 		})
 	case contract.ActionAdapterCommand:
 		adapterRequestPath := filepath.Join(jobDir, "adapter-request.json")
@@ -191,11 +194,12 @@ func (r *Runner) Run(ctx context.Context, req RunRequest) (contract.JobResult, e
 				Deployment:     req.Deployment,
 				Options:        action.Adapter.Options,
 			},
-			App:     req.Deployment.App,
-			Action:  req.Action,
-			Timeout: timeout,
-			Env:     adapterEnv,
-			LogSink: req.LogSink,
+			App:         req.Deployment.App,
+			Action:      req.Action,
+			Timeout:     timeout,
+			Env:         adapterEnv,
+			LogSink:     req.LogSink,
+			LogCapBytes: req.LogCapBytes,
 		})
 	default:
 		return contract.JobResult{}, fmt.Errorf("unsupported action adapter %q", adapterType)
@@ -266,6 +270,8 @@ func (r *Runner) runEntrypoint(ctx context.Context, req RunRequest, sourceDir st
 		Env:               env,
 		Timeout:           actionTimeout(req, action),
 		LogSink:           req.LogSink,
+		LogFlushInterval:  req.LogFlushInterval,
+		LogCapBytes:       req.LogCapBytes,
 	})
 	if err == nil && req.OutputPath != "" {
 		if writeErr := writeOutputFile(req.OutputPath, result.Result); writeErr != nil {

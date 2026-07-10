@@ -214,6 +214,9 @@ go run ./cmd/windforce-lite worker --state .tmp/state.json --store .tmp/store
 tests and scripted smoke checks.
 `worker --tags default,app-blue` restricts claims to those pinned route tags;
 when omitted, the worker claims every queued tag for simple local development.
+`worker --log-flush-interval 2s --log-cap-bytes 20971520` matches the canonical
+default of incremental job log flushing with a 20 MiB per-job cap; set
+`--log-cap-bytes 0` only for local debugging.
 
 Implemented control-plane endpoints:
 

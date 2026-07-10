@@ -22,6 +22,8 @@ type Processor struct {
 	EgressProxyAddr   string
 	LeaseTTL          time.Duration
 	HeartbeatInterval time.Duration
+	LogFlushInterval  time.Duration
+	LogCapBytes       int
 }
 
 func (p *Processor) ProcessOne(ctx context.Context) (bool, error) {
@@ -77,6 +79,8 @@ func (p *Processor) ProcessOne(ctx context.Context) (bool, error) {
 		LogSink: func(chunk []byte) {
 			_ = p.Store.AppendLogs(context.Background(), job.ID, workspaceID, string(chunk))
 		},
+		LogFlushInterval: p.LogFlushInterval,
+		LogCapBytes:      p.LogCapBytes,
 	})
 	result.JobID = job.ID
 	result.Stdout = ""
