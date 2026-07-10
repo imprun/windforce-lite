@@ -29,6 +29,7 @@ from typing import (
     Mapping,
     Protocol,
     Sequence,
+    TypedDict,
     runtime_checkable,
 )
 
@@ -43,6 +44,9 @@ __all__ = [
     "Resources",
     "State",
     "Http",
+    "Approval",
+    "Flow",
+    "ResumeUrls",
     "Handler",
     "Middleware",
     "Next",
@@ -84,6 +88,31 @@ class State(Protocol):
 class Http(Protocol):
     # The platform's egress capability; the wrapper supplies the implementation.
     async def fetch(self, url: str, **options: Any) -> Any: ...
+
+
+class ResumeUrls(TypedDict):
+    """The server-signed approve/reject URLs minted for an upcoming approval."""
+
+    approve: str
+    reject: str
+    resume_id: int
+    step_index: int
+    expires_at: int
+
+
+@runtime_checkable
+class Approval(Protocol):
+    # Flow HITL (ADR-0053): mint the approve/reject URLs for the approval step that
+    # immediately follows this one (call from the action right before an approval).
+    # approver scopes the resume slot — required for a multi-approval step.
+    async def get_resume_urls(self, approver: str | None = None) -> "ResumeUrls": ...
+
+
+@runtime_checkable
+class Flow(Protocol):
+    # resume_value is the approver's submitted value, present only on the action that runs
+    # immediately AFTER an approval (also delivered as ctx.input); None for other steps.
+    resume_value: Any
 
 
 @runtime_checkable
@@ -128,6 +157,8 @@ class WindforceContext(Protocol):
     resources: Resources
     state: State
     http: Http
+    approval: Approval
+    flow: Flow
 
 
 async def _maybe_await(value: Any) -> Any:

@@ -1,5 +1,14 @@
 export type Middleware = (ctx: WindforceContext, next: () => Promise<unknown>) => Promise<unknown>
 
+/** The server-signed approve/reject URLs minted for an upcoming approval (ctx.approval). */
+export interface ResumeUrls {
+  approve: string
+  reject: string
+  resume_id: number
+  step_index: number
+  expires_at: number
+}
+
 export interface WindforceContext {
   input: unknown
   trigger: {
@@ -22,6 +31,8 @@ export interface WindforceContext {
   resources: { get(path: string): Promise<unknown> }
   state: { get(): Promise<unknown>; set(value: unknown): Promise<void> }
   http: { fetch: typeof fetch }
+  approval: { getResumeUrls(approver?: string): Promise<ResumeUrls> }
+  flow: { resumeValue?: unknown }
 }
 
 export interface AppConfig {
