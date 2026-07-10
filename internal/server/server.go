@@ -941,8 +941,6 @@ func (h *Handler) handleCanonicalWorkerTags(w http.ResponseWriter, r *http.Reque
 	workspaceID = contract.NormalizeWorkspace(workspaceID)
 	tags := map[string]struct{}{}
 	for _, deployment := range canonicalDeployments(snapshot, workspaceID) {
-		tags[defaultRouteTag()] = struct{}{}
-		tags[contract.EffectiveRouteTagForApp(deployment)] = struct{}{}
 		for _, action := range deployment.Actions {
 			tags[contract.EffectiveRouteTagForAction(deployment, action)] = struct{}{}
 		}
@@ -1615,9 +1613,6 @@ func cloneInt32Ptr(value *int32) *int32 {
 func newCanonicalWorkerTagsView(tags map[string]struct{}) canonicalWorkerTagsView {
 	if tags == nil {
 		tags = map[string]struct{}{}
-	}
-	if len(tags) == 0 {
-		tags[defaultRouteTag()] = struct{}{}
 	}
 	keys := make([]string, 0, len(tags))
 	for tag := range tags {

@@ -2775,8 +2775,8 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 	for _, item := range workerTags.Tags {
 		seenTags[item.Tag] = true
 	}
-	if !seenTags["default"] || !seenTags["browser"] {
-		t.Fatalf("worker tags = %#v, want default and browser", workerTags.Tags)
+	if len(workerTags.Tags) != 1 || !seenTags["browser"] || seenTags["default"] {
+		t.Fatalf("worker tags = %#v, want only browser", workerTags.Tags)
 	}
 
 	runReq, err := http.NewRequest(http.MethodPost, server.URL+"/api/w/ws-a/jobs/run/echo/echo", bytes.NewBufferString(`{"message":"hello"}`))
@@ -3476,6 +3476,34 @@ func TestCanonicalWorkerTagsAPI(t *testing.T) {
 	}
 }
 
+func TestCanonicalWorkerTagsDoesNotInventDefaultRoute(t *testing.T) {
+	tempDir := t.TempDir()
+	fileCatalog := catalog.NewFileCatalog(filepath.Join(tempDir, "catalog.json"))
+	server := httptest.NewServer(New(Config{Catalog: fileCatalog, EnableAPI: true}))
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/api/w/ws-a/worker-tags")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("worker-tags status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	var body struct {
+		Tags []struct {
+			Tag string `json:"tag"`
+		} `json:"tags"`
+		DedicatedTag *string `json:"dedicated_tag"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Tags) != 0 || body.DedicatedTag != nil {
+		t.Fatalf("worker-tags body = %#v, want no invented routes", body)
+	}
+}
+
 func TestCanonicalAppAndActionTagOverrideAPI(t *testing.T) {
 	tempDir := t.TempDir()
 	fileCatalog := catalog.NewFileCatalog(filepath.Join(tempDir, "catalog.json"))
@@ -3626,10 +3654,8 @@ func TestCanonicalAppAndActionTagOverrideAPI(t *testing.T) {
 	for _, item := range tagsBody.Tags {
 		seenTags[item.Tag] = true
 	}
-	for _, tag := range []string{"default", "app-blue", "action-fast"} {
-		if !seenTags[tag] {
-			t.Fatalf("worker tags missing %q: %#v", tag, tagsBody.Tags)
-		}
+	if len(tagsBody.Tags) != 1 || !seenTags["action-fast"] || seenTags["default"] || seenTags["app-blue"] {
+		t.Fatalf("worker tags = %#v, want only action-fast", tagsBody.Tags)
 	}
 
 	clearActionReq, err := http.NewRequest(http.MethodPatch, server.URL+"/api/w/ws-a/apps/echo/actions/echo", bytes.NewBufferString(`{"tag_override":null}`))
