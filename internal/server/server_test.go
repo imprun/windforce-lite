@@ -135,6 +135,7 @@ func TestCanonicalJobListQueryValidation(t *testing.T) {
 	}))
 	defer server.Close()
 
+	nonUUIDCursor := base64.RawURLEncoding.EncodeToString([]byte(time.Now().UTC().Format(time.RFC3339Nano) + "|not-a-uuid"))
 	for _, tc := range []struct {
 		query string
 		want  string
@@ -144,6 +145,7 @@ func TestCanonicalJobListQueryValidation(t *testing.T) {
 		{"limit=0", "limit must be between 1 and 500"},
 		{"limit=501", "limit must be between 1 and 500"},
 		{"cursor=bad", "invalid cursor"},
+		{"cursor=" + nonUUIDCursor, "invalid cursor"},
 		{"since=bad", "since must be RFC3339"},
 		{"until=bad", "until must be RFC3339"},
 	} {
@@ -949,6 +951,9 @@ func TestCanonicalJobRunStatusAndResultAPI(t *testing.T) {
 	}
 	if runResponse.JobID == "" {
 		t.Fatalf("missing job id")
+	}
+	if !isCanonicalUUID(runResponse.JobID) {
+		t.Fatalf("job id = %q, want UUID", runResponse.JobID)
 	}
 
 	statusResp, err := http.Get(server.URL + "/api/w/ws-a/jobs/" + runResponse.JobID)

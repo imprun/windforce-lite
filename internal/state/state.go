@@ -412,11 +412,26 @@ func clearRunResultOutput(run *Run) {
 }
 
 func NewID(prefix string) string {
+	if prefix == "run" || prefix == "job" || prefix == "human" {
+		if id, ok := newCanonicalUUID(); ok {
+			return id
+		}
+	}
 	var data [12]byte
 	if _, err := rand.Read(data[:]); err != nil {
 		return fmt.Sprintf("%s_%d", prefix, time.Now().UnixNano())
 	}
 	return prefix + "_" + hex.EncodeToString(data[:])
+}
+
+func newCanonicalUUID() (string, bool) {
+	var data [16]byte
+	if _, err := rand.Read(data[:]); err != nil {
+		return "", false
+	}
+	data[6] = (data[6] & 0x0f) | 0x40
+	data[8] = (data[8] & 0x3f) | 0x80
+	return fmt.Sprintf("%x-%x-%x-%x-%x", data[0:4], data[4:6], data[6:8], data[8:10], data[10:16]), true
 }
 
 func NewRun(adapter string, id string, app string, action string, deployment contract.Deployment, input json.RawMessage) Run {

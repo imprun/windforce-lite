@@ -2811,10 +2811,29 @@ func decodeJobCursor(raw string) (time.Time, string, error) {
 	if err != nil {
 		return time.Time{}, "", err
 	}
-	if id == "" {
+	if id == "" || !isCanonicalUUID(id) {
 		return time.Time{}, "", fmt.Errorf("malformed cursor")
 	}
 	return createdAt, id, nil
+}
+
+func isCanonicalUUID(value string) bool {
+	if len(value) != 36 {
+		return false
+	}
+	for index, r := range value {
+		switch index {
+		case 8, 13, 18, 23:
+			if r != '-' {
+				return false
+			}
+		default:
+			if !((r >= '0' && r <= '9') || (r >= 'a' && r <= 'f') || (r >= 'A' && r <= 'F')) {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func firstNonEmpty(values ...string) string {

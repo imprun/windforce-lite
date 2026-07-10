@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -12,6 +13,19 @@ import (
 	"github.com/imprun/windforce-lite/internal/contract"
 	wfcrypto "github.com/imprun/windforce-lite/internal/crypto"
 )
+
+var canonicalUUIDPattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+
+func TestNewIDUsesCanonicalUUIDsForRuntimeEntities(t *testing.T) {
+	for _, prefix := range []string{"run", "job", "human"} {
+		if got := NewID(prefix); !canonicalUUIDPattern.MatchString(got) {
+			t.Fatalf("NewID(%q) = %q, want UUID", prefix, got)
+		}
+	}
+	if got := NewID("worker"); !strings.HasPrefix(got, "worker_") {
+		t.Fatalf("NewID(\"worker\") = %q, want worker_ prefix", got)
+	}
+}
 
 func TestLocalStoreClaimCompleteAndResumeLifecycle(t *testing.T) {
 	store := NewLocalStore(t.TempDir() + "/state.json")
