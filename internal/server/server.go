@@ -111,6 +111,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]bool{"ready": h.store != nil})
 		return
 	}
+	if h.handleWebUI(w, r) {
+		return
+	}
 	if h.enableAPI {
 		authorizedRequest, status, message := h.authorizeAPIRequest(r)
 		if status != 0 {
