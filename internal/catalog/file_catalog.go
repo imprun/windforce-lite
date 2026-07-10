@@ -26,18 +26,19 @@ type Snapshot struct {
 }
 
 type DeploymentHistory struct {
-	ID          string              `json:"id"`
-	Workspace   string              `json:"workspace"`
-	GitSourceID string              `json:"gitSourceId,omitempty"`
-	App         string              `json:"app"`
-	Commit      string              `json:"commit"`
-	Entrypoint  string              `json:"entrypoint,omitempty"`
-	Source      string              `json:"source"`
-	Status      string              `json:"status"`
-	Message     *string             `json:"message,omitempty"`
-	ObjectURI   string              `json:"objectUri,omitempty"`
-	Deployment  contract.Deployment `json:"deployment"`
-	CreatedAt   time.Time           `json:"createdAt"`
+	ID           string              `json:"id"`
+	Workspace    string              `json:"workspace"`
+	GitSourceID  string              `json:"gitSourceId,omitempty"`
+	App          string              `json:"app"`
+	Commit       string              `json:"commit"`
+	Entrypoint   string              `json:"entrypoint,omitempty"`
+	Source       string              `json:"source"`
+	Status       string              `json:"status"`
+	DeploymentID *string             `json:"deploymentId,omitempty"`
+	Message      *string             `json:"message,omitempty"`
+	ObjectURI    string              `json:"objectUri,omitempty"`
+	Deployment   contract.Deployment `json:"deployment"`
+	CreatedAt    time.Time           `json:"createdAt"`
 }
 
 func NewFileCatalog(path string) *FileCatalog {

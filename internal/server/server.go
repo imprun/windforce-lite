@@ -1271,12 +1271,13 @@ func newCanonicalAppSummaryView(deployment contract.Deployment) canonicalAppSumm
 
 func newCanonicalAppHistoryItem(item catalogpkg.DeploymentHistory) canonicalAppHistoryItem {
 	return canonicalAppHistoryItem{
-		ID:         item.ID,
-		CommitSha:  item.Commit,
-		Entrypoint: item.Entrypoint,
-		Source:     firstNonEmpty(item.Source, "external_sync"),
-		Message:    item.Message,
-		CreatedAt:  item.CreatedAt,
+		ID:           item.ID,
+		CommitSha:    item.Commit,
+		Entrypoint:   item.Entrypoint,
+		Source:       firstNonEmpty(item.Source, "external_sync"),
+		DeploymentID: cloneStringPtr(item.DeploymentID),
+		Message:      item.Message,
+		CreatedAt:    item.CreatedAt,
 	}
 }
 

@@ -3020,6 +3020,65 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 	}
 }
 
+func TestCanonicalAppHistoryPreservesDeploymentMetadata(t *testing.T) {
+	tempDir := t.TempDir()
+	fileCatalog := catalog.NewFileCatalog(filepath.Join(tempDir, "catalog.json"))
+	deploymentID := "11111111-1111-4111-8111-111111111111"
+	message := "deployed through control plane"
+	createdAt := time.Date(2026, 7, 10, 12, 0, 0, 0, time.UTC)
+	snapshot := catalog.Snapshot{
+		History: []catalog.DeploymentHistory{{
+			ID:           "22222222-2222-4222-8222-222222222222",
+			Workspace:    "ws-a",
+			App:          "echo",
+			Commit:       "commit-a",
+			Entrypoint:   "main.ts",
+			Source:       "deploy",
+			DeploymentID: &deploymentID,
+			Message:      &message,
+			CreatedAt:    createdAt,
+		}},
+	}
+	data, err := json.Marshal(snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(fileCatalog.Path, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	server := httptest.NewServer(New(Config{Catalog: fileCatalog, EnableAPI: true}))
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/api/w/ws-a/apps/echo/history")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("history status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	var history []struct {
+		ID           string    `json:"id"`
+		CommitSha    string    `json:"commit_sha"`
+		Entrypoint   string    `json:"entrypoint"`
+		Source       string    `json:"source"`
+		DeploymentID *string   `json:"deployment_id"`
+		Message      *string   `json:"message"`
+		CreatedAt    time.Time `json:"created_at"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&history); err != nil {
+		t.Fatal(err)
+	}
+	if len(history) != 1 || history[0].ID == "" || history[0].CommitSha != "commit-a" ||
+		history[0].Entrypoint != "main.ts" || history[0].Source != "deploy" ||
+		history[0].DeploymentID == nil || *history[0].DeploymentID != deploymentID ||
+		history[0].Message == nil || *history[0].Message != message ||
+		!history[0].CreatedAt.Equal(createdAt) {
+		t.Fatalf("history = %#v", history)
+	}
+}
+
 func TestCanonicalGitSourceSyncReturnsConflictWhenOperationInProgress(t *testing.T) {
 	tempDir := t.TempDir()
 	registry := gitsource.NewFileRegistry(filepath.Join(tempDir, "git-sources.json"))
