@@ -185,6 +185,20 @@ func CapabilityRouteTag(caps []string) (string, bool, error) {
 	return capabilityRouteTags[normalized[0]], true, nil
 }
 
+func CapabilityTagConflict(appTag string, appTagOverride *string, actionTag *string, actionTagOverride *string, effectiveCaps []string) (bool, error) {
+	_, hasCapabilityRoute, err := CapabilityRouteTag(effectiveCaps)
+	if err != nil {
+		return false, err
+	}
+	if !hasCapabilityRoute {
+		return false, nil
+	}
+	return appTagOverride != nil ||
+		actionTag != nil ||
+		actionTagOverride != nil ||
+		(appTag != "" && appTag != DefaultRouteTag), nil
+}
+
 func EffectiveCapabilities(appCaps []string, actionCaps *[]string) []string {
 	if actionCaps != nil {
 		return *actionCaps

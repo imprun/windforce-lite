@@ -79,6 +79,47 @@ func TestCapabilitiesReduceRouteTag(t *testing.T) {
 	}
 }
 
+func TestCapabilityTagConflictMatchesCanonicalEnqueueRule(t *testing.T) {
+	caps := []string{"browser"}
+	appOverride := "app-blue"
+	actionTag := "action-main"
+	actionOverride := "action-fast"
+
+	for _, test := range []struct {
+		name           string
+		appTag         string
+		appOverride    *string
+		actionTag      *string
+		actionOverride *string
+		want           bool
+	}{
+		{name: "default tag", appTag: DefaultRouteTag, want: false},
+		{name: "empty tag", appTag: "", want: false},
+		{name: "manifest app tag", appTag: "app-main", want: true},
+		{name: "app override", appTag: DefaultRouteTag, appOverride: &appOverride, want: true},
+		{name: "action tag", appTag: DefaultRouteTag, actionTag: &actionTag, want: true},
+		{name: "action override", appTag: DefaultRouteTag, actionOverride: &actionOverride, want: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := CapabilityTagConflict(test.appTag, test.appOverride, test.actionTag, test.actionOverride, caps)
+			if err != nil {
+				t.Fatalf("CapabilityTagConflict returned error: %v", err)
+			}
+			if got != test.want {
+				t.Fatalf("CapabilityTagConflict = %v, want %v", got, test.want)
+			}
+		})
+	}
+
+	got, err := CapabilityTagConflict("app-main", &appOverride, &actionTag, &actionOverride, nil)
+	if err != nil {
+		t.Fatalf("CapabilityTagConflict without caps returned error: %v", err)
+	}
+	if got {
+		t.Fatalf("CapabilityTagConflict without capability route = true, want false")
+	}
+}
+
 func TestNormalizeCapabilitiesRejectsUnsupported(t *testing.T) {
 	if _, err := NormalizeCapabilities([]string{"gpu"}); err == nil {
 		t.Fatalf("expected unsupported capability error")

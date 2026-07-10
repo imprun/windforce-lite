@@ -3263,6 +3263,69 @@ func TestCanonicalAppAndActionTagOverrideAPI(t *testing.T) {
 	}
 }
 
+func TestCanonicalJobRunRejectsCapabilityTagOverrideConflict(t *testing.T) {
+	tempDir := t.TempDir()
+	fileCatalog := catalog.NewFileCatalog(filepath.Join(tempDir, "catalog.json"))
+	if err := fileCatalog.UpsertDeployment(context.Background(), contract.Deployment{
+		Workspace:            "ws-a",
+		GitSourceID:          "source-a",
+		App:                  "echo",
+		Tag:                  contract.DefaultRouteTag,
+		Commit:               "commit-a",
+		RequiredCapabilities: []string{"browser"},
+		Actions: map[string]contract.Action{
+			"echo": {Action: "echo", Command: []string{"helper"}},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(New(Config{
+		Store:     state.NewLocalStore(filepath.Join(tempDir, "state.json")),
+		Catalog:   fileCatalog,
+		EnableAPI: true,
+	}))
+	defer server.Close()
+
+	runResp, err := http.Post(server.URL+"/api/w/ws-a/jobs/run/echo/echo", "application/json", bytes.NewBufferString(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = runResp.Body.Close()
+	if runResp.StatusCode != http.StatusCreated {
+		t.Fatalf("run status = %d, want %d", runResp.StatusCode, http.StatusCreated)
+	}
+
+	patchReq, err := http.NewRequest(http.MethodPatch, server.URL+"/api/w/ws-a/apps/echo", bytes.NewBufferString(`{"tag_override":"app-blue"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	patchReq.Header.Set("Content-Type", "application/json")
+	patchResp, err := http.DefaultClient.Do(patchReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = patchResp.Body.Close()
+	if patchResp.StatusCode != http.StatusOK {
+		t.Fatalf("patch status = %d, want %d", patchResp.StatusCode, http.StatusOK)
+	}
+
+	conflictResp, err := http.Post(server.URL+"/api/w/ws-a/jobs/run/echo/echo", "application/json", bytes.NewBufferString(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conflictResp.Body.Close()
+	var body struct {
+		Error string `json:"error"`
+	}
+	if err := json.NewDecoder(conflictResp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if conflictResp.StatusCode != http.StatusConflict ||
+		body.Error != "required worker capability conflicts with explicit tag routing" {
+		t.Fatalf("conflict response = %d %#v, want 409 capability conflict", conflictResp.StatusCode, body)
+	}
+}
+
 func TestCanonicalDeploymentModelPreservesStoredValues(t *testing.T) {
 	if got := canonicalDeploymentEntrypoint(contract.Deployment{Entrypoint: " main.ts "}); got != " main.ts " {
 		t.Fatalf("entrypoint = %q, want stored value", got)

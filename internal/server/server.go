@@ -1759,6 +1759,16 @@ func (h *Handler) enqueueJob(w http.ResponseWriter, r *http.Request, workspaceID
 		writeError(w, http.StatusNotFound, "action not found: "+app+"/"+action)
 		return state.Job{}, false
 	}
+	effectiveCapabilities := contract.EffectiveCapabilities(deployment.RequiredCapabilities, actionSpec.Capabilities)
+	capabilityTagConflict, err := contract.CapabilityTagConflict(deployment.Tag, deployment.TagOverride, actionSpec.Tag, actionSpec.TagOverride, effectiveCapabilities)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return state.Job{}, false
+	}
+	if capabilityTagConflict {
+		writeError(w, http.StatusConflict, "required worker capability conflicts with explicit tag routing")
+		return state.Job{}, false
+	}
 	run := state.NewRun("windforce", "", app, action, deployment, input)
 	applyRequestActor(&run, r)
 	if correlationID := state.CleanID(r.Header.Get("X-Request-ID")); correlationID != "" {
