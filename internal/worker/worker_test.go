@@ -203,12 +203,11 @@ func newProcessorTestHarness(t *testing.T, helperMode string) (Processor, *state
 		Actions: map[string]contract.Action{
 			"echo": {
 				Action:  "echo",
-				Command: []string{os.Args[0], "-test.run=TestWorkerHelperProcess", "--"},
+				Command: []string{os.Args[0], "-test.run=TestWorkerHelperProcess", "--", helperMode},
 			},
 		},
 	}
 	run := state.NewRun("windforce", "run-"+helperMode, "echo", "echo", deployment, json.RawMessage(`{"message":"hello"}`))
-	run.Env = []string{"WINDFORCE_LITE_WORKER_HELPER=" + helperMode}
 	job := state.NewActionJob(run, nil)
 	stateStore := state.NewLocalStore(filepath.Join(tempDir, "state.json"))
 	if err := stateStore.CreateRunAndEnqueue(context.Background(), run, job); err != nil {
@@ -228,7 +227,12 @@ func newProcessorTestHarness(t *testing.T, helperMode string) (Processor, *state
 }
 
 func TestWorkerHelperProcess(t *testing.T) {
-	mode := os.Getenv("WINDFORCE_LITE_WORKER_HELPER")
+	mode := ""
+	for index, arg := range os.Args {
+		if mode == "" && arg == "--" && index+1 < len(os.Args) {
+			mode = os.Args[index+1]
+		}
+	}
 	if mode == "" {
 		return
 	}

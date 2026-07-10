@@ -52,7 +52,6 @@ func (p *Processor) ProcessOne(ctx context.Context) (bool, error) {
 		TriggerKind:     job.Payload.TriggerKind,
 		TriggerHeaders:  job.Payload.TriggerHeaders,
 		Tag:             job.Payload.Tag,
-		Env:             job.Payload.Env,
 		CreatedBy:       job.Payload.CreatedBy,
 		PermissionedAs:  job.Payload.PermissionedAs,
 		WorkerGroup:     p.Group,

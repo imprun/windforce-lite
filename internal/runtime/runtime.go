@@ -41,7 +41,6 @@ type RunRequest struct {
 	InputPath       string
 	OutputPath      string
 	Timeout         time.Duration
-	Env             []string
 	CreatedBy       string
 	PermissionedAs  string
 	WorkerGroup     string
@@ -315,7 +314,7 @@ func (r *Runner) jobEnv(req RunRequest, action contract.Action) []string {
 	permissionedAs := firstNonEmpty(strings.TrimSpace(req.PermissionedAs), createdBy)
 	workerGroup := firstNonEmpty(strings.TrimSpace(req.WorkerGroup), "default")
 	egressProxyAddr := strings.TrimSpace(req.EgressProxyAddr)
-	env := append(curatedHostEnv(), req.Env...)
+	env := curatedHostEnv()
 	add := func(key string, value string) {
 		env = append(env, key+"="+value)
 	}

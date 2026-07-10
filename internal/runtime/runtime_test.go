@@ -623,7 +623,6 @@ func TestRunnerRunsActionThroughCommandAdapter(t *testing.T) {
 		Action:         "echo",
 		Input:          json.RawMessage(`{"message":"hello"}`),
 		TriggerHeaders: json.RawMessage(`{"X-Hub-Signature-256":"sha256=abc"}`),
-		Env:            []string{"SCRIPT_ENV=1"},
 	})
 	if err != nil {
 		t.Fatalf("Run returned error: %v", err)
@@ -649,7 +648,7 @@ func TestRunnerRunsActionThroughCommandAdapter(t *testing.T) {
 	if len(output.Command) != 2 || output.Command[0] != "legacy" || output.Command[1] != "script" {
 		t.Fatalf("command = %#v", output.Command)
 	}
-	if !containsEnv(output.Env, "SCRIPT_ENV=1") || !containsEnv(output.Env, `WF_TRIGGER_HEADERS={"X-Hub-Signature-256":"sha256=abc"}`) {
+	if containsEnv(output.Env, "SCRIPT_ENV=1") || !containsEnv(output.Env, `WF_TRIGGER_HEADERS={"X-Hub-Signature-256":"sha256=abc"}`) {
 		t.Fatalf("env = %#v", output.Env)
 	}
 	if output.Input["message"] != "hello" {
