@@ -239,6 +239,10 @@ func (h *Handler) handleAPI(w http.ResponseWriter, r *http.Request) bool {
 		h.handleCanonicalAction(w, r, parts[2], parts[4], parts[6])
 		return true
 	}
+	if len(parts) == 8 && parts[0] == "api" && parts[1] == "w" && parts[3] == "apps" && parts[5] == "actions" && parts[7] == "schema" && r.Method == http.MethodGet {
+		h.handleCanonicalActionSchema(w, r, parts[2], parts[4], parts[6])
+		return true
+	}
 	if len(parts) == 7 && parts[0] == "api" && parts[1] == "w" && parts[3] == "apps" && parts[5] == "actions" && r.Method == http.MethodPatch {
 		h.handleCanonicalPatchAction(w, r, parts[2], parts[4], parts[6])
 		return true
@@ -783,6 +787,30 @@ func (h *Handler) handleCanonicalAction(w http.ResponseWriter, r *http.Request, 
 	writeJSON(w, http.StatusOK, view)
 }
 
+func (h *Handler) handleCanonicalActionSchema(w http.ResponseWriter, r *http.Request, workspaceID string, app string, actionKey string) {
+	if !validAppKey(app) || !validActionKey(actionKey) {
+		writeError(w, http.StatusBadRequest, "invalid app/action key")
+		return
+	}
+	deployment, ok := h.getCanonicalDeployment(w, r, workspaceID, app, "action not found")
+	if !ok {
+		return
+	}
+	action, exists := deployment.Actions[actionKey]
+	if !exists {
+		writeError(w, http.StatusNotFound, "action not found")
+		return
+	}
+	schemaReader := h.newCanonicalSchemaReader(r.Context(), deployment)
+	defer schemaReader.Close()
+	view, err := h.newCanonicalActionSchemaView(schemaReader, deployment, actionKey, action)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, view)
+}
+
 func (h *Handler) handleCanonicalPatchApp(w http.ResponseWriter, r *http.Request, workspaceID string, app string) {
 	if !validAppKey(app) {
 		writeError(w, http.StatusBadRequest, "invalid app key")
@@ -1196,6 +1224,7 @@ type canonicalActionModel struct {
 }
 
 type canonicalActionSchemaView struct {
+	WorkspaceID  string          `json:"workspace_id"`
 	AppKey       string          `json:"app_key"`
 	ActionKey    string          `json:"action_key"`
 	InputSchema  json.RawMessage `json:"input_schema"`
@@ -1332,6 +1361,7 @@ func (h *Handler) newCanonicalActionSchemaView(schemaReader *canonicalSchemaRead
 		return canonicalActionSchemaView{}, fmt.Errorf("action %s.%s output schema: %w", deployment.App, actionKey, err)
 	}
 	return canonicalActionSchemaView{
+		WorkspaceID:  contract.NormalizeWorkspace(deployment.SourceWorkspace()),
 		AppKey:       deployment.App,
 		ActionKey:    actionKey,
 		InputSchema:  inputSchema,

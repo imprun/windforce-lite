@@ -222,7 +222,7 @@ func buildControlPlaneOpenAPI(baseURL string, workspaceID string) map[string]any
 			"get": map[string]any{
 				"operationId": "getAction",
 				"summary":     "Get action detail and schemas",
-				"description": "This is the schema discovery endpoint for protocol adapters and UI forms. input_schema and output_schema use Windforce catalog encoding: base64-encoded materialized JSON Schema bytes from windforce.json/source; use this control-plane API instead of a lite-only schema route.",
+				"description": "Returns canonical action metadata. input_schema and output_schema use Windforce catalog encoding: base64-encoded materialized JSON Schema bytes from windforce.json/source. Use the sibling /schema endpoint when a control-plane client needs raw JSON Schema documents.",
 				"parameters":  []any{oapiWorkspaceParam(workspaceID), oapiPathParam("app", "App key."), oapiPathParam("action", "Action key.")},
 				"responses": withErrors(map[string]any{
 					"200": oapiResponse("Action detail including materialized schemas.", oapiSchemaRef("Action")),
@@ -235,6 +235,17 @@ func buildControlPlaneOpenAPI(baseURL string, workspaceID string) map[string]any
 				"requestBody": oapiJSONBody(oapiSchemaRef("TagOverrideRequest"), true),
 				"responses": withErrors(map[string]any{
 					"200": oapiResponse("Updated action.", oapiSchemaRef("Action")),
+				}, "400", "401", "403", "404"),
+			},
+		},
+		"/api/w/{workspace}/apps/{app}/actions/{action}/schema": map[string]any{
+			"get": map[string]any{
+				"operationId": "getActionSchema",
+				"summary":     "Get action JSON Schemas",
+				"description": "Schema discovery endpoint for protocol adapters and UI forms. Returns the materialized input_schema and output_schema as raw JSON Schema documents pinned by sync, while GET /actions/{action} keeps Windforce's canonical base64 catalog encoding.",
+				"parameters":  []any{oapiWorkspaceParam(workspaceID), oapiPathParam("app", "App key."), oapiPathParam("action", "Action key.")},
+				"responses": withErrors(map[string]any{
+					"200": oapiResponse("Action input/output JSON Schemas.", oapiSchemaRef("ActionSchema")),
 				}, "400", "401", "403", "404"),
 			},
 		},
@@ -914,6 +925,18 @@ func controlPlaneSchemas() map[string]any {
 			"description": "Canonical action detail. input_schema and output_schema use the canonical catalog encoding: base64-encoded materialized JSON Schema bytes.",
 			"properties":  actionProperties,
 			"required":    []any{"id", "workspace_id", "app_key", "action_key", "input_schema", "output_schema", "updated_at"},
+		},
+		"ActionSchema": map[string]any{
+			"type":        "object",
+			"description": "Raw materialized JSON Schema documents for one action.",
+			"properties": map[string]any{
+				"workspace_id":  oapiStringSchema(),
+				"app_key":       oapiStringSchema(),
+				"action_key":    oapiStringSchema(),
+				"input_schema":  jsonSchema,
+				"output_schema": jsonSchema,
+			},
+			"required": []any{"workspace_id", "app_key", "action_key", "input_schema", "output_schema"},
 		},
 		"AppAction": map[string]any{
 			"type":        "object",

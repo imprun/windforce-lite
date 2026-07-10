@@ -1503,6 +1503,7 @@ func TestCanonicalControlPlaneRejectsInvalidAppAndActionKeys(t *testing.T) {
 		{http.MethodGet, "/api/w/ws-a/apps/Bad!/history", "", "invalid app key"},
 		{http.MethodGet, "/api/w/ws-a/apps/Bad!/openapi.json", "", "invalid app key"},
 		{http.MethodGet, "/api/w/ws-a/apps/echo/actions/Bad!", "", "invalid app/action key"},
+		{http.MethodGet, "/api/w/ws-a/apps/echo/actions/Bad!/schema", "", "invalid app/action key"},
 		{http.MethodPatch, "/api/w/ws-a/apps/Bad!", `{"tag_override":null}`, "invalid app key"},
 		{http.MethodPatch, "/api/w/ws-a/apps/echo/actions/Bad!", `{"tag_override":null}`, "invalid app/action key"},
 		{http.MethodPost, "/api/w/ws-a/apps/Bad!/requeue", `{}`, "invalid app key"},
@@ -1563,17 +1564,18 @@ func TestCanonicalControlPlaneOpenAPIExposesSchemaDiscovery(t *testing.T) {
 	actionPath := paths["/api/w/{workspace}/apps/{app}/actions/{action}"].(map[string]any)
 	actionGet := actionPath["get"].(map[string]any)
 	actionDescription := actionGet["description"].(string)
-	if !bytes.Contains([]byte(actionDescription), []byte("schema discovery")) ||
-		!bytes.Contains([]byte(actionDescription), []byte("control-plane API")) ||
-		!bytes.Contains([]byte(actionDescription), []byte("input_schema")) ||
-		!bytes.Contains([]byte(actionDescription), []byte("output_schema")) {
+	if !bytes.Contains([]byte(actionDescription), []byte("canonical action metadata")) ||
+		!bytes.Contains([]byte(actionDescription), []byte("base64")) ||
+		!bytes.Contains([]byte(actionDescription), []byte("sibling /schema endpoint")) {
 		t.Fatalf("action discovery description = %q", actionDescription)
 	}
 	if paths["/api/w/{workspace}/apps/{app}/openapi.json"] == nil {
 		t.Fatalf("app invocation openapi path missing: %#v", paths)
 	}
-	if paths["/api/w/{workspace}/apps/{app}/actions/{action}/schema"] != nil {
-		t.Fatalf("lite-only action schema route should not be advertised: %#v", paths["/api/w/{workspace}/apps/{app}/actions/{action}/schema"])
+	schemaPath := paths["/api/w/{workspace}/apps/{app}/actions/{action}/schema"].(map[string]any)
+	schemaGet := schemaPath["get"].(map[string]any)
+	if schemaGet["operationId"] != "getActionSchema" {
+		t.Fatalf("action schema operation = %#v", schemaGet)
 	}
 	if paths["/api/w/{workspace}/deployments/{deploymentId}"] != nil {
 		t.Fatalf("unsupported deployment status route should not be advertised: %#v", paths["/api/w/{workspace}/deployments/{deploymentId}"])
@@ -1662,6 +1664,11 @@ func TestCanonicalControlPlaneOpenAPIExposesSchemaDiscovery(t *testing.T) {
 			assertSchemaRef(schemaName, schemas[schemaName].(map[string]any), field, "#/components/schemas/Base64JSONSchema")
 		}
 	}
+	assertSchemaFields("ActionSchema", []string{
+		"workspace_id", "app_key", "action_key", "input_schema", "output_schema",
+	})
+	assertSchemaRef("ActionSchema", schemas["ActionSchema"].(map[string]any), "input_schema", "#/components/schemas/JSONSchema")
+	assertSchemaRef("ActionSchema", schemas["ActionSchema"].(map[string]any), "output_schema", "#/components/schemas/JSONSchema")
 	assertSchemaFields("AppHistoryItem", []string{
 		"id", "commit_sha", "entrypoint", "source", "deployment_id", "message", "created_at",
 	})
@@ -1738,9 +1745,6 @@ func TestCanonicalControlPlaneOpenAPIExposesSchemaDiscovery(t *testing.T) {
 	appDetailActions := appDetail["properties"].(map[string]any)["actions"].(map[string]any)
 	if appDetailActions["items"].(map[string]any)["$ref"] != "#/components/schemas/AppAction" {
 		t.Fatalf("app detail actions schema = %#v", appDetailActions)
-	}
-	if schemas["ActionSchema"] != nil {
-		t.Fatalf("lite-only ActionSchema component should not be advertised: %#v", schemas["ActionSchema"])
 	}
 	for _, schemaName := range []string{
 		"JSONValue",
@@ -1820,8 +1824,10 @@ func TestCanonicalControlPlaneNotFoundMessagesMatchCanonicalAPI(t *testing.T) {
 		{http.MethodPatch, "/api/w/ws-a/apps/missing", `{"tag_override":null}`, "app not found"},
 		{http.MethodPost, "/api/w/ws-a/apps/missing/requeue", `{}`, "app not found"},
 		{http.MethodGet, "/api/w/ws-a/apps/missing/actions/echo", "", "action not found"},
+		{http.MethodGet, "/api/w/ws-a/apps/missing/actions/echo/schema", "", "action not found"},
 		{http.MethodPatch, "/api/w/ws-a/apps/missing/actions/echo", `{"tag_override":null}`, "action not found"},
 		{http.MethodGet, "/api/w/ws-a/apps/echo/actions/missing", "", "action not found"},
+		{http.MethodGet, "/api/w/ws-a/apps/echo/actions/missing/schema", "", "action not found"},
 		{http.MethodPatch, "/api/w/ws-a/apps/echo/actions/missing", `{"tag_override":null}`, "action not found"},
 	} {
 		req, err := http.NewRequest(tc.method, server.URL+tc.path, bytes.NewBufferString(tc.body))
@@ -2101,6 +2107,32 @@ func TestCanonicalControlPlaneUsesMaterializedActionSchemas(t *testing.T) {
 	if !bytes.Contains(actionInputSchema, []byte(`"message"`)) ||
 		!bytes.Contains(actionOutputSchema, []byte(`"ok"`)) {
 		t.Fatalf("action schemas = input:%s decoded:%s output:%s decoded:%s", actionBody.InputSchema, actionInputSchema, actionBody.OutputSchema, actionOutputSchema)
+	}
+
+	schemaResp, err := http.Get(server.URL + "/api/w/ws-a/apps/echo/actions/echo/schema")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer schemaResp.Body.Close()
+	if schemaResp.StatusCode != http.StatusOK {
+		t.Fatalf("schema status = %d, want %d", schemaResp.StatusCode, http.StatusOK)
+	}
+	var schemaBody struct {
+		WorkspaceID  string          `json:"workspace_id"`
+		AppKey       string          `json:"app_key"`
+		ActionKey    string          `json:"action_key"`
+		InputSchema  json.RawMessage `json:"input_schema"`
+		OutputSchema json.RawMessage `json:"output_schema"`
+	}
+	if err := json.NewDecoder(schemaResp.Body).Decode(&schemaBody); err != nil {
+		t.Fatal(err)
+	}
+	if schemaBody.WorkspaceID != "ws-a" || schemaBody.AppKey != "echo" || schemaBody.ActionKey != "echo" {
+		t.Fatalf("schema identity = %#v", schemaBody)
+	}
+	if !bytes.Contains(schemaBody.InputSchema, []byte(`"message"`)) ||
+		!bytes.Contains(schemaBody.OutputSchema, []byte(`"ok"`)) {
+		t.Fatalf("raw action schemas = input:%s output:%s", schemaBody.InputSchema, schemaBody.OutputSchema)
 	}
 
 	openAPIResp, err := http.Get(server.URL + "/api/w/ws-a/apps/echo/openapi.json")
