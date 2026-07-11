@@ -261,8 +261,8 @@ h3 {
   top: 0;
   z-index: 10;
   display: grid;
-  grid-template-columns: minmax(320px, 1fr) auto auto;
-  gap: 18px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
   align-items: center;
   min-height: 76px;
   padding: 14px 20px;
@@ -298,8 +298,6 @@ h3 {
   color: var(--muted);
 }
 
-.topbarMeta,
-.topbarActions,
 .actions,
 .dialogFooter,
 .briefActions,
@@ -310,13 +308,11 @@ h3 {
   align-items: center;
 }
 
-.topbarActions,
 .dialogFooter,
 .actions.end {
   justify-content: flex-end;
 }
 
-.contextPill,
 .pill,
 .badge {
   display: inline-flex;
@@ -332,17 +328,11 @@ h3 {
   white-space: nowrap;
 }
 
-.contextPill {
-  gap: 5px;
-}
-
-.contextPill.ok,
 .badge.ok {
   background: #e6f4ea;
   color: var(--ok);
 }
 
-.contextPill.warn,
 .badge.warn {
   background: #fff4d8;
   color: var(--warn);
@@ -1302,7 +1292,6 @@ textarea:focus {
     padding-inline: 12px;
   }
 
-  .topbarMeta,
   .panelHeader,
   .briefHeader,
   .dialogHeader,
@@ -1311,7 +1300,6 @@ textarea:focus {
     flex-direction: column;
   }
 
-  .topbarActions,
   .briefActions,
   .detailHeroActions,
   .dialogFooter,
@@ -1320,7 +1308,6 @@ textarea:focus {
   }
 
   .button,
-  .topbarActions .button,
   .briefActions .button,
   .detailHeroActions .button,
   .dialogFooter .button {

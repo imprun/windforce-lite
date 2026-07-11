@@ -310,12 +310,6 @@ export function DeploymentsView() {
         <Topbar
           title={topbarCopy.title}
           subtitle={topbarCopy.subtitle}
-          settings={settings}
-          busy={busy}
-          registerTone={detailPage ? "secondary" : "primary"}
-          onRefresh={refresh}
-          onRegister={() => setRegistrationOpen(true)}
-          onSettings={openSettingsPage}
         />
 
         <div className="content">

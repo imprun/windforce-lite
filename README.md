@@ -51,6 +51,11 @@ The Docker Compose control-plane runs inside a container and maps the API to
 registers a remote git URL. Local development uses `tools/windforce_control.py`
 against the same API instead of a separate source-sync command.
 
+The Web UI is built outside Docker with Bun. Run `make web-build` or
+`make compose-build` before rebuilding the image; Docker receives no `web/`
+source tree, compiles the Go binary, and embeds the already-built files under
+`internal/webui/assets`.
+
 ## Docker Compose profiles
 
 The Compose file keeps PostgreSQL, the control-plane backend, and the worker as

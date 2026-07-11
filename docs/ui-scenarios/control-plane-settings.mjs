@@ -11,7 +11,7 @@ export default {
   ],
   async run({ page, capture }) {
     await page.goto();
-    await page.click("#openSettings");
+    await page.click("button[aria-label='Settings']");
     await page.waitForSelector("#settingsPage");
     await page.fill("#actorInput", "ui-guide@example.test");
     await page.clickText("Save Settings");

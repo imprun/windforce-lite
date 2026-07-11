@@ -111,7 +111,7 @@ help:
 	@echo "  compose-up             start Postgres and control-plane API"
 	@echo "  compose-db             start only Postgres"
 	@echo "  compose-worker         start Postgres and runtime worker"
-	@echo "  compose-build          build the control-plane API image"
+	@echo "  compose-build          build Web UI assets with Bun, then build the Go Docker image"
 	@echo "  compose-down/reset/logs/ps"
 	@echo "  ui-guide               regenerate Web UI guide screenshots and markdown"
 	@echo "  ui-guide-verify        run guide scenarios and verify generated docs"
@@ -147,8 +147,8 @@ compose-db:
 compose-worker:
 	$(COMPOSE) up -d postgres worker
 
-compose-build:
-	$(COMPOSE) build control-plane
+compose-build: web-build
+	$(COMPOSE) build control-plane worker
 
 compose-down:
 	$(COMPOSE) down
