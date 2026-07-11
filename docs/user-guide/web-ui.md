@@ -6,23 +6,24 @@ This guide is generated from executable UI scenarios. Screenshots are captured f
 
 ## Set control plane context
 
-Use the top bar to select the workspace, API token, and actor used by Web UI control-plane requests.
+Use Settings to select the workspace, API token, and actor used by Web UI control-plane requests.
 
 ![Set control plane context](../assets/ui/control-plane-settings.png)
 
-1. Set the workspace in the top bar.
-2. Set the optional API token when the control plane requires one.
+1. Open Settings from the command bar or sidebar.
+2. Set the workspace and optional API token when the control plane requires one.
 3. Set Actor before deployment so audit history has an operator subject.
 
 ## Review deployment inventory
 
-Use the deployment overview to check registered sources, active contracts, credentials, and worker readiness.
+Use the deployment console to choose a registered FCode, inspect its current release, and check deployment readiness.
 
 ![Review deployment inventory](../assets/ui/deployment-overview.png)
 
 1. Open the deployment management console.
-2. Check registered source, active app, credential, and worker counts.
-3. Use Registered FCodes to select the source that will be deployed.
+2. Use the sidebar to move between deployment, source, release, and audit work areas.
+3. Use the release candidate table to compare registered FCodes.
+4. Select a row to inspect the release brief, readiness checks, and latest audit entries.
 
 ## Deploy an app source
 
@@ -31,18 +32,19 @@ Use the Deployments view to register an app source and deploy the active Windfor
 ![Deploy an app source](../assets/ui/deploy-app.png)
 
 1. Open the deployment management console.
-2. Choose the Git authentication mode: no authentication, personal access token, or username/password.
-3. Register the Git source with branch and subpath. Registration validates repository access, the branch, manifest, schemas, and lockfile before saving.
-4. Open the registered FCode detail and confirm the source name before deployment.
-5. Use Deploy to materialize the current commit and publish the active app contract with audit metadata.
+2. Select the FCode source to deploy.
+3. Confirm readiness and current release metadata in the selected source detail.
+4. Use Deploy to open a confirmation dialog.
+5. Type the source name and add an audit note before publishing the active app contract.
 
 ## Inspect active deployment contracts
 
-Use the active contract detail to inspect the deployed app, actions, deployment history, and materialized source snapshot.
+Use the selected FCode detail tabs to inspect the deployed app contract, history, and source snapshot.
 
 ![Inspect active deployment contracts](../assets/ui/deployment-contracts.png)
 
 1. Open the deployment management console.
-2. Select an active app contract.
-3. Review its action list and route tag.
-4. Use Deployment History and Source Snapshot to inspect the deployed contract.
+2. Select a registered FCode.
+3. Use Contract to review the worker-visible action list and route tag.
+4. Use History to inspect deployment audit entries.
+5. Use Source Snapshot to inspect the materialized files used by the release.

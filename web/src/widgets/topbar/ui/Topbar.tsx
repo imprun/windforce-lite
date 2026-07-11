@@ -3,54 +3,36 @@
 import type { ApiSettings } from "@/shared/api/types";
 
 type Props = {
+  title: string;
+  subtitle: string;
   settings: ApiSettings;
-  onChange: (settings: ApiSettings) => void;
-  onRefresh: () => void;
   busy: boolean;
+  onRefresh: () => void;
+  onRegister: () => void;
+  onSettings: () => void;
 };
 
-export function Topbar({ settings, onChange, onRefresh, busy }: Props) {
+export function Topbar({ title, subtitle, settings, busy, onRefresh, onRegister, onSettings }: Props) {
   return (
     <header className="topbar">
-      <div className="brand">
-        <div className="brandMark">WF</div>
-        <div>
-          <h1>windforce-lite</h1>
-          <p>Deployment control plane</p>
-        </div>
+      <div className="pageTitle">
+        <h1>{title}</h1>
+        <p>{subtitle}</p>
       </div>
-      <div className="settingsGrid">
-        <label className="field">
-          Workspace
-          <input
-            id="workspaceInput"
-            value={settings.workspace}
-            onChange={(event) => onChange({ ...settings, workspace: event.target.value.trim() || "default" })}
-            spellCheck={false}
-          />
-        </label>
-        <label className="field">
-          API token
-          <input
-            id="tokenInput"
-            type="password"
-            placeholder="optional"
-            value={settings.token}
-            onChange={(event) => onChange({ ...settings, token: event.target.value })}
-          />
-        </label>
-        <label className="field">
-          Actor
-          <input
-            id="actorInput"
-            placeholder="required for deploy"
-            value={settings.actor}
-            onChange={(event) => onChange({ ...settings, actor: event.target.value })}
-            spellCheck={false}
-          />
-        </label>
+      <div className="topbarMeta" aria-label="Control plane context">
+        <span className="contextPill">Workspace <strong>{settings.workspace || "default"}</strong></span>
+        <span className={settings.actor ? "contextPill ok" : "contextPill warn"}>Actor <strong>{settings.actor || "not set"}</strong></span>
+        <span className={settings.token ? "contextPill ok" : "contextPill"}>API token <strong>{settings.token ? "set" : "optional"}</strong></span>
+      </div>
+      <div className="topbarActions">
+        <button id="openRegisterSource" className="button primary" type="button" aria-label="Register source from command bar" onClick={onRegister}>
+          Register Source
+        </button>
         <button className="button" type="button" onClick={onRefresh} disabled={busy}>
-          Refresh
+          {busy ? "Refreshing" : "Refresh"}
+        </button>
+        <button id="openSettings" className="button" type="button" onClick={onSettings}>
+          Settings
         </button>
       </div>
     </header>

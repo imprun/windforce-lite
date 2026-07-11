@@ -1,0 +1,19 @@
+import type { AppDetail, AppHistoryItem, AppSummary } from "@/entities/app";
+import type { GitSource } from "@/entities/git-source";
+
+export type Notice = {
+  tone: "info" | "ok" | "error";
+  text: string;
+};
+
+export type ConsoleSection = "deployments" | "sources" | "releases" | "audit";
+
+export type DetailTab = "contract" | "history" | "source";
+
+export type DeploymentSelection = {
+  source: GitSource | null;
+  app: AppSummary | null;
+  detail: AppDetail | null;
+  history: AppHistoryItem[];
+  sourceFiles: Record<string, string>;
+};

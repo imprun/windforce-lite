@@ -10,9 +10,10 @@ type Props = {
   error: string;
   onClose: () => void;
   onDeploy: (message: string) => Promise<void>;
+  onOpenSettings?: () => void;
 };
 
-export function DeploySourceDialog({ source, actor, busy, error, onClose, onDeploy }: Props) {
+export function DeploySourceDialog({ source, actor, busy, error, onClose, onDeploy, onOpenSettings }: Props) {
   if (!source) return null;
 
   async function submit(form: HTMLFormElement) {
@@ -33,7 +34,7 @@ export function DeploySourceDialog({ source, actor, busy, error, onClose, onDepl
           void submit(event.currentTarget);
         }}
       >
-        <header className="sectionHead">
+        <header className="dialogHeader">
           <div>
             <h2>Confirm Deployment</h2>
             <p>{source.repo_url}</p>
@@ -61,6 +62,18 @@ export function DeploySourceDialog({ source, actor, busy, error, onClose, onDepl
         </p>
         {error ? <p className="hint dangerText">{error}</p> : null}
         <div className="actions end">
+          {!actor.trim() && onOpenSettings ? (
+            <button
+              className="button"
+              type="button"
+              onClick={() => {
+                onClose();
+                onOpenSettings();
+              }}
+            >
+              Set Actor
+            </button>
+          ) : null}
           <button className="button primary" type="submit" disabled={busy || !actor.trim()}>
             {busy ? "Deploying..." : "Deploy"}
           </button>

@@ -8,11 +8,12 @@ type Props = {
   onRegister: (payload: Record<string, unknown>) => Promise<void>;
   onProbe: (payload: Record<string, unknown>) => Promise<void>;
   onCreateSample: () => Promise<void>;
+  onCancel: () => void;
 };
 
 type AuthMethod = "none" | "pat" | "basic";
 
-export function SourceRegistrationForm({ busy, onRegister, onProbe, onCreateSample }: Props) {
+export function SourceRegistrationForm({ busy, onRegister, onProbe, onCreateSample, onCancel }: Props) {
   const [name, setName] = useState("");
   const [repoURL, setRepoURL] = useState("");
   const [branch, setBranch] = useState("main");
@@ -38,28 +39,36 @@ export function SourceRegistrationForm({ busy, onRegister, onProbe, onCreateSamp
   }
 
   return (
-    <section id="sourceRegistration" className="surface">
-      <header className="sectionHead">
+    <form
+      id="sourceRegistration"
+      className="registrationForm"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void onRegister(payload());
+      }}
+    >
+      <header className="dialogHeader">
         <div>
+          <span className="eyebrow">Source registry</span>
           <h2>Register FCode Source</h2>
-          <p>Repository access, branch, subpath, manifest, schemas, and lockfile are validated before saving.</p>
+          <p>Repository access, branch, manifest, schemas, and lockfile are validated before saving.</p>
         </div>
-        <button className="button" type="button" onClick={onCreateSample} disabled={busy}>
-          Create Sample
-        </button>
+        <div className="actions">
+          <button className="button" type="button" onClick={onCreateSample} disabled={busy}>
+            Create Sample
+          </button>
+          <button className="button" type="button" onClick={onCancel}>
+            Cancel
+          </button>
+        </div>
       </header>
-      <form
-        className="formGrid deployForm"
-        onSubmit={(event) => {
-          event.preventDefault();
-          void onRegister(payload());
-        }}
-      >
+
+      <div className="registrationGrid">
         <label className="field">
           Source name
           <input id="sourceName" value={name} onChange={(event) => setName(event.target.value)} required placeholder="4MDCPCM" spellCheck={false} />
         </label>
-        <label className="field wide">
+        <label className="field span2">
           Repository URL
           <input id="sourceRepo" value={repoURL} onChange={(event) => setRepoURL(event.target.value)} required placeholder="https://gitlab.example.com/group/repo.git" spellCheck={false} />
         </label>
@@ -79,8 +88,12 @@ export function SourceRegistrationForm({ busy, onRegister, onProbe, onCreateSamp
             <option value="basic">Username / password</option>
           </select>
         </label>
+        <div className="credentialPreview">
+          <span>Credential storage</span>
+          <strong>{authMethod === "none" ? "public repository" : credentialPath}</strong>
+        </div>
         {authMethod === "pat" ? (
-          <label className="field">
+          <label className="field span2">
             Personal access token
             <input type="password" value={accessToken} onChange={(event) => setAccessToken(event.target.value)} />
           </label>
@@ -97,20 +110,17 @@ export function SourceRegistrationForm({ busy, onRegister, onProbe, onCreateSamp
             </label>
           </>
         ) : null}
-        <div className="credentialBox">
-          <span>Credential storage</span>
-          <strong>{authMethod === "none" ? "public repository" : credentialPath}</strong>
-        </div>
-        <div className="actions">
-          <button className="button primary" type="submit" disabled={busy}>
-            Register Source
-          </button>
-          <button className="button" type="button" onClick={() => void onProbe(payload())} disabled={busy}>
-            Probe Git
-          </button>
-        </div>
-      </form>
-    </section>
+      </div>
+
+      <div className="dialogFooter">
+        <button className="button" type="button" onClick={() => void onProbe(payload())} disabled={busy}>
+          Probe Git
+        </button>
+        <button className="button primary" type="submit" disabled={busy}>
+          Register Source
+        </button>
+      </div>
+    </form>
   );
 }
 

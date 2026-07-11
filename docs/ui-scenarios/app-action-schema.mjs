@@ -2,18 +2,24 @@ export default {
   order: 4,
   id: "app-action-schema",
   title: "Inspect active deployment contracts",
-  description: "Use the active contract detail to inspect the deployed app, actions, deployment history, and materialized source snapshot.",
+  description: "Use the selected FCode detail tabs to inspect the deployed app contract, history, and source snapshot.",
   screenshot: "docs/assets/ui/deployment-contracts.png",
   guide: [
     "Open the deployment management console.",
-    "Select an active app contract.",
-    "Review its action list and route tag.",
-    "Use Deployment History and Source Snapshot to inspect the deployed contract.",
+    "Select a registered FCode.",
+    "Use Contract to review the worker-visible action list and route tag.",
+    "Use History to inspect deployment audit entries.",
+    "Use Source Snapshot to inspect the materialized files used by the release.",
   ],
   async run({ page, capture }) {
     await page.goto();
-    await page.waitForSelector("#actionList .actionItem");
+    await page.click("button[aria-label='Releases']");
+    await page.waitForSelector("#appDetail");
+    await page.click("#tab-contract");
+    await page.waitForSelector("#actionList .actionRow");
+    await page.click("#tab-history");
     await page.waitForText("#deploymentHistory", "external_sync");
+    await page.click("#tab-source");
     await page.waitForText("#sourceSnapshot", "windforce.json");
     await capture(this.id);
   },

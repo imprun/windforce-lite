@@ -6,10 +6,10 @@ export default {
   screenshot: "docs/assets/ui/deploy-app.png",
   guide: [
     "Open the deployment management console.",
-    "Choose the Git authentication mode: no authentication, personal access token, or username/password.",
-    "Register the Git source with branch and subpath. Registration validates repository access, the branch, manifest, schemas, and lockfile before saving.",
-    "Open the registered FCode detail and confirm the source name before deployment.",
-    "Use Deploy to materialize the current commit and publish the active app contract with audit metadata.",
+    "Select the FCode source to deploy.",
+    "Confirm readiness and current release metadata in the selected source detail.",
+    "Use Deploy to open a confirmation dialog.",
+    "Type the source name and add an audit note before publishing the active app contract.",
   ],
   async run({ page, capture }) {
     await page.goto();
@@ -17,13 +17,13 @@ export default {
       localStorage.setItem("wf.actor", "ui-guide@example.test");
     });
     await page.goto();
-    await page.waitForSelector("#sourceList .listRow");
-    await page.click("#sourceDetail .button.primary");
+    await page.waitForSelector("#sourceList .tableRow");
+    await page.click("#deploySelectedSource");
     await page.waitForSelector("#deployDialog");
     await page.fill("#deployConfirmInput", "echo");
     await page.fill("#deployMessage", "UI guide deployment");
+    await capture(this.id);
     await page.click("#deployDialog .button.primary");
     await page.waitForText("#notice", "Deployed");
-    await capture(this.id);
   },
 };
