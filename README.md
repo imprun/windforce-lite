@@ -25,12 +25,15 @@ in scope.
 - Bundle store: source-only object cache keyed by workspace/git-source/commit
 - Deployment history: an audit trail of source syncs and deployment changes
 
-## Sync
+## Deploy
 
-`sync` turns a registered git source into an active deployment through the
-control-plane API:
+`deploy` turns a validated git source into an active deployment through the
+control-plane API. `sync` remains as a compatibility endpoint for automation
+that already calls it.
 
-1. Register a git source through the control-plane API.
+1. Register a git source through the control-plane API. Registration validates
+   repository access, branch existence, subpath containment, `windforce.json`,
+   action schemas, and lockfile reproducibility before saving the source.
 2. Resolve the source version.
    - git source: resolve the branch or commit
 3. If the git source has a `subpath`, use that repo directory as the app root
@@ -228,6 +231,7 @@ Implemented control-plane endpoints:
 - `PATCH /api/w/{workspace}/git_sources/{gitSourceId}`
 - `DELETE /api/w/{workspace}/git_sources/{gitSourceId}`
 - `POST /api/w/{workspace}/git_sources/{gitSourceId}/sync`
+- `POST /api/w/{workspace}/git_sources/{gitSourceId}/deploy`
 - `GET /api/w/{workspace}/apps`
 - `GET /api/w/{workspace}/apps?view=summary`
 - `GET /api/w/{workspace}/apps/{app}`

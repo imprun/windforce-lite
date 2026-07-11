@@ -32,8 +32,8 @@ Use the Deployments view to register an app source and deploy the active Windfor
 
 1. Open the Deployments view.
 2. Choose the Git authentication mode: no authentication, personal access token, or username/password.
-3. Register the Git source with branch and subpath. Credentials entered during registration are stored as a workspace secret.
-4. Use Deploy to validate the source, materialize the manifest, and publish the active app contract.
+3. Register the Git source with branch and subpath. Registration validates repository access, the branch, manifest, schemas, and lockfile before saving.
+4. Use Deploy to materialize the current commit and publish the active app contract.
 
 ## Inspect active deployment contracts
 

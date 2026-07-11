@@ -108,7 +108,7 @@
             <div class="section-head">
               <div>
                 <h2 id="sourcesTitle">Deploy Apps</h2>
-                <p>Register app source settings, validate repository access, and deploy a pinned Windforce manifest.</p>
+                <p>Register validated app sources and publish their current Git commit as the active contract.</p>
               </div>
               <button class="button" id="sampleSourceButton" type="button">Create Sample</button>
             </div>
@@ -165,7 +165,7 @@
                   </details>
                 </section>
                 <div class="source-note">
-                  Deployed app key is read from the repository manifest during Deploy.
+                  Register validates repository access, branch, subpath, manifest, schemas, and lockfile before saving.
                 </div>
                 <div class="form-actions source-actions">
                   <button class="button primary" type="submit">Register Source</button>

@@ -26,12 +26,12 @@ func buildControlPlaneOpenAPI(baseURL string, workspaceID string) map[string]any
 			},
 			"post": map[string]any{
 				"operationId": "registerGitSource",
-				"summary":     "Register a git source",
+				"summary":     "Validate and register a git source",
 				"parameters":  []any{oapiWorkspaceParam(workspaceID)},
 				"requestBody": oapiJSONBody(oapiSchemaRef("RegisterGitSourceRequest"), true),
 				"responses": withErrors(map[string]any{
 					"201": oapiResponse("Registered git source.", oapiSchemaRef("GitSource")),
-				}, "400", "401", "403"),
+				}, "400", "401", "403", "422"),
 			},
 		},
 		"/api/w/{workspace}/git_sources/probe": map[string]any{
@@ -65,7 +65,7 @@ func buildControlPlaneOpenAPI(baseURL string, workspaceID string) map[string]any
 				"requestBody": oapiJSONBody(oapiSchemaRef("PatchGitSourceRequest"), true),
 				"responses": withErrors(map[string]any{
 					"200": oapiResponse("Updated git source.", oapiSchemaRef("GitSource")),
-				}, "400", "401", "403", "404"),
+				}, "400", "401", "403", "404", "422"),
 			},
 			"delete": map[string]any{
 				"operationId": "deleteGitSource",
@@ -84,6 +84,16 @@ func buildControlPlaneOpenAPI(baseURL string, workspaceID string) map[string]any
 				"responses": withErrors(map[string]any{
 					"200": oapiResponse("Sync result and discovered actions.", oapiSchemaRef("GitSourceSyncResult")),
 				}, "400", "401", "403", "404"),
+			},
+		},
+		"/api/w/{workspace}/git_sources/{gitSourceId}/deploy": map[string]any{
+			"post": map[string]any{
+				"operationId": "deployGitSource",
+				"summary":     "Deploy the current commit of a registered git source",
+				"parameters":  []any{oapiWorkspaceParam(workspaceID), oapiPathParam("gitSourceId", "Numeric git source id returned by register/list.")},
+				"responses": withErrors(map[string]any{
+					"200": oapiResponse("Deployment result and discovered actions.", oapiSchemaRef("GitSourceSyncResult")),
+				}, "400", "401", "403", "404", "422"),
 			},
 		},
 		"/api/w/{workspace}/apps": map[string]any{

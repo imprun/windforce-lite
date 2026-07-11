@@ -25,6 +25,8 @@ type gitCredentialRequest struct {
 	Password    string
 }
 
+const sourceValidationTimeout = 2 * time.Minute
+
 func (h *Handler) handleCanonicalGitSources(w http.ResponseWriter, r *http.Request, workspaceID string) {
 	snapshot, ok := h.loadGitSourceSnapshot(w, r)
 	if !ok {
@@ -93,12 +95,37 @@ func (h *Handler) handleCanonicalRegisterGitSource(w http.ResponseWriter, r *htt
 		writeError(w, http.StatusBadRequest, "name and repo_url required")
 		return
 	}
+	if branch == "" {
+		branch = "main"
+	}
 	if credential != "" && credsRef == "" {
+		credsRef = defaultGitCredentialPath(name)
+	}
+	source := gitsourcepkg.Source{
+		Workspace: workspaceID,
+		Name:      name,
+		RepoURL:   repoURL,
+		Branch:    branch,
+		Subpath:   subpath,
+		TokenEnv:  credsRef,
+	}
+	validationToken := credential
+	if validationToken == "" {
+		resolved, err := h.resolveGitSourceCreds(r.Context(), workspaceID, credsRef)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		validationToken = resolved
+	}
+	if _, ok := h.validateGitSourceContract(w, r, source, validationToken); !ok {
+		return
+	}
+	if credential != "" {
 		if h.store == nil {
 			writeError(w, http.StatusServiceUnavailable, "state store is not configured")
 			return
 		}
-		credsRef = defaultGitCredentialPath(name)
 		encrypted, err := h.encryptSecretVariable(r.Context(), workspaceID, credential)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
@@ -108,14 +135,6 @@ func (h *Handler) handleCanonicalRegisterGitSource(w http.ResponseWriter, r *htt
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-	}
-	source := gitsourcepkg.Source{
-		Workspace: workspaceID,
-		Name:      name,
-		RepoURL:   repoURL,
-		Branch:    branch,
-		Subpath:   subpath,
-		TokenEnv:  credsRef,
 	}
 	source, ok := h.createGitSource(w, r, source)
 	if !ok {
@@ -300,6 +319,26 @@ func (h *Handler) handleCanonicalPatchGitSource(w http.ResponseWriter, r *http.R
 	if !ok {
 		return
 	}
+	existing, err := h.gitSources.Get(r.Context(), workspaceID, sourceID)
+	if errors.Is(err, gitsourcepkg.ErrGitSourceNotFound) {
+		writeError(w, http.StatusNotFound, "git source not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	candidate := applyGitSourcePatch(existing, patch)
+	if gitSourcePatchRequiresValidation(existing, candidate) {
+		token, err := h.resolveGitSourceCreds(r.Context(), workspaceID, candidate.TokenEnv)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if _, ok := h.validateGitSourceContract(w, r, candidate, token); !ok {
+			return
+		}
+	}
 	source, err := patcher.Patch(r.Context(), workspaceID, sourceID, patch)
 	if errors.Is(err, gitsourcepkg.ErrGitSourceConflict) {
 		writeError(w, http.StatusConflict, "git source name already exists")
@@ -314,6 +353,35 @@ func (h *Handler) handleCanonicalPatchGitSource(w http.ResponseWriter, r *http.R
 		return
 	}
 	writeJSON(w, http.StatusOK, newCanonicalGitSourceView(source))
+}
+
+func applyGitSourcePatch(source gitsourcepkg.Source, patch gitsourcepkg.Patch) gitsourcepkg.Source {
+	if patch.Name != nil {
+		source.Name = *patch.Name
+	}
+	if patch.ID != nil {
+		source.ID = *patch.ID
+	}
+	if patch.RepoURL != nil {
+		source.RepoURL = *patch.RepoURL
+	}
+	if patch.Branch != nil {
+		source.Branch = *patch.Branch
+	}
+	if patch.Subpath != nil {
+		source.Subpath = *patch.Subpath
+	}
+	if patch.TokenEnv != nil {
+		source.TokenEnv = *patch.TokenEnv
+	}
+	return source
+}
+
+func gitSourcePatchRequiresValidation(before gitsourcepkg.Source, after gitsourcepkg.Source) bool {
+	return before.RepoURL != after.RepoURL ||
+		before.Branch != after.Branch ||
+		before.Subpath != after.Subpath ||
+		before.TokenEnv != after.TokenEnv
 }
 
 func (h *Handler) handleCanonicalDeleteGitSource(w http.ResponseWriter, r *http.Request, workspaceID string, sourceID string) {
@@ -371,6 +439,36 @@ func (h *Handler) handleCanonicalGitSourceSync(w http.ResponseWriter, r *http.Re
 	writeJSON(w, http.StatusOK, newCanonicalSyncResult(deployment))
 }
 
+func (h *Handler) handleCanonicalGitSourceDeploy(w http.ResponseWriter, r *http.Request, workspaceID string, sourceID string) {
+	var ok bool
+	sourceID, ok = requireCanonicalGitSourceRouteID(w, sourceID)
+	if !ok {
+		return
+	}
+	if h.syncer == nil {
+		writeError(w, http.StatusServiceUnavailable, "deploy API is not configured")
+		return
+	}
+	if h.gitSources == nil {
+		writeError(w, http.StatusServiceUnavailable, "git source registry is not configured")
+		return
+	}
+	source, err := h.gitSources.Get(r.Context(), workspaceID, sourceID)
+	if err != nil {
+		if errors.Is(err, gitsourcepkg.ErrGitSourceNotFound) {
+			writeError(w, http.StatusNotFound, "git source not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	deployment, ok := h.syncGitSource(w, r, workspaceID, source)
+	if !ok {
+		return
+	}
+	writeJSON(w, http.StatusOK, newCanonicalSyncResult(deployment))
+}
+
 func (h *Handler) syncGitSource(w http.ResponseWriter, r *http.Request, workspaceID string, source gitsourcepkg.Source) (contract.Deployment, bool) {
 	release, ok := h.acquireGitSourceOperation(workspaceID, source)
 	if !ok {
@@ -404,6 +502,42 @@ func (h *Handler) syncGitSource(w http.ResponseWriter, r *http.Request, workspac
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return contract.Deployment{}, false
 		}
+	}
+	return deployment, true
+}
+
+func (h *Handler) validateGitSourceContract(w http.ResponseWriter, r *http.Request, source gitsourcepkg.Source, token string) (contract.Deployment, bool) {
+	if h.syncer == nil {
+		writeError(w, http.StatusServiceUnavailable, "source validation is not configured")
+		return contract.Deployment{}, false
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), sourceValidationTimeout)
+	defer cancel()
+	branch := strings.TrimSpace(source.Branch)
+	if branch == "" {
+		branch = "main"
+	}
+	branches, err := sourcepkg.ListRemoteBranches(ctx, strings.TrimSpace(source.RepoURL), token)
+	if err != nil {
+		writeError(w, http.StatusUnprocessableEntity, "repository is not reachable: "+err.Error())
+		return contract.Deployment{}, false
+	}
+	if !stringSliceContains(branches, branch) {
+		writeError(w, http.StatusUnprocessableEntity, fmt.Sprintf("branch %q was not found in repository", branch))
+		return contract.Deployment{}, false
+	}
+	s := *h.syncer
+	deployment, err := s.Validate(ctx, syncer.Source{
+		Workspace:   source.Workspace,
+		GitSourceID: source.ID,
+		RepoURL:     source.RepoURL,
+		Branch:      branch,
+		Subpath:     source.Subpath,
+		Token:       token,
+	})
+	if err != nil {
+		writeError(w, http.StatusUnprocessableEntity, "source contract validation failed: "+err.Error())
+		return contract.Deployment{}, false
 	}
 	return deployment, true
 }

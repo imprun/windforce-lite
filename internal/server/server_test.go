@@ -2300,10 +2300,13 @@ func TestCanonicalSampleGitSourceRegistersAndSyncs(t *testing.T) {
 	}
 }
 
-func TestCanonicalRegisterGitSourcePreservesRawSubpath(t *testing.T) {
+func TestCanonicalRegisterGitSourceRejectsInvalidSubpathBeforePersisting(t *testing.T) {
 	tempDir := t.TempDir()
+	repoDir := createTestGitSourceRepo(t, tempDir, "repo", "")
+	registry := gitsource.NewFileRegistry(filepath.Join(tempDir, "git-sources.json"))
 	handler := New(Config{
-		GitSources: gitsource.NewFileRegistry(filepath.Join(tempDir, "git-sources.json")),
+		Syncer:     &syncer.Syncer{CloneRoot: tempDir},
+		GitSources: registry,
 		EnableAPI:  true,
 	})
 	server := httptest.NewServer(handler)
@@ -2311,10 +2314,48 @@ func TestCanonicalRegisterGitSourcePreservesRawSubpath(t *testing.T) {
 
 	registerResp, err := http.Post(server.URL+"/api/w/ws-a/git_sources", "application/json", bytes.NewBufferString(`{
 		"name": "source-a",
-		"repo_url": "file:///tmp/source-a",
+		"repo_url": "`+filepath.ToSlash(repoDir)+`",
 		"branch": "main",
 		"subpath": "/apps/echo"
 	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer registerResp.Body.Close()
+	if registerResp.StatusCode != http.StatusUnprocessableEntity {
+		body, _ := io.ReadAll(registerResp.Body)
+		t.Fatalf("register status = %d, want %d: %s", registerResp.StatusCode, http.StatusUnprocessableEntity, body)
+	}
+	snapshot, err := registry.Load(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.Sources) != 0 {
+		t.Fatalf("registered sources = %#v, want none", snapshot.Sources)
+	}
+}
+
+func TestCanonicalRegisterGitSourcePreservesValidSubpath(t *testing.T) {
+	tempDir := t.TempDir()
+	repoDir := createTestGitSourceRepo(t, tempDir, "repo", "apps/echo")
+	handler := New(Config{
+		Syncer:     &syncer.Syncer{CloneRoot: tempDir},
+		GitSources: gitsource.NewFileRegistry(filepath.Join(tempDir, "git-sources.json")),
+		EnableAPI:  true,
+	})
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	registerBody, err := json.Marshal(map[string]string{
+		"name":     "source-a",
+		"repo_url": filepath.ToSlash(repoDir),
+		"branch":   "main",
+		"subpath":  "apps/echo",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	registerResp, err := http.Post(server.URL+"/api/w/ws-a/git_sources", "application/json", bytes.NewReader(registerBody))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2329,16 +2370,100 @@ func TestCanonicalRegisterGitSourcePreservesRawSubpath(t *testing.T) {
 	if err := json.NewDecoder(registerResp.Body).Decode(&registered); err != nil {
 		t.Fatal(err)
 	}
-	if registered.Subpath != "/apps/echo" {
+	if registered.Subpath != "apps/echo" {
 		t.Fatalf("subpath = %q, want raw value", registered.Subpath)
+	}
+}
+
+func TestCanonicalRegisterGitSourceRequiresExistingBranch(t *testing.T) {
+	tempDir := t.TempDir()
+	repoDir := createTestGitSourceRepo(t, tempDir, "repo", "")
+	registry := gitsource.NewFileRegistry(filepath.Join(tempDir, "git-sources.json"))
+	handler := New(Config{
+		Syncer:     &syncer.Syncer{CloneRoot: tempDir},
+		GitSources: registry,
+		EnableAPI:  true,
+	})
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	registerBody, err := json.Marshal(map[string]string{
+		"name":     "source-a",
+		"repo_url": filepath.ToSlash(repoDir),
+		"branch":   "missing",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := http.Post(server.URL+"/api/w/ws-a/git_sources", "application/json", bytes.NewReader(registerBody))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("register status = %d, want %d: %s", resp.StatusCode, http.StatusUnprocessableEntity, body)
+	}
+	snapshot, err := registry.Load(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.Sources) != 0 {
+		t.Fatalf("registered sources = %#v, want none", snapshot.Sources)
+	}
+}
+
+func TestCanonicalRegisterGitSourceValidatesManifestBeforePersisting(t *testing.T) {
+	tempDir := t.TempDir()
+	repoDir := createTestGitSourceRepo(t, tempDir, "repo", "")
+	if err := os.WriteFile(filepath.Join(repoDir, "windforce.json"), []byte(`{"app":"bad-app","actions":{}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runTestGit(t, repoDir, "add", "windforce.json")
+	runTestGit(t, repoDir, "commit", "-m", "invalid manifest")
+
+	registry := gitsource.NewFileRegistry(filepath.Join(tempDir, "git-sources.json"))
+	handler := New(Config{
+		Syncer:     &syncer.Syncer{CloneRoot: tempDir},
+		GitSources: registry,
+		EnableAPI:  true,
+	})
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	registerBody, err := json.Marshal(map[string]string{
+		"name":     "source-a",
+		"repo_url": filepath.ToSlash(repoDir),
+		"branch":   "main",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := http.Post(server.URL+"/api/w/ws-a/git_sources", "application/json", bytes.NewReader(registerBody))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("register status = %d, want %d: %s", resp.StatusCode, http.StatusUnprocessableEntity, body)
+	}
+	snapshot, err := registry.Load(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.Sources) != 0 {
+		t.Fatalf("registered sources = %#v, want none", snapshot.Sources)
 	}
 }
 
 func TestCanonicalRegisterGitSourceStoresCredentialFromRequest(t *testing.T) {
 	tempDir := t.TempDir()
+	repoDir := createTestGitSourceRepo(t, tempDir, "repo", "")
 	store := state.NewLocalStore(filepath.Join(tempDir, "state.json"))
 	handler := New(Config{
 		Store:      store,
+		Syncer:     &syncer.Syncer{CloneRoot: tempDir},
 		GitSources: gitsource.NewFileRegistry(filepath.Join(tempDir, "git-sources.json")),
 		EnableAPI:  true,
 		SecretKey:  "git-source-register-secret",
@@ -2348,7 +2473,7 @@ func TestCanonicalRegisterGitSourceStoresCredentialFromRequest(t *testing.T) {
 
 	registerResp, err := http.Post(server.URL+"/api/w/ws-a/git_sources", "application/json", bytes.NewBufferString(`{
 		"name": "Coupang Eats",
-		"repo_url": "https://git.example.test/group/coupang-eats.git",
+		"repo_url": "`+filepath.ToSlash(repoDir)+`",
 		"branch": "main",
 		"auth_method": "basic",
 		"username": "deploy-user",
@@ -2390,7 +2515,10 @@ func TestCanonicalRegisterGitSourceStoresCredentialFromRequest(t *testing.T) {
 
 func TestCanonicalGitSourcesListOrdersByID(t *testing.T) {
 	tempDir := t.TempDir()
+	repoA := createTestGitSourceRepo(t, tempDir, "repo-a", "")
+	repoZ := createTestGitSourceRepo(t, tempDir, "repo-z", "")
 	handler := New(Config{
+		Syncer:     &syncer.Syncer{CloneRoot: tempDir},
 		GitSources: gitsource.NewFileRegistry(filepath.Join(tempDir, "git-sources.json")),
 		EnableAPI:  true,
 	})
@@ -2398,8 +2526,8 @@ func TestCanonicalGitSourcesListOrdersByID(t *testing.T) {
 	defer server.Close()
 
 	for _, body := range []string{
-		`{"name":"z-source","repo_url":"file:///tmp/z-source"}`,
-		`{"name":"a-source","repo_url":"file:///tmp/a-source"}`,
+		`{"name":"z-source","repo_url":"` + filepath.ToSlash(repoZ) + `"}`,
+		`{"name":"a-source","repo_url":"` + filepath.ToSlash(repoA) + `"}`,
 	} {
 		resp, err := http.Post(server.URL+"/api/w/ws-a/git_sources", "application/json", bytes.NewBufferString(body))
 		if err != nil {
@@ -2613,6 +2741,7 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 		body   string
 	}{
 		{http.MethodPost, "/api/w/ws-a/git_sources/source-a/sync", ""},
+		{http.MethodPost, "/api/w/ws-a/git_sources/source-a/deploy", ""},
 		{http.MethodPatch, "/api/w/ws-a/git_sources/source-a", `{}`},
 		{http.MethodDelete, "/api/w/ws-a/git_sources/source-a", ""},
 	} {
@@ -2672,13 +2801,13 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 		t.Fatalf("sources = %#v", sources)
 	}
 
-	syncResp, err := http.Post(server.URL+"/api/w/ws-a/git_sources/"+registeredID+"/sync", "", nil)
+	syncResp, err := http.Post(server.URL+"/api/w/ws-a/git_sources/"+registeredID+"/deploy", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer syncResp.Body.Close()
 	if syncResp.StatusCode != http.StatusOK {
-		t.Fatalf("sync status = %d, want %d", syncResp.StatusCode, http.StatusOK)
+		t.Fatalf("deploy status = %d, want %d", syncResp.StatusCode, http.StatusOK)
 	}
 	var syncBody struct {
 		Commit  string   `json:"commit"`
@@ -3330,7 +3459,11 @@ func TestCanonicalGitSourceProbePatchAndDelete(t *testing.T) {
 	runTestGit(t, repoDir, "checkout", "-b", "feature")
 
 	registry := gitsource.NewFileRegistry(filepath.Join(tempDir, "git-sources.json"))
-	server := httptest.NewServer(New(Config{GitSources: registry, EnableAPI: true}))
+	server := httptest.NewServer(New(Config{
+		Syncer:     &syncer.Syncer{CloneRoot: tempDir},
+		GitSources: registry,
+		EnableAPI:  true,
+	}))
 	defer server.Close()
 
 	legacyProbeResp, err := http.Post(server.URL+"/api/w/ws-a/git_sources/probe", "application/json", bytes.NewBufferString(`{"repoUrl":"`+filepath.ToSlash(repoDir)+`","branch":"main"}`))
@@ -4197,4 +4330,45 @@ func runTestGit(t *testing.T, dir string, args ...string) {
 	if err != nil {
 		t.Fatalf("git %v: %v: %s", args, err, string(out))
 	}
+}
+
+func createTestGitSourceRepo(t *testing.T, parent string, name string, subpath string) string {
+	t.Helper()
+	repoDir := filepath.Join(parent, name)
+	appDir := repoDir
+	if subpath != "" {
+		appDir = filepath.Join(repoDir, filepath.FromSlash(subpath))
+	}
+	if err := os.MkdirAll(appDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(appDir, "windforce.json"), []byte(`{
+		"app": "echo",
+		"entrypoint": "main.ts",
+		"scriptLang": "typescript",
+		"actions": {
+			"echo": {
+				"inputSchema": "input.schema.json",
+				"outputSchema": "output.schema.json"
+			}
+		}
+	}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(appDir, "main.ts"), []byte(`export async function main(ctx) { return ctx.input }`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(appDir, "input.schema.json"), []byte(`{"type":"object"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(appDir, "output.schema.json"), []byte(`{"type":"object"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runTestGit(t, repoDir, "init")
+	runTestGit(t, repoDir, "checkout", "-b", "main")
+	runTestGit(t, repoDir, "config", "user.email", "test@example.com")
+	runTestGit(t, repoDir, "config", "user.name", "Test User")
+	runTestGit(t, repoDir, "add", ".")
+	runTestGit(t, repoDir, "commit", "-m", "initial")
+	return repoDir
 }

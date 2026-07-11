@@ -34,10 +34,7 @@ func ResolveBranchCommit(ctx context.Context, repoURL string, branch string, tok
 	}
 	out = strings.TrimSpace(out)
 	if out == "" {
-		out, err = runGit(ctx, "", "ls-remote", authURL(repoURL, token), "HEAD")
-		if err != nil {
-			return "", err
-		}
+		return "", fmt.Errorf("branch %q was not found in repository", branch)
 	}
 
 	fields := strings.Fields(out)

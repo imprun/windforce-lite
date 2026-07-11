@@ -302,16 +302,16 @@ async function loadSources() {
                 ${escapeHTML(credentialLabelForRef(source.creds_ref || ""))}
               </div>
               <div class="form-actions">
-                <button class="button primary" data-sync-id="${escapeAttr(source.id)}" type="button">Deploy</button>
+                <button class="button primary" data-deploy-id="${escapeAttr(source.id)}" type="button">Deploy</button>
                 <button class="button danger" data-delete-id="${escapeAttr(source.id)}" type="button">Remove</button>
               </div>
             </div>`,
           )
           .join("");
-  $$("[data-sync-id]").forEach((button) => {
+  $$("[data-deploy-id]").forEach((button) => {
     button.addEventListener("click", async () => {
-      await runAction(`Deploying app source ${button.dataset.syncId}`, async () => {
-        const result = await api(`/git_sources/${encodeURIComponent(button.dataset.syncId)}/sync`, { method: "POST" });
+      await runAction(`Deploying app source ${button.dataset.deployId}`, async () => {
+        const result = await api(`/git_sources/${encodeURIComponent(button.dataset.deployId)}/deploy`, { method: "POST" });
         state.appDetails.clear();
         showNotice(`Deployed ${result.app || "app"} at ${short(result.commit, 12)}`, "ok");
         await Promise.all([loadSources(), loadApps()]);

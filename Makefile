@@ -1,7 +1,7 @@
 .PHONY: help fmt test test-postgres build clean \
 	compose-up compose-db compose-worker compose-build compose-down compose-reset compose-logs compose-ps postgres-dsn \
 	dev-standalone dev-standalone-postgres dev-api dev-worker worker-once \
-	windforce-variable-set windforce-git-token windforce-register windforce-sync windforce-sample \
+	windforce-variable-set windforce-git-token windforce-register windforce-sync windforce-deploy windforce-sample \
 	windforce-schema windforce-openapi windforce-control-openapi \
 	windforce-run windforce-run-wait windforce-jobs windforce-job windforce-job-result windforce-job-logs windforce-job-cancel \
 	ui-guide ui-guide-verify
@@ -84,6 +84,7 @@ help:
 	@echo "  windforce-git-token    store WF_GIT_TOKEN_ENV at WF_VARIABLE_PATH for git source auth"
 	@echo "  windforce-register     register WF_REPO_URL as WF_GIT_SOURCE_NAME through the control API"
 	@echo "  windforce-sync         sync numeric WF_GIT_SOURCE_ID through the control API"
+	@echo "  windforce-deploy       deploy numeric WF_GIT_SOURCE_ID through the control API"
 	@echo "  windforce-sample       create and sync WF_APP as a managed sample source"
 	@echo "  windforce-schema       print WF_APP/WF_ACTION schemas from the control API"
 	@echo "  windforce-openapi      print WF_APP invocation OpenAPI from the control API"
@@ -174,6 +175,9 @@ windforce-register:
 
 windforce-sync:
 	python tools/windforce_control.py --api-url "$(WF_API_URL)" --workspace "$(WF_WORKSPACE)" --pretty sync --git-source-id "$(WF_GIT_SOURCE_ID)"
+
+windforce-deploy:
+	python tools/windforce_control.py --api-url "$(WF_API_URL)" --workspace "$(WF_WORKSPACE)" --pretty deploy --git-source-id "$(WF_GIT_SOURCE_ID)"
 
 windforce-sample:
 	python tools/windforce_control.py --api-url "$(WF_API_URL)" --workspace "$(WF_WORKSPACE)" --pretty sample --app-key "$(WF_APP)"

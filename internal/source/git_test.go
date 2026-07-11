@@ -93,6 +93,26 @@ func TestListRemoteBranches(t *testing.T) {
 	}
 }
 
+func TestResolveBranchCommitRequiresExistingBranch(t *testing.T) {
+	repoDir := filepath.Join(t.TempDir(), "repo")
+	if err := os.MkdirAll(repoDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	runTestGit(t, repoDir, "init")
+	runTestGit(t, repoDir, "checkout", "-b", "main")
+	runTestGit(t, repoDir, "config", "user.email", "test@example.com")
+	runTestGit(t, repoDir, "config", "user.name", "Test User")
+	if err := os.WriteFile(filepath.Join(repoDir, "README.md"), []byte("hello\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runTestGit(t, repoDir, "add", "README.md")
+	runTestGit(t, repoDir, "commit", "-m", "initial")
+
+	if _, err := ResolveBranchCommit(context.Background(), filepath.ToSlash(repoDir), "missing", ""); err == nil || !strings.Contains(err.Error(), `branch "missing" was not found`) {
+		t.Fatalf("ResolveBranchCommit missing branch error = %v", err)
+	}
+}
+
 func TestCloneCommitPreservesTags(t *testing.T) {
 	tempDir := t.TempDir()
 	repoDir := filepath.Join(tempDir, "repo")

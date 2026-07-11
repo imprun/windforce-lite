@@ -39,49 +39,38 @@ type Syncer struct {
 	CloneRoot string
 }
 
+type inspectedSource struct {
+	repoDir    string
+	sourceDir  string
+	cleanup    func()
+	deployment contract.Deployment
+}
+
+func (s *Syncer) Validate(ctx context.Context, src Source) (contract.Deployment, error) {
+	inspected, err := s.inspect(ctx, src)
+	if err != nil {
+		return contract.Deployment{}, err
+	}
+	defer inspected.cleanup()
+	return inspected.deployment, nil
+}
+
 func (s *Syncer) Sync(ctx context.Context, src Source) (contract.Deployment, error) {
 	if s.Store == nil {
 		return contract.Deployment{}, errors.New("bundle store is required")
 	}
 
-	commit := src.Commit
-	var err error
-	if commit == "" {
-		if src.LocalDir != "" {
-			commit, err = source.TreeDigest(ctx, src.LocalDir)
-		} else {
-			if src.RepoURL == "" {
-				return contract.Deployment{}, errors.New("repo URL or local source is required")
-			}
-			commit, err = source.ResolveBranchCommit(ctx, src.RepoURL, src.Branch, src.Token)
-		}
-		if err != nil {
-			return contract.Deployment{}, err
-		}
-	}
-
-	repoDir, sourceDir, cleanup, err := s.prepareSource(ctx, src, commit)
+	inspected, err := s.inspect(ctx, src)
 	if err != nil {
 		return contract.Deployment{}, err
 	}
-	defer cleanup()
+	defer inspected.cleanup()
+	deployment := inspected.deployment
+	commit := deployment.Commit
+	sourceDir := inspected.sourceDir
 
-	app, err := manifest.Load(sourceDir)
-	if err != nil {
-		return contract.Deployment{}, err
-	}
-	if err := checkLockfile(sourceDir); err != nil {
-		return contract.Deployment{}, err
-	}
-	if src.App != "" && src.App != app.App {
-		return contract.Deployment{}, fmt.Errorf("source app %q does not match manifest app %q", src.App, app.App)
-	}
-	if err := materializeActionSchemas(sourceDir, &app); err != nil {
-		return contract.Deployment{}, err
-	}
-
-	workspace := contract.NormalizeWorkspace(src.Workspace)
-	gitSourceID := contract.NormalizeGitSourceID(src.GitSourceID, app.App)
+	workspace := deployment.SourceWorkspace()
+	gitSourceID := deployment.SourceGitSourceID()
 	exists, err := s.Store.Exists(ctx, workspace, gitSourceID, commit)
 	if err != nil {
 		return contract.Deployment{}, err
@@ -90,6 +79,58 @@ func (s *Syncer) Sync(ctx context.Context, src Source) (contract.Deployment, err
 		if err := s.Store.Materialize(ctx, workspace, gitSourceID, commit, sourceDir); err != nil {
 			return contract.Deployment{}, fmt.Errorf("materialize: %w", err)
 		}
+	}
+
+	// Catalog is updated only after the source bundle is fully materialized.
+	if s.Catalog != nil {
+		if err := s.Catalog.UpsertDeployment(ctx, deployment); err != nil {
+			return contract.Deployment{}, err
+		}
+	}
+	return deployment, nil
+}
+
+func (s *Syncer) inspect(ctx context.Context, src Source) (inspectedSource, error) {
+	commit := src.Commit
+	var err error
+	if commit == "" {
+		if src.LocalDir != "" {
+			commit, err = source.TreeDigest(ctx, src.LocalDir)
+		} else {
+			if src.RepoURL == "" {
+				return inspectedSource{}, errors.New("repo URL or local source is required")
+			}
+			commit, err = source.ResolveBranchCommit(ctx, src.RepoURL, src.Branch, src.Token)
+		}
+		if err != nil {
+			return inspectedSource{}, err
+		}
+	}
+
+	repoDir, sourceDir, cleanup, err := s.prepareSource(ctx, src, commit)
+	if err != nil {
+		return inspectedSource{}, err
+	}
+	prepared := inspectedSource{repoDir: repoDir, sourceDir: sourceDir, cleanup: cleanup}
+	keepPrepared := false
+	defer func() {
+		if !keepPrepared {
+			cleanup()
+		}
+	}()
+
+	app, err := manifest.Load(sourceDir)
+	if err != nil {
+		return inspectedSource{}, err
+	}
+	if err := checkLockfile(sourceDir); err != nil {
+		return inspectedSource{}, err
+	}
+	if src.App != "" && src.App != app.App {
+		return inspectedSource{}, fmt.Errorf("source app %q does not match manifest app %q", src.App, app.App)
+	}
+	if err := materializeActionSchemas(sourceDir, &app); err != nil {
+		return inspectedSource{}, err
 	}
 
 	updatedAt := time.Now().UTC()
@@ -103,8 +144,8 @@ func (s *Syncer) Sync(ctx context.Context, src Source) (contract.Deployment, err
 		}
 	}
 	deployment := contract.Deployment{
-		Workspace:            workspace,
-		GitSourceID:          gitSourceID,
+		Workspace:            contract.NormalizeWorkspace(src.Workspace),
+		GitSourceID:          contract.NormalizeGitSourceID(src.GitSourceID, app.App),
 		App:                  app.App,
 		Tag:                  app.Tag,
 		Entrypoint:           app.Entrypoint,
@@ -124,13 +165,9 @@ func (s *Syncer) Sync(ctx context.Context, src Source) (contract.Deployment, err
 	}
 	deployment.ObjectURI = deployment.SourceObjectURI()
 
-	// Catalog is updated only after the source bundle is fully materialized.
-	if s.Catalog != nil {
-		if err := s.Catalog.UpsertDeployment(ctx, deployment); err != nil {
-			return contract.Deployment{}, err
-		}
-	}
-	return deployment, nil
+	prepared.deployment = deployment
+	keepPrepared = true
+	return prepared, nil
 }
 
 func (s *Syncer) prepareSource(ctx context.Context, src Source, commit string) (string, string, func(), error) {

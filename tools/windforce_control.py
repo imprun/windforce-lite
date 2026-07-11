@@ -3,7 +3,7 @@
 
 The server owns the contract. This tool only calls the `/api/w/{workspace}/...`
 control-plane endpoints so local development follows the real flow:
-register git source -> sync -> inspect materialized schemas.
+validate and register git source -> deploy current commit -> inspect materialized schemas.
 """
 
 from __future__ import annotations
@@ -76,6 +76,15 @@ def main(argv: list[str] | None = None) -> int:
         help="numeric git source id returned by register/list",
     )
     sync.set_defaults(func=cmd_sync)
+
+    deploy = sub.add_parser("deploy", help="deploy the current commit of a registered git source")
+    deploy.add_argument(
+        "--git-source-id",
+        dest="git_source_id",
+        required=True,
+        help="numeric git source id returned by register/list",
+    )
+    deploy.set_defaults(func=cmd_deploy)
 
     sample = sub.add_parser("sample", help="create and sync a managed sample git source")
     sample.add_argument("--app-key", "--app", dest="app_key", default="")
@@ -327,6 +336,14 @@ def cmd_sync(args: argparse.Namespace) -> Any:
         args,
         "POST",
         f"/api/w/{quote_path(args.workspace)}/git_sources/{quote_path(args.git_source_id)}/sync",
+    )
+
+
+def cmd_deploy(args: argparse.Namespace) -> Any:
+    return request(
+        args,
+        "POST",
+        f"/api/w/{quote_path(args.workspace)}/git_sources/{quote_path(args.git_source_id)}/deploy",
     )
 
 
