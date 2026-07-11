@@ -1,5 +1,5 @@
 export default {
-  order: 3,
+  order: 4,
   id: "app-action-schema",
   title: "Inspect active deployment contracts",
   description: "Use the Contracts view to inspect the active app deployment, action contracts, and materialized source snapshot.",

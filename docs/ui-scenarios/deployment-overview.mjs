@@ -1,5 +1,5 @@
 export default {
-  order: 1,
+  order: 2,
   id: "deployment-overview",
   title: "Review deployment inventory",
   description: "Use the Overview view to check active app deployments, source references, action count, and worker readiness.",

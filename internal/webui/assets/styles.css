@@ -101,11 +101,52 @@ h3 {
   margin-top: 3px;
 }
 
-.settings {
-  display: grid;
-  grid-template-columns: minmax(130px, 180px) minmax(150px, 220px) minmax(120px, 180px) auto auto;
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
   gap: 10px;
-  align-items: end;
+  min-width: 0;
+}
+
+.context-strip {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+
+.context-strip strong {
+  margin-left: 4px;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.settings-dialog {
+  width: min(680px, calc(100vw - 32px));
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0;
+  background: transparent;
+  box-shadow: 0 22px 60px rgba(18, 33, 38, 0.24);
+}
+
+.settings-dialog::backdrop {
+  background: rgba(17, 24, 28, 0.28);
+}
+
+.settings-panel {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  background: var(--surface);
+}
+
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
 }
 
 label {
@@ -142,6 +183,10 @@ select:focus,
 textarea:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(8, 127, 117, 0.12);
+}
+
+[hidden] {
+  display: none !important;
 }
 
 .button {
@@ -310,6 +355,13 @@ textarea:focus {
   margin-bottom: 10px;
 }
 
+.deploy-grid {
+  display: grid;
+  grid-template-columns: minmax(520px, 1fr) minmax(260px, 0.36fr);
+  gap: 12px;
+  align-items: start;
+}
+
 .form-grid,
 .run-grid,
 .filters {
@@ -324,7 +376,52 @@ textarea:focus {
 }
 
 .form-grid {
-  grid-template-columns: minmax(120px, 0.7fr) minmax(260px, 1.3fr) minmax(100px, 0.55fr) minmax(150px, 0.8fr) minmax(150px, 0.8fr) auto;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.deploy-form {
+  grid-template-columns: minmax(130px, 0.6fr) minmax(240px, 1.3fr) minmax(110px, 0.55fr) minmax(160px, 0.75fr);
+}
+
+.repo-field {
+  grid-column: span 2;
+}
+
+.credential-summary {
+  display: grid;
+  grid-column: span 3;
+  grid-template-columns: 64px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fbfcfc;
+  padding: 7px 9px;
+}
+
+.credential-summary span:first-child {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.credential-summary strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.source-actions {
+  align-self: end;
+}
+
+.profile-surface {
+  min-height: 100%;
+}
+
+.profile-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+  cursor: pointer;
 }
 
 .run-grid {
@@ -535,7 +632,8 @@ textarea:focus {
   .layout,
   .split,
   .apps-split,
-  .settings,
+  .deploy-grid,
+  .settings-grid,
   .form-grid,
   .run-grid,
   .filters,
@@ -567,5 +665,15 @@ textarea:focus {
 
   .json-input {
     grid-column: auto;
+  }
+
+  .repo-field,
+  .credential-summary {
+    grid-column: auto;
+  }
+
+  .topbar-actions,
+  .context-strip {
+    justify-content: flex-start;
   }
 }

@@ -1,12 +1,12 @@
 export default {
-  order: 2,
+  order: 3,
   id: "deploy-app",
   title: "Deploy an app source",
   description: "Use the Deployments view to register an app source and deploy the active Windforce manifest.",
   screenshot: "docs/assets/ui/deploy-app.png",
   guide: [
     "Open the Deployments view.",
-    "Register a repository with branch, subpath, and credentials reference when needed.",
+    "Register a repository with branch, subpath, and a Git credential profile when needed.",
     "Use Deploy to validate the source, materialize the manifest, and publish the active app contract.",
   ],
   async run({ page, capture }) {

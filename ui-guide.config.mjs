@@ -13,6 +13,7 @@ export default {
   },
 
   async seed({ api }) {
+    await resetGitSources(api);
     await api("/git_sources/sample", {
       method: "POST",
       body: { app_key: "echo" },
@@ -20,6 +21,17 @@ export default {
     await waitForSeedRun(api);
   },
 };
+
+async function resetGitSources(api) {
+  const sources = await api("/git_sources");
+  await Promise.all(
+    sources.map((source) =>
+      api(`/git_sources/${encodeURIComponent(source.id)}`, {
+        method: "DELETE",
+      }),
+    ),
+  );
+}
 
 async function waitForSeedRun(api) {
   let lastError = "";

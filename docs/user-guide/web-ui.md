@@ -4,6 +4,16 @@
 
 This guide is generated from executable UI scenarios. Screenshots are captured from the local windforce-lite devstack.
 
+## Set control plane context
+
+Use the Settings dialog to select the workspace, API token, and actor used by Web UI control-plane requests.
+
+![Set control plane context](../assets/ui/control-plane-settings.png)
+
+1. Open Settings from the top bar.
+2. Set the workspace, API token, and actor for control-plane requests.
+3. Apply the context before managing deployments.
+
 ## Review deployment inventory
 
 Use the Overview view to check active app deployments, source references, action count, and worker readiness.
@@ -21,7 +31,7 @@ Use the Deployments view to register an app source and deploy the active Windfor
 ![Deploy an app source](../assets/ui/deploy-app.png)
 
 1. Open the Deployments view.
-2. Register a repository with branch, subpath, and credentials reference when needed.
+2. Register a repository with branch, subpath, and a Git credential profile when needed.
 3. Use Deploy to validate the source, materialize the manifest, and publish the active app contract.
 
 ## Inspect active deployment contracts

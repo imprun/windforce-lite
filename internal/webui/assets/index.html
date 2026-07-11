@@ -17,23 +17,44 @@
             <p>Deployment control plane console</p>
           </div>
         </div>
-        <form id="settingsForm" class="settings" autocomplete="off">
-          <label>
-            Workspace
-            <input id="workspaceInput" name="workspace" value="default" spellcheck="false" />
-          </label>
-          <label>
-            API token
-            <input id="tokenInput" name="token" type="password" placeholder="optional" spellcheck="false" />
-          </label>
-          <label>
-            Actor
-            <input id="actorInput" name="actor" placeholder="optional" spellcheck="false" />
-          </label>
-          <button class="button primary" type="submit">Apply</button>
+        <div class="topbar-actions">
+          <div class="context-strip" aria-label="Control plane context">
+            <span class="pill">Workspace <strong id="currentWorkspace">default</strong></span>
+            <span class="pill muted">Actor <strong id="currentActor">system</strong></span>
+          </div>
+          <button class="button" id="settingsButton" type="button">Settings</button>
           <button class="button" id="refreshButton" type="button">Refresh</button>
-        </form>
+        </div>
       </header>
+
+      <dialog id="settingsDialog" class="settings-dialog">
+        <form id="settingsForm" class="settings-panel" autocomplete="off">
+          <div class="section-head">
+            <div>
+              <h2>Control Plane Settings</h2>
+              <p>Workspace context and API access for this browser.</p>
+            </div>
+          </div>
+          <div class="settings-grid">
+            <label>
+              Workspace
+              <input id="workspaceInput" name="workspace" value="default" spellcheck="false" />
+            </label>
+            <label>
+              API token
+              <input id="tokenInput" name="token" type="password" placeholder="optional" spellcheck="false" />
+            </label>
+            <label>
+              Actor
+              <input id="actorInput" name="actor" placeholder="optional" spellcheck="false" />
+            </label>
+          </div>
+          <div class="form-actions dialog-actions">
+            <button class="button" id="settingsCloseButton" type="button">Cancel</button>
+            <button class="button primary" type="submit">Apply</button>
+          </div>
+        </form>
+      </dialog>
 
       <main class="layout">
         <nav class="rail" aria-label="Main views">
@@ -91,32 +112,51 @@
               </div>
               <button class="button" id="sampleSourceButton" type="button">Create Sample</button>
             </div>
-            <form id="sourceForm" class="form-grid">
-              <label>
-                App key
-                <input id="sourceName" required placeholder="4MDCPCM" spellcheck="false" />
-              </label>
-              <label>
-                Repository URL
-                <input id="sourceRepo" required placeholder="https://github.com/org/repo.git" spellcheck="false" />
-              </label>
-              <label>
-                Branch
-                <input id="sourceBranch" placeholder="main" spellcheck="false" />
-              </label>
-              <label>
-                Subpath
-                <input id="sourceSubpath" placeholder="apps/coupang-eats" spellcheck="false" />
-              </label>
-              <label>
-                Credentials ref
-                <input id="sourceCreds" placeholder="secrets/git/token" spellcheck="false" />
-              </label>
-              <div class="form-actions">
-                <button class="button primary" type="submit">Register App</button>
-                <button class="button" id="probeSourceButton" type="button">Probe Git</button>
-              </div>
-            </form>
+            <div class="deploy-grid">
+              <form id="sourceForm" class="form-grid deploy-form">
+                <label>
+                  App key
+                  <input id="sourceName" required placeholder="4MDCPCM" spellcheck="false" />
+                </label>
+                <label class="repo-field">
+                  Repository URL
+                  <input id="sourceRepo" required placeholder="https://gitlab.example.com/group/repo.git" spellcheck="false" />
+                </label>
+                <label>
+                  Branch
+                  <input id="sourceBranch" placeholder="main" spellcheck="false" />
+                </label>
+                <label>
+                  Subpath
+                  <input id="sourceSubpath" placeholder="apps/coupang-eats" spellcheck="false" />
+                </label>
+                <label>
+                  Git authentication
+                  <select id="sourceAuthProfile"></select>
+                </label>
+                <label id="sourceCredentialValueLabel">
+                  Token update
+                  <input id="sourceCredentialValue" type="password" placeholder="optional" autocomplete="new-password" spellcheck="false" />
+                </label>
+                <label id="sourceCredsLabel" hidden>
+                  Profile path
+                  <input id="sourceCreds" placeholder="credentials/git/custom/profile" spellcheck="false" />
+                </label>
+                <div id="sourceCredsSummary" class="credential-summary">
+                  <span>Profile</span>
+                  <strong id="sourceCredsPreview">credentials/git/gitlab/default</strong>
+                  <span id="sourceCredsStatus" class="pill muted">not stored</span>
+                </div>
+                <div class="form-actions source-actions">
+                  <button class="button primary" type="submit">Register App</button>
+                  <button class="button" id="probeSourceButton" type="button">Probe Git</button>
+                </div>
+              </form>
+              <section class="surface profile-surface">
+                <h3>Credential Profiles</h3>
+                <div id="credentialProfiles" class="list"></div>
+              </section>
+            </div>
             <div id="sourceList" class="table-list"></div>
           </section>
 

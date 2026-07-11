@@ -50,7 +50,7 @@ WF_GIT_SOURCE_ID ?= 1
 WF_REPO_URL ?= https://github.com/imprun/windforce-lite.git
 WF_BRANCH ?= main
 WF_SUBPATH ?= examples/echo
-WF_GIT_CREDS_REF ?= secrets/git/token
+WF_GIT_CREDS_REF ?= credentials/git/gitlab/default
 WF_GIT_TOKEN_ENV ?= WINDFORCE_LITE_GIT_TOKEN
 WF_VARIABLE_PATH ?= $(WF_GIT_CREDS_REF)
 WF_VARIABLE_VALUE_ENV ?= $(WF_GIT_TOKEN_ENV)
@@ -78,7 +78,7 @@ help:
 	@echo "  dev-worker             run worker process with PostgreSQL state"
 	@echo "  worker-once            claim at most one PostgreSQL-backed queued job"
 	@echo "  windforce-variable-set set secret WF_VARIABLE_PATH from WF_VARIABLE_VALUE_ENV through the control API"
-	@echo "  windforce-git-token    set WF_GIT_CREDS_REF from WF_GIT_TOKEN_ENV as a secret variable"
+	@echo "  windforce-git-token    store WF_GIT_TOKEN_ENV in the WF_GIT_CREDS_REF credential profile"
 	@echo "  windforce-register     register WF_REPO_URL as WF_GIT_SOURCE_NAME through the control API"
 	@echo "  windforce-sync         sync numeric WF_GIT_SOURCE_ID through the control API"
 	@echo "  windforce-sample       create and sync WF_APP as a managed sample source"
