@@ -4,34 +4,33 @@
 
 This guide is generated from executable UI scenarios. Screenshots are captured from the local windforce-lite devstack.
 
-## Browse app action schemas
+## Review deployment inventory
 
-Use the Apps view to inspect synced action contracts and rendered JSON schemas.
+Use the Overview view to check active app deployments, source references, action count, and worker readiness.
 
-![Browse app action schemas](../assets/ui/app-action-schema.png)
+![Review deployment inventory](../assets/ui/deployment-overview.png)
 
-1. Open the Apps view.
-2. Select a synced app.
-3. Select an action to load input and output schemas.
-4. Use the Schema, History, and Source tabs to inspect the deployed contract.
+1. Open the Overview view.
+2. Check app, source, action, and worker-tag inventory counts.
+3. Use Active Deployments to jump into the selected deployment contract.
 
-## Run an action and inspect the result
+## Deploy an app source
 
-Use the Jobs view to submit JSON input, wait for execution, and inspect result/log panels.
+Use the Deployments view to register an app source and deploy the active Windforce manifest.
 
-![Run an action and inspect the result](../assets/ui/job-run.png)
+![Deploy an app source](../assets/ui/deploy-app.png)
 
-1. Open the Jobs view.
-2. Choose an app and action.
-3. Enter JSON input and keep Wait for result enabled for synchronous feedback.
-4. Run the job, then inspect Result and Logs.
-
-## Register and sync a git source
-
-Use the Sources view to inspect a registered source and trigger a sync.
-
-![Register and sync a git source](../assets/ui/sources-sync.png)
-
-1. Open the Sources view.
+1. Open the Deployments view.
 2. Register a repository with branch, subpath, and credentials reference when needed.
-3. Use Sync to materialize the latest configured commit into the runtime cache.
+3. Use Deploy to validate the source, materialize the manifest, and publish the active app contract.
+
+## Inspect active deployment contracts
+
+Use the Contracts view to inspect the active app deployment, action contracts, and materialized source snapshot.
+
+![Inspect active deployment contracts](../assets/ui/deployment-contracts.png)
+
+1. Open the Contracts view.
+2. Select a deployed app.
+3. Select an action to load input and output schemas.
+4. Use Action Schema, Deployments, and Source Snapshot tabs to inspect the deployed contract.

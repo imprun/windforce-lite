@@ -84,7 +84,11 @@ async function loadScenarios(config) {
     const module = await import(pathToFileURL(path.join(dir, name)).href + `?v=${Date.now()}`);
     scenarios.push(module.default);
   }
-  return scenarios;
+  return scenarios.sort((left, right) => {
+    const order = (left.order ?? 1000) - (right.order ?? 1000);
+    if (order !== 0) return order;
+    return left.id.localeCompare(right.id);
+  });
 }
 
 function renderGuide(config, scenarios) {

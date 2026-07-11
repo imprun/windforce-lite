@@ -14,7 +14,7 @@
           <div class="brand-mark" aria-hidden="true">WL</div>
           <div>
             <h1>windforce-lite</h1>
-            <p>Control plane and runtime worker console</p>
+            <p>Deployment control plane console</p>
           </div>
         </div>
         <form id="settingsForm" class="settings" autocomplete="off">
@@ -38,9 +38,8 @@
       <main class="layout">
         <nav class="rail" aria-label="Main views">
           <button class="nav-button active" data-panel="overviewPanel" type="button">Overview</button>
-          <button class="nav-button" data-panel="sourcesPanel" type="button">Sources</button>
-          <button class="nav-button" data-panel="appsPanel" type="button">Apps</button>
-          <button class="nav-button" data-panel="jobsPanel" type="button">Jobs</button>
+          <button class="nav-button" data-panel="sourcesPanel" type="button">Deployments</button>
+          <button class="nav-button" data-panel="appsPanel" type="button">Contracts</button>
         </nav>
 
         <section class="content">
@@ -50,26 +49,26 @@
             <div class="section-head">
               <div>
                 <h2 id="overviewTitle">Overview</h2>
-                <p>Runtime state, source sync state, and recent job health.</p>
+                <p>Deployment inventory, active app contracts, and worker readiness.</p>
               </div>
               <span id="apiStatus" class="pill muted">checking</span>
             </div>
             <div class="metric-grid">
               <div class="metric">
-                <span>Queued</span>
-                <strong id="queuedCount">0</strong>
+                <span>Apps</span>
+                <strong id="appCount">0</strong>
               </div>
               <div class="metric">
-                <span>Running</span>
-                <strong id="runningCount">0</strong>
+                <span>Source refs</span>
+                <strong id="sourceCount">0</strong>
               </div>
               <div class="metric">
-                <span>Completed 24h</span>
-                <strong id="completedCount">0</strong>
+                <span>Actions</span>
+                <strong id="actionCount">0</strong>
               </div>
               <div class="metric">
-                <span>Failed 24h</span>
-                <strong id="failedCount">0</strong>
+                <span>Worker tags</span>
+                <strong id="workerTagCount">0</strong>
               </div>
             </div>
             <div class="split">
@@ -78,8 +77,8 @@
                 <div id="workerTags" class="tag-list"></div>
               </section>
               <section class="surface">
-                <h3>Recent Jobs</h3>
-                <div id="recentJobs" class="list"></div>
+                <h3>Active Deployments</h3>
+                <div id="activeDeployments" class="list"></div>
               </section>
             </div>
           </section>
@@ -87,14 +86,14 @@
           <section id="sourcesPanel" class="panel" aria-labelledby="sourcesTitle">
             <div class="section-head">
               <div>
-                <h2 id="sourcesTitle">Git Sources</h2>
-                <p>Register source repositories, trigger sync, and inspect pinned commits.</p>
+                <h2 id="sourcesTitle">Deploy Apps</h2>
+                <p>Register app source settings, validate repository access, and deploy a pinned Windforce manifest.</p>
               </div>
               <button class="button" id="sampleSourceButton" type="button">Create Sample</button>
             </div>
             <form id="sourceForm" class="form-grid">
               <label>
-                Name
+                App key
                 <input id="sourceName" required placeholder="4MDCPCM" spellcheck="false" />
               </label>
               <label>
@@ -114,8 +113,8 @@
                 <input id="sourceCreds" placeholder="secrets/git/token" spellcheck="false" />
               </label>
               <div class="form-actions">
-                <button class="button primary" type="submit">Register</button>
-                <button class="button" id="probeSourceButton" type="button">Probe</button>
+                <button class="button primary" type="submit">Register App</button>
+                <button class="button" id="probeSourceButton" type="button">Probe Git</button>
               </div>
             </form>
             <div id="sourceList" class="table-list"></div>
@@ -124,99 +123,27 @@
           <section id="appsPanel" class="panel" aria-labelledby="appsTitle">
             <div class="section-head">
               <div>
-                <h2 id="appsTitle">Apps and Actions</h2>
-                <p>Browse synced app contracts, action schemas, and deployment history.</p>
+                <h2 id="appsTitle">Deployment Contracts</h2>
+                <p>Inspect the active deployment contract, action schemas, and materialized source snapshot.</p>
               </div>
               <button class="button" id="openApiButton" type="button">OpenAPI</button>
             </div>
             <div class="split apps-split">
               <section class="surface">
-                <h3>Apps</h3>
+                <h3>Deployed Apps</h3>
                 <div id="appList" class="list selectable"></div>
               </section>
               <section class="surface detail-surface">
                 <div id="appDetail" class="detail-empty">Select an app.</div>
                 <div id="actionList" class="action-grid"></div>
                 <div class="tabs">
-                  <button class="tab-button active" data-tab="schemaTab" type="button">Schema</button>
-                  <button class="tab-button" data-tab="historyTab" type="button">History</button>
-                  <button class="tab-button" data-tab="sourceTab" type="button">Source</button>
+                  <button class="tab-button active" data-tab="schemaTab" type="button">Action Schema</button>
+                  <button class="tab-button" data-tab="historyTab" type="button">Deployments</button>
+                  <button class="tab-button" data-tab="sourceTab" type="button">Source Snapshot</button>
                 </div>
                 <pre id="schemaTab" class="code-view tab-view active"></pre>
                 <div id="historyTab" class="tab-view list"></div>
                 <pre id="sourceTab" class="code-view tab-view"></pre>
-              </section>
-            </div>
-          </section>
-
-          <section id="jobsPanel" class="panel" aria-labelledby="jobsTitle">
-            <div class="section-head">
-              <div>
-                <h2 id="jobsTitle">Jobs</h2>
-                <p>Run actions, inspect job state, read result/logs, and cancel active work.</p>
-              </div>
-              <button class="button" id="reloadJobsButton" type="button">Reload Jobs</button>
-            </div>
-            <form id="runForm" class="run-grid">
-              <label>
-                App
-                <select id="runApp"></select>
-              </label>
-              <label>
-                Action
-                <select id="runAction"></select>
-              </label>
-              <label>
-                Timeout ms
-                <input id="runTimeout" type="number" min="100" max="600000" step="100" value="20000" />
-              </label>
-              <label class="check">
-                <input id="runWait" type="checkbox" checked />
-                Wait for result
-              </label>
-              <label class="json-input">
-                Input JSON
-                <textarea id="runInput" spellcheck="false">{}</textarea>
-              </label>
-              <div class="form-actions">
-                <button class="button primary" type="submit">Run</button>
-                <button class="button" id="formatInputButton" type="button">Format JSON</button>
-              </div>
-            </form>
-            <div class="filters">
-              <label>
-                Status
-                <select id="jobStatusFilter">
-                  <option value="">all</option>
-                  <option value="queued">queued</option>
-                  <option value="running">running</option>
-                  <option value="completed">completed</option>
-                  <option value="failed">failed</option>
-                  <option value="success">success</option>
-                  <option value="canceled">canceled</option>
-                </select>
-              </label>
-              <label>
-                App
-                <input id="jobAppFilter" spellcheck="false" />
-              </label>
-              <label>
-                Limit
-                <input id="jobLimit" type="number" min="1" max="100" value="20" />
-              </label>
-            </div>
-            <div id="jobList" class="table-list"></div>
-            <div class="split">
-              <section class="surface">
-                <div class="section-head compact">
-                  <h3>Result</h3>
-                  <button class="button danger" id="cancelJobButton" type="button">Cancel Selected</button>
-                </div>
-                <pre id="jobResult" class="code-view"></pre>
-              </section>
-              <section class="surface">
-                <h3>Logs</h3>
-                <pre id="jobLogs" class="code-view"></pre>
               </section>
             </div>
           </section>

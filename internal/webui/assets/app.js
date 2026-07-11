@@ -6,7 +6,6 @@ const state = {
   appDetails: new Map(),
   selectedApp: "",
   selectedAction: "",
-  selectedJob: "",
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -35,14 +34,6 @@ function fmtDate(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value);
   return date.toLocaleString();
-}
-
-function statusClass(status) {
-  const value = String(status || "").toLowerCase();
-  if (value === "success" || value === "succeeded" || value === "completed") return "ok";
-  if (value === "running" || value === "queued" || value === "pending") return "warn";
-  if (value === "failure" || value === "failed" || value === "canceled") return "bad";
-  return "muted";
 }
 
 function short(value, size = 12) {
@@ -85,8 +76,7 @@ async function api(path, options = {}) {
 function bindNavigation() {
   $$(".nav-button").forEach((button) => {
     button.addEventListener("click", () => {
-      $$(".nav-button").forEach((item) => item.classList.toggle("active", item === button));
-      $$(".panel").forEach((panel) => panel.classList.toggle("active", panel.id === button.dataset.panel));
+      activatePanel(button.dataset.panel);
     });
   });
   $$(".tab-button").forEach((button) => {
@@ -95,6 +85,11 @@ function bindNavigation() {
       $$(".tab-view").forEach((panel) => panel.classList.toggle("active", panel.id === button.dataset.tab));
     });
   });
+}
+
+function activatePanel(panelID) {
+  $$(".nav-button").forEach((item) => item.classList.toggle("active", item.dataset.panel === panelID));
+  $$(".panel").forEach((panel) => panel.classList.toggle("active", panel.id === panelID));
 }
 
 function readSettings() {
@@ -115,7 +110,7 @@ function saveSettings() {
 async function refreshAll() {
   showNotice("Refreshing...");
   try {
-    const results = await Promise.allSettled([loadOverview(), loadSources(), loadApps(), loadJobs()]);
+    const results = await Promise.allSettled([loadOverview(), loadSources(), loadApps()]);
     const failed = results.find((result) => result.status === "rejected");
     if (failed) throw failed.reason;
     $("#apiStatus").textContent = "ready";
@@ -131,22 +126,24 @@ async function refreshAll() {
 
 async function loadOverview() {
   try {
-    const [summary, tags, jobs] = await Promise.all([
-      api("/jobs/summary"),
+    const [sources, appsResponse, tags] = await Promise.all([
+      api("/git_sources"),
+      api("/apps?view=summary"),
       api("/worker-tags"),
-      api("/jobs?limit=5"),
     ]);
-    $("#queuedCount").textContent = summary.queued_count || 0;
-    $("#runningCount").textContent = summary.running_count || 0;
-    $("#completedCount").textContent = summary.completed_count_recent || 0;
-    $("#failedCount").textContent = summary.failed_count_recent || 0;
+    const apps = Array.isArray(appsResponse) ? appsResponse : appsResponse.apps || [];
+    const workerTags = tags && Array.isArray(tags.tags) ? tags.tags : [];
+    $("#appCount").textContent = apps.length;
+    $("#sourceCount").textContent = sources.length;
+    $("#actionCount").textContent = apps.reduce((total, app) => total + Number(app.actions_count || 0), 0);
+    $("#workerTagCount").textContent = workerTags.length;
     renderWorkerTags(tags);
-    renderRecentJobs(jobs.items || []);
+    renderActiveDeployments(apps);
   } catch (error) {
     $("#apiStatus").textContent = "error";
     $("#apiStatus").className = "pill bad";
     renderWorkerTags({ tags: [] });
-    $("#recentJobs").innerHTML = `<div class="row-meta">${escapeHTML(error.message)}</div>`;
+    $("#activeDeployments").innerHTML = `<div class="row-meta">${escapeHTML(error.message)}</div>`;
     throw error;
   }
 }
@@ -170,28 +167,31 @@ function renderWorkerTags(payload) {
           .join("");
 }
 
-function renderRecentJobs(jobs) {
-  $("#recentJobs").innerHTML =
-    jobs.length === 0
-      ? '<div class="row-meta">No jobs yet.</div>'
-      : jobs
+function renderActiveDeployments(apps) {
+  $("#activeDeployments").innerHTML =
+    apps.length === 0
+      ? '<div class="row-meta">No apps deployed.</div>'
+      : apps
           .map(
-            (job) => `
-            <div class="list-row" data-job-id="${escapeAttr(job.id)}">
-              <div class="row-title">${escapeHTML(job.app_key || "-")}.${escapeHTML(job.action_key || "-")}</div>
-              <div><span class="pill ${statusClass(job.status)}">${escapeHTML(job.status || "unknown")}</span></div>
-              <div class="row-meta">${escapeHTML(short(job.id, 18))} · ${escapeHTML(fmtDate(job.created_at))}</div>
+            (app) => `
+            <div class="list-row" data-app="${escapeAttr(app.app_key || "")}">
+              <div class="row-title">${escapeHTML(app.app_key || "-")}</div>
+              <div><span class="pill ok">active</span></div>
+              <div class="row-meta">${escapeHTML(app.script_lang || "unknown")} · ${escapeHTML(short(app.commit_sha, 14))} · ${escapeHTML(fmtDate(app.updated_at))}</div>
             </div>`,
           )
           .join("");
-  $$("#recentJobs .list-row").forEach((row) => row.addEventListener("click", () => selectJob(row.dataset.jobId)));
+  $$("#activeDeployments .list-row").forEach((row) => row.addEventListener("click", async () => {
+    activatePanel("appsPanel");
+    await selectApp(row.dataset.app);
+  }));
 }
 
 async function loadSources() {
   const sources = await api("/git_sources");
   $("#sourceList").innerHTML =
     sources.length === 0
-      ? '<div class="row-meta">No git sources registered.</div>'
+      ? '<div class="row-meta">No deployable apps registered.</div>'
       : sources
           .map(
             (source) => `
@@ -201,34 +201,36 @@ async function loadSources() {
                 <div class="row-meta">${escapeHTML(source.repo_url)}</div>
               </div>
               <div>
-                <span class="pill muted">#${escapeHTML(source.id)}</span>
+                <span class="pill muted">source #${escapeHTML(source.id)}</span>
                 <span class="pill">${escapeHTML(source.branch || "main")}</span>
               </div>
               <div class="row-meta">
                 ${escapeHTML(source.subpath || "root")}<br />
-                ${escapeHTML(short(source.last_synced_commit, 14))}
+                deployed ${escapeHTML(short(source.last_synced_commit, 14))}
               </div>
               <div class="form-actions">
-                <button class="button" data-sync-id="${escapeAttr(source.id)}" type="button">Sync</button>
-                <button class="button danger" data-delete-id="${escapeAttr(source.id)}" type="button">Delete</button>
+                <button class="button primary" data-sync-id="${escapeAttr(source.id)}" type="button">Deploy</button>
+                <button class="button danger" data-delete-id="${escapeAttr(source.id)}" type="button">Remove</button>
               </div>
             </div>`,
           )
           .join("");
   $$("[data-sync-id]").forEach((button) => {
     button.addEventListener("click", async () => {
-      await runAction(`Syncing source ${button.dataset.syncId}`, async () => {
+      await runAction(`Deploying app source ${button.dataset.syncId}`, async () => {
         const result = await api(`/git_sources/${encodeURIComponent(button.dataset.syncId)}/sync`, { method: "POST" });
-        showNotice(`Synced ${result.app || "source"} at ${short(result.commit, 12)}`, "ok");
+        state.appDetails.clear();
+        showNotice(`Deployed ${result.app || "app"} at ${short(result.commit, 12)}`, "ok");
         await Promise.all([loadSources(), loadApps()]);
-      });
+      }, false);
     });
   });
   $$("[data-delete-id]").forEach((button) => {
     button.addEventListener("click", async () => {
-      if (!confirm(`Delete git source ${button.dataset.deleteId}?`)) return;
-      await runAction("Deleting source", async () => {
+      if (!confirm(`Remove app source ${button.dataset.deleteId}?`)) return;
+      await runAction("Removing app source", async () => {
         await api(`/git_sources/${encodeURIComponent(button.dataset.deleteId)}`, { method: "DELETE" });
+        state.appDetails.clear();
         await Promise.all([loadSources(), loadApps()]);
       });
     });
@@ -244,10 +246,10 @@ async function registerSource(event) {
     subpath: $("#sourceSubpath").value.trim(),
     creds_ref: $("#sourceCreds").value.trim(),
   };
-  await runAction("Registering source", async () => {
+  await runAction("Registering app source", async () => {
     await api("/git_sources", { method: "POST", body: payload });
     event.target.reset();
-    await loadSources();
+    await Promise.all([loadSources(), loadApps()]);
   });
 }
 
@@ -257,7 +259,7 @@ async function probeSource() {
     showNotice("Repository URL is required for probe.", "error");
     return;
   }
-  await runAction("Probing source", async () => {
+  await runAction("Probing app source", async () => {
     const result = await api("/git_sources/probe", {
       method: "POST",
       body: {
@@ -266,15 +268,16 @@ async function probeSource() {
         creds_ref: $("#sourceCreds").value.trim(),
       },
     });
-    showNotice(result.reachable ? "Repository reachable." : result.error || "Repository is not reachable.", result.reachable ? "ok" : "error");
+    showNotice(result.reachable ? "Repository reachable for deployment." : result.error || "Repository is not reachable.", result.reachable ? "ok" : "error");
   });
 }
 
 async function createSampleSource() {
   const appKey = prompt("Sample app key", "echo");
   if (!appKey) return;
-  await runAction("Creating sample source", async () => {
+  await runAction("Creating sample app", async () => {
     await api("/git_sources/sample", { method: "POST", body: { app_key: appKey.trim() } });
+    state.appDetails.clear();
     await Promise.all([loadSources(), loadApps()]);
   });
 }
@@ -284,21 +287,20 @@ async function loadApps() {
   state.apps = Array.isArray(response) ? response : response.apps || [];
   if (!state.selectedApp && state.apps.length > 0) state.selectedApp = state.apps[0].app_key || state.apps[0];
   renderApps();
-  fillRunAppSelect();
   if (state.selectedApp) await selectApp(state.selectedApp, false);
 }
 
 function renderApps() {
   $("#appList").innerHTML =
     state.apps.length === 0
-      ? '<div class="row-meta">No apps synced yet.</div>'
+      ? '<div class="row-meta">No apps deployed yet.</div>'
       : state.apps
           .map((app) => {
             const appKey = app.app_key || app;
             return `
               <div class="list-row ${state.selectedApp === appKey ? "selected" : ""}" data-app="${escapeAttr(appKey)}">
                 <div class="row-title">${escapeHTML(appKey)}</div>
-                <div class="row-meta">${escapeHTML(app.script_lang || "unknown")} · ${escapeHTML(short(app.commit_sha, 12))}</div>
+                <div class="row-meta">${escapeHTML(app.script_lang || "unknown")} · deployed ${escapeHTML(short(app.commit_sha, 12))}</div>
                 <div><span class="pill">${escapeHTML(app.effective_route_tag || app.tag || "default")}</span></div>
               </div>`;
           })
@@ -315,7 +317,6 @@ async function selectApp(appKey, rerender = true) {
     state.appDetails.set(appKey, detail);
   }
   renderAppDetail(detail);
-  fillRunActionSelect(detail.actions || []);
   if (!state.selectedAction && detail.actions && detail.actions.length > 0) state.selectedAction = detail.actions[0].action_key;
   if (state.selectedAction) await selectAction(state.selectedAction, false);
 }
@@ -324,12 +325,13 @@ function renderAppDetail(detail) {
   const app = detail.app || {};
   $("#appDetail").innerHTML = `
     <div class="detail-grid">
-      ${kv("App", app.app_key)}
-      ${kv("Commit", short(app.commit_sha, 16))}
+      ${kv("Deployed app", app.app_key)}
+      ${kv("Active commit", short(app.commit_sha, 16))}
       ${kv("Entrypoint", app.entrypoint)}
       ${kv("Language", app.script_lang)}
       ${kv("Route tag", app.effective_route_tag || app.tag)}
-      ${kv("Git source", app.git_source_id)}
+      ${kv("Source ref", app.git_source_id)}
+      ${kv("Updated", fmtDate(app.updated_at))}
     </div>`;
   $("#actionList").innerHTML =
     (detail.actions || [])
@@ -351,8 +353,6 @@ function kv(label, value) {
 async function selectAction(actionKey, rerender = true) {
   state.selectedAction = actionKey;
   if (rerender && state.selectedApp) renderAppDetail(state.appDetails.get(state.selectedApp) || {});
-  fillRunActionSelect((state.appDetails.get(state.selectedApp) || {}).actions || []);
-  $("#runAction").value = actionKey;
   await Promise.all([loadActionSchema(), loadAppHistory(), loadAppSource()]);
 }
 
@@ -367,12 +367,13 @@ async function loadAppHistory() {
   const history = await api(`/apps/${encodeURIComponent(state.selectedApp)}/history`);
   $("#historyTab").innerHTML =
     history.length === 0
-      ? '<div class="row-meta">No deployment history.</div>'
+      ? '<div class="row-meta">No deployments yet.</div>'
       : history
           .map(
             (item) => `
             <div class="list-row">
-              <div class="row-title">${escapeHTML(short(item.commit_sha, 16))}</div>
+              <div class="row-title">Deployment ${escapeHTML(short(item.id, 10))}</div>
+              <div><span class="pill ok">${escapeHTML(short(item.commit_sha, 12))}</span></div>
               <div class="row-meta">${escapeHTML(item.source || "-")} · ${escapeHTML(fmtDate(item.created_at))}</div>
               <div class="row-meta">${escapeHTML(item.message || "")}</div>
             </div>`,
@@ -411,132 +412,6 @@ function activateTab(id) {
   $$(".tab-view").forEach((panel) => panel.classList.toggle("active", panel.id === id));
 }
 
-function fillRunAppSelect() {
-  const select = $("#runApp");
-  select.innerHTML = state.apps
-    .map((app) => {
-      const key = app.app_key || app;
-      return `<option value="${escapeAttr(key)}">${escapeHTML(key)}</option>`;
-    })
-    .join("");
-  if (state.selectedApp) select.value = state.selectedApp;
-}
-
-function fillRunActionSelect(actions) {
-  const select = $("#runAction");
-  select.innerHTML = actions
-    .map((action) => `<option value="${escapeAttr(action.action_key)}">${escapeHTML(action.action_key)}</option>`)
-    .join("");
-  if (state.selectedAction) select.value = state.selectedAction;
-}
-
-async function runJob(event) {
-  event.preventDefault();
-  const app = $("#runApp").value;
-  const action = $("#runAction").value;
-  if (!app || !action) {
-    showNotice("Select an app and action.", "error");
-    return;
-  }
-  let input;
-  try {
-    input = JSON.parse($("#runInput").value || "{}");
-  } catch (error) {
-    showNotice(`Input JSON is invalid: ${error.message}`, "error");
-    return;
-  }
-  const wait = $("#runWait").checked;
-  const timeout = Number($("#runTimeout").value || 20000);
-  const suffix = wait ? `/wait?timeout_ms=${encodeURIComponent(timeout)}` : "";
-  await runAction("Running job", async () => {
-    const result = await api(`/jobs/run/${encodeURIComponent(app)}/${encodeURIComponent(action)}${suffix}`, {
-      method: "POST",
-      body: input,
-    });
-    $("#jobResult").textContent = pretty(result);
-    state.selectedJob = result.job_id || state.selectedJob;
-    await loadJobs();
-  });
-}
-
-async function loadJobs() {
-  const params = new URLSearchParams();
-  params.set("limit", $("#jobLimit").value || "20");
-  const status = $("#jobStatusFilter").value;
-  const app = $("#jobAppFilter").value.trim();
-  if (status) params.set("status", status);
-  if (app) params.set("app", app);
-  const jobs = await api(`/jobs?${params.toString()}`);
-  renderJobs(jobs.items || []);
-}
-
-function renderJobs(jobs) {
-  $("#jobList").innerHTML =
-    jobs.length === 0
-      ? '<div class="row-meta">No jobs match the current filter.</div>'
-      : jobs
-          .map(
-            (job) => `
-            <div class="table-row ${state.selectedJob === job.id ? "selected" : ""}">
-              <div>
-                <div class="row-title">${escapeHTML(job.app_key || "-")}.${escapeHTML(job.action_key || "-")}</div>
-                <div class="row-meta">${escapeHTML(job.id)}</div>
-              </div>
-              <div><span class="pill ${statusClass(job.status)}">${escapeHTML(job.status || "unknown")}</span></div>
-              <div class="row-meta">${escapeHTML(job.trigger_kind || "-")} · ${escapeHTML(fmtDate(job.created_at))}</div>
-              <div class="form-actions">
-                <button class="button" data-job-open="${escapeAttr(job.id)}" type="button">Open</button>
-                <button class="button" data-job-logs="${escapeAttr(job.id)}" type="button">Logs</button>
-              </div>
-            </div>`,
-          )
-          .join("");
-  $$("[data-job-open]").forEach((button) => button.addEventListener("click", () => selectJob(button.dataset.jobOpen)));
-  $$("[data-job-logs]").forEach((button) => button.addEventListener("click", () => loadJobLogs(button.dataset.jobLogs)));
-}
-
-async function selectJob(jobID) {
-  if (!jobID) return;
-  state.selectedJob = jobID;
-  await runAction("Loading job", async () => {
-    const [status, result] = await Promise.allSettled([
-      api(`/jobs/${encodeURIComponent(jobID)}`),
-      api(`/jobs/${encodeURIComponent(jobID)}/result`),
-    ]);
-    $("#jobResult").textContent = pretty({
-      status: status.status === "fulfilled" ? status.value : status.reason.message,
-      result: result.status === "fulfilled" ? result.value : result.reason.message,
-    });
-    await loadJobLogs(jobID);
-  }, false);
-}
-
-async function loadJobLogs(jobID = state.selectedJob) {
-  if (!jobID) return;
-  try {
-    const logs = await api(`/jobs/${encodeURIComponent(jobID)}/logs?tail_bytes=1048576`);
-    $("#jobLogs").textContent = typeof logs === "string" ? logs : pretty(logs);
-  } catch (error) {
-    $("#jobLogs").textContent = error.message;
-  }
-}
-
-async function cancelSelectedJob() {
-  if (!state.selectedJob) {
-    showNotice("Select a job first.", "error");
-    return;
-  }
-  if (!confirm(`Cancel job ${state.selectedJob}?`)) return;
-  await runAction("Canceling job", async () => {
-    const result = await api(`/jobs/${encodeURIComponent(state.selectedJob)}/cancel`, {
-      method: "POST",
-      body: { reason: "canceled from windforce-lite UI" },
-    });
-    $("#jobResult").textContent = pretty(result);
-    await loadJobs();
-  });
-}
-
 async function runAction(message, fn, showSuccess = true) {
   showNotice(message);
   try {
@@ -549,14 +424,6 @@ async function runAction(message, fn, showSuccess = true) {
   } catch (error) {
     showNotice(error.message, "error");
     throw error;
-  }
-}
-
-function formatInput() {
-  try {
-    $("#runInput").value = JSON.stringify(JSON.parse($("#runInput").value || "{}"), null, 2);
-  } catch (error) {
-    showNotice(`Input JSON is invalid: ${error.message}`, "error");
   }
 }
 
@@ -587,20 +454,6 @@ function bindForms() {
   $("#probeSourceButton").addEventListener("click", probeSource);
   $("#sampleSourceButton").addEventListener("click", createSampleSource);
   $("#openApiButton").addEventListener("click", showAppOpenAPI);
-  $("#runForm").addEventListener("submit", runJob);
-  $("#formatInputButton").addEventListener("click", formatInput);
-  $("#reloadJobsButton").addEventListener("click", loadJobs);
-  $("#cancelJobButton").addEventListener("click", cancelSelectedJob);
-  $("#jobStatusFilter").addEventListener("change", loadJobs);
-  $("#jobAppFilter").addEventListener("change", loadJobs);
-  $("#jobLimit").addEventListener("change", loadJobs);
-  $("#runApp").addEventListener("change", async (event) => {
-    state.selectedAction = "";
-    await selectApp(event.target.value);
-  });
-  $("#runAction").addEventListener("change", async (event) => {
-    await selectAction(event.target.value);
-  });
 }
 
 readSettings();

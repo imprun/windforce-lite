@@ -1,17 +1,18 @@
 export default {
+  order: 3,
   id: "app-action-schema",
-  title: "Browse app action schemas",
-  description: "Use the Apps view to inspect synced action contracts and rendered JSON schemas.",
-  screenshot: "docs/assets/ui/app-action-schema.png",
+  title: "Inspect active deployment contracts",
+  description: "Use the Contracts view to inspect the active app deployment, action contracts, and materialized source snapshot.",
+  screenshot: "docs/assets/ui/deployment-contracts.png",
   guide: [
-    "Open the Apps view.",
-    "Select a synced app.",
+    "Open the Contracts view.",
+    "Select a deployed app.",
     "Select an action to load input and output schemas.",
-    "Use the Schema, History, and Source tabs to inspect the deployed contract.",
+    "Use Action Schema, Deployments, and Source Snapshot tabs to inspect the deployed contract.",
   ],
   async run({ page, capture }) {
     await page.goto();
-    await page.clickText("Apps");
+    await page.clickText("Contracts");
     await page.waitForSelector("#actionList [data-action]");
     await page.click("#actionList [data-action]");
     await page.waitForText("#schemaTab", "input_schema");
