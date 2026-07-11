@@ -45,14 +45,14 @@ func TestParseAcceptsFCodeAppAndModuleKeys(t *testing.T) {
 	}
 }
 
-func TestParseAcceptsCommandAdapterManifestWithoutAppEntrypoint(t *testing.T) {
-	app, err := Parse([]byte(`{
+func TestParseRejectsCommandAdapterManifest(t *testing.T) {
+	_, err := Parse([]byte(`{
 		"app": "4MDCPCM",
 		"name": "Coupang Eats",
+		"entrypoint": "src/coupang_eats/app.py",
 		"actions": {
 			"1000": {
 				"runtime": "python",
-				"entrypoint": "coupang_eats.app:fcode",
 				"inputSchema": "src/coupang_eats/modules/m1000/input.schema.json",
 				"outputSchema": "src/coupang_eats/modules/m1000/output.schema.json",
 				"timeoutMs": 120000,
@@ -64,21 +64,8 @@ func TestParseAcceptsCommandAdapterManifestWithoutAppEntrypoint(t *testing.T) {
 			}
 		}
 	}`))
-	if err != nil {
-		t.Fatalf("Parse returned error: %v", err)
-	}
-	action := app.Actions["1000"]
-	if app.Entrypoint != "" {
-		t.Fatalf("app entrypoint = %q, want empty for command adapter manifest", app.Entrypoint)
-	}
-	if action.Runtime != "python" || action.Entrypoint != "coupang_eats.app:fcode" || action.TimeoutMs != 120000 {
-		t.Fatalf("action execution fields = %#v", action)
-	}
-	if action.Adapter == nil || action.Adapter.Type != "command" || !reflect.DeepEqual(action.Adapter.Command, []string{"scraping-windforce-adapter"}) {
-		t.Fatalf("action adapter = %#v", action.Adapter)
-	}
-	if string(action.Adapter.Options["module"]) != `"1000"` {
-		t.Fatalf("adapter module option = %s", action.Adapter.Options["module"])
+	if err == nil || !strings.Contains(err.Error(), "adapter is not supported") {
+		t.Fatalf("Parse error = %v, want adapter rejection", err)
 	}
 }
 
@@ -327,19 +314,18 @@ func TestParseRejectsMissingEntrypoint(t *testing.T) {
 	}
 }
 
-func TestParseRejectsCommandAdapterWithoutCommand(t *testing.T) {
+func TestParseRejectsActionCommand(t *testing.T) {
 	_, err := Parse([]byte(`{
 		"app": "echo",
+		"entrypoint": "main.py",
 		"actions": {
 			"run": {
-				"runtime": "python",
-				"entrypoint": "echo.app:fcode",
-				"adapter": {"type": "command"}
+				"command": ["python", "main.py"]
 			}
 		}
 	}`))
-	if err == nil || !strings.Contains(err.Error(), "adapter command is required") {
-		t.Fatalf("Parse error = %v, want adapter command validation", err)
+	if err == nil || !strings.Contains(err.Error(), "command is not supported") {
+		t.Fatalf("Parse error = %v, want command rejection", err)
 	}
 }
 
@@ -378,8 +364,6 @@ func TestParsePreservesExecutionFieldsAndIgnoresRuntimeOwnedFields(t *testing.T)
 				"runtime": "go",
 				"timeoutMs": 30000,
 				"tagOverride": "operator-owned",
-				"command": ["go", "run", "./main.go"],
-				"adapter": {"type": "command", "command": ["adapter"]},
 				"inputSchemaBody": {"type": "string"},
 				"outputSchemaBody": {"type": "string"},
 				"updatedAt": "2025-01-01T00:00:00Z"
@@ -395,12 +379,6 @@ func TestParsePreservesExecutionFieldsAndIgnoresRuntimeOwnedFields(t *testing.T)
 	run := app.Actions["run"]
 	if run.Action != "run" || run.Entrypoint != "run.ts" || run.Runtime != "go" || run.TimeoutMs != 30000 {
 		t.Fatalf("run execution fields = %#v", run)
-	}
-	if !reflect.DeepEqual(run.Command, []string{"go", "run", "./main.go"}) {
-		t.Fatalf("run command = %#v", run.Command)
-	}
-	if run.Adapter == nil || run.Adapter.Type != "command" || !reflect.DeepEqual(run.Adapter.Command, []string{"adapter"}) {
-		t.Fatalf("run adapter = %#v", run.Adapter)
 	}
 	if run.TagOverride != nil || len(run.InputSchemaBody) != 0 || len(run.OutputSchemaBody) != 0 || run.UpdatedAt != nil {
 		t.Fatalf("run non-canonical fields leaked = %#v; tagOverride input was %q", run, tagOverride)

@@ -125,54 +125,6 @@ dir. Go apps receive the vendored `windforce-client` module through a `go.mod`
 cached binary. This keeps canonical bare imports working without baking app
 dependencies into the worker image.
 
-## Runtime adapter compatibility
-
-The canonical runtime path runs `entrypoint -> main(ctx) -> result.json`.
-`windforce-lite` still keeps a lower-level adapter subprocess API for integration
-code that must adapt an existing script contract into the Windforce ctx contract.
-That compatibility API is runtime/catalog integration code, not a field in
-`windforce.json`.
-
-An external adapter receives a Windforce adapter request and decides how to call
-the real script. The shape below is deployment/catalog metadata owned by the
-runtime integration layer; it is not valid `windforce.json` source manifest
-content:
-
-```json
-{
-  "app": "legacy-app",
-  "entrypoint": "main.py",
-  "scriptLang": "python",
-  "actions": {
-    "run": {
-      "command": ["legacy-runtime", "run"],
-      "adapter": {
-        "type": "command",
-        "command": ["legacy-windforce-adapter"],
-        "options": {
-          "mode": "compat"
-        }
-      }
-    }
-  }
-}
-```
-
-The `command` adapter process receives:
-
-- `WF_ADAPTER_REQUEST_JSON`: request JSON file path
-- `WF_ADAPTER_RESULT_JSON`: result JSON file path
-- `WF_APP`: app name
-- `WF_ACTION`: action name
-
-The request JSON includes `version`, `workDir`, `command`, `inputPath`,
-`outputPath`, `app`, `action`, `runtime`, `entrypoint`, `timeoutMs`, `env`,
-`actionSpec`, `deployment`, and `options`. The adapter should write the action
-output JSON to `outputPath`, then write a result JSON compatible with
-`JobResult` subprocess fields: `exitCode`, `stdout`, `stderr`, and
-`durationMs`. In worker/API mode, `stdout` and `stderr` are appended to the
-job log stream rather than exposed as the run result.
-
 ## Entrypoint contract
 
 The executor writes `input.json` in a per-job directory, builds `ctx` from

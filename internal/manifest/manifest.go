@@ -121,23 +121,17 @@ func applyAppDefaults(app contract.App, action *contract.Action) {
 }
 
 func validateExecutableAction(app string, actionName string, action contract.Action) error {
-	adapterType := action.AdapterType()
-	switch adapterType {
-	case contract.ActionAdapterJSONFile:
-		if len(action.Command) == 0 {
-			if action.Entrypoint == "" {
-				return fmt.Errorf("app %s has no entrypoint in %s", app, FileName)
-			}
-			if err := validateActionPath(app, actionName, "entrypoint", action.Entrypoint); err != nil {
-				return err
-			}
-		}
-	case contract.ActionAdapterCommand:
-		if action.Adapter == nil || len(action.Adapter.Command) == 0 {
-			return fmt.Errorf("action %s.%s adapter command is required in %s", app, actionName, FileName)
-		}
-	default:
-		return fmt.Errorf("action %s.%s has unsupported adapter %q in %s", app, actionName, adapterType, FileName)
+	if action.Adapter != nil {
+		return fmt.Errorf("action %s.%s adapter is not supported in %s", app, actionName, FileName)
+	}
+	if len(action.Command) > 0 {
+		return fmt.Errorf("action %s.%s command is not supported in %s", app, actionName, FileName)
+	}
+	if action.Entrypoint == "" {
+		return fmt.Errorf("app %s has no entrypoint in %s", app, FileName)
+	}
+	if err := validateActionPath(app, actionName, "entrypoint", action.Entrypoint); err != nil {
+		return err
 	}
 	return nil
 }
