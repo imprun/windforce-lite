@@ -1,4 +1,4 @@
-.PHONY: help fmt test test-postgres build web-install web-build web-typecheck clean \
+.PHONY: help fmt test test-postgres build web-install web-dev web-build web-typecheck clean \
 	compose-up compose-db compose-worker compose-build compose-down compose-reset compose-logs compose-ps postgres-dsn \
 	dev-standalone dev-standalone-postgres dev-api dev-worker worker-once \
 	windforce-variable-set windforce-git-token windforce-register windforce-sync windforce-deploy windforce-sample \
@@ -38,9 +38,10 @@ STATE ?= $(DEV_DIR)/state.json
 CACHE ?= $(DEV_DIR)/cache
 INPUT ?= $(DEV_DIR)/input.json
 OUTPUT ?= $(DEV_DIR)/output.json
-ADDR ?= 127.0.0.1:8080
+WINDFORCE_LITE_API_PORT ?= 18091
+WINDFORCE_LITE_WEB_PORT ?= 18090
+ADDR ?= 127.0.0.1:$(WINDFORCE_LITE_API_PORT)
 
-WINDFORCE_LITE_API_PORT ?= 18090
 WF_API_URL ?= http://127.0.0.1:$(WINDFORCE_LITE_API_PORT)
 WF_WORKSPACE ?= default
 WF_APP ?= echo
@@ -78,6 +79,7 @@ export WINDFORCE_POSTGRES_DB
 export WINDFORCE_POSTGRES_USER
 export WINDFORCE_POSTGRES_PORT
 export WINDFORCE_LITE_API_PORT
+export WINDFORCE_LITE_WEB_PORT
 export WINDFORCE_LITE_DATABASE_URL
 export POSTGRES_DSN
 
@@ -85,9 +87,10 @@ help:
 	@echo "targets:"
 	@echo "  fmt                    run gofmt"
 	@echo "  web-install            install Next.js Web UI dependencies"
-	@echo "  web-build              build Next.js Web UI and sync Go embed assets"
+	@echo "  web-dev                run Bun/Next Web UI with live reload on WINDFORCE_LITE_WEB_PORT"
+	@echo "  web-build              export Next.js Web UI locally without touching Go embed assets"
 	@echo "  web-typecheck          type-check the Next.js Web UI"
-	@echo "  test                   build Web UI and run go test ./..."
+	@echo "  test                   run go test ./..."
 	@echo "  test-postgres          run PostgreSQL integration test against docker compose"
 	@echo "  build                  build $(BIN)"
 	@echo "  dev-standalone         run local JSON-state standalone server"
@@ -108,10 +111,10 @@ help:
 	@echo "  windforce-run-wait     run WF_APP/WF_ACTION and wait WF_TIMEOUT_MS"
 	@echo "  windforce-jobs         list jobs, optionally filtered by WF_JOB_STATUS"
 	@echo "  windforce-job/result/logs/cancel operate on WF_JOB_ID"
-	@echo "  compose-up             start Postgres and control-plane API"
+	@echo "  compose-up             start Postgres, control-plane API, and Bun Web UI"
 	@echo "  compose-db             start only Postgres"
 	@echo "  compose-worker         start Postgres and runtime worker"
-	@echo "  compose-build          build Web UI assets with Bun, then build the Go Docker image"
+	@echo "  compose-build          build the Go Docker image; Dockerfile builds and embeds Web UI assets"
 	@echo "  compose-down/reset/logs/ps"
 	@echo "  ui-guide               regenerate Web UI guide screenshots and markdown"
 	@echo "  ui-guide-verify        run guide scenarios and verify generated docs"
@@ -122,24 +125,27 @@ fmt:
 web-install:
 	cd web && $(BUN) install
 
+web-dev:
+	cd web && WINDFORCE_LITE_API_PROXY_TARGET="$(WF_API_URL)" $(BUN) run dev
+
 web-build:
 	cd web && $(BUN) run build
 
 web-typecheck:
 	cd web && $(BUN) run typecheck
 
-test: web-build
+test:
 	$(GO) test ./...
 
 test-postgres: compose-db
 	WINDFORCE_LITE_POSTGRES_TEST_DSN="$(POSTGRES_DSN)" $(GO) test ./internal/state -run Postgres -count=1 -v
 
-build: web-build
+build:
 	@mkdir -p "$(BIN_DIR)"
 	$(GO) build -o "$(BIN)" $(CMD)
 
 compose-up:
-	$(COMPOSE) up -d postgres control-plane
+	$(COMPOSE) up -d postgres control-plane web
 
 compose-db:
 	$(COMPOSE) up -d postgres
@@ -147,7 +153,7 @@ compose-db:
 compose-worker:
 	$(COMPOSE) up -d postgres worker
 
-compose-build: web-build
+compose-build:
 	$(COMPOSE) build control-plane worker
 
 compose-down:
@@ -157,7 +163,7 @@ compose-reset:
 	$(COMPOSE) down -v
 
 compose-logs:
-	$(COMPOSE) logs -f postgres control-plane worker
+	$(COMPOSE) logs -f postgres control-plane web worker
 
 compose-ps:
 	$(COMPOSE) ps
@@ -165,11 +171,11 @@ compose-ps:
 postgres-dsn:
 	@echo "$(POSTGRES_DSN)"
 
-ui-guide: web-build compose-build
+ui-guide: compose-build
 	node --check tools/ui-guide/capture.mjs
 	node tools/ui-guide/capture.mjs
 
-ui-guide-verify: web-build compose-build
+ui-guide-verify: compose-build
 	node --check tools/ui-guide/capture.mjs
 	node tools/ui-guide/capture.mjs --verify
 

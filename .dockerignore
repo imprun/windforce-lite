@@ -6,6 +6,8 @@
 bin
 dist
 tmp
-web
+web/node_modules
+web/.next
+web/out
 __pycache__
 *.pyc

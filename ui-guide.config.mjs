@@ -1,15 +1,16 @@
 export default {
   name: "windforce-lite",
   baseUrl: process.env.WINDFORCE_LITE_UI_URL || "http://127.0.0.1:18090/ui/",
-  apiBaseUrl: process.env.WINDFORCE_LITE_API_URL || "http://127.0.0.1:18090/api/w/default",
+  apiBaseUrl: process.env.WINDFORCE_LITE_API_URL || "http://127.0.0.1:18091/api/w/default",
   guidePath: "docs/user-guide/web-ui.md",
   scenariosDir: "docs/ui-scenarios",
   screenshotsDir: "docs/assets/ui",
   viewport: { width: 1440, height: 980 },
 
   async start({ exec, waitForHttp }) {
-    await exec("docker", ["compose", "up", "-d", "postgres", "control-plane", "worker"]);
-    await waitForHttp("http://127.0.0.1:18090/readyz", { timeoutMs: 60000 });
+    await exec("docker", ["compose", "up", "-d", "postgres", "control-plane", "web", "worker"]);
+    await waitForHttp("http://127.0.0.1:18091/readyz", { timeoutMs: 60000 });
+    await waitForHttp("http://127.0.0.1:18090/ui/", { timeoutMs: 60000 });
   },
 
   async seed({ api }) {

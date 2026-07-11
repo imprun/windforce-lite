@@ -47,14 +47,16 @@ The ordering is intentional: a catalog entry must not point at a bundle that a
 worker cannot fetch.
 
 The Docker Compose control-plane runs inside a container and maps the API to
-`127.0.0.1:18090` by default, so the default `make windforce-register` path
-registers a remote git URL. Local development uses `tools/windforce_control.py`
-against the same API instead of a separate source-sync command.
+`127.0.0.1:18091` by default. The local Web UI is a Bun/Next development server
+on `127.0.0.1:18090/ui/` and proxies control-plane API calls to the backend.
+Local development uses `tools/windforce_control.py` against the API instead of a
+separate source-sync command.
 
-The Web UI is built outside Docker with Bun. Run `make web-build` or
-`make compose-build` before rebuilding the image; Docker receives no `web/`
-source tree, compiles the Go binary, and embeds the already-built files under
-`internal/webui/assets`.
+The Web UI is live during local development. Run `make web-dev` for a host Bun
+server, or `make compose-up` for the Compose-managed Bun server. Docker image
+builds are the bundling boundary: the Dockerfile builds the Web UI with Bun,
+copies the exported files into `internal/webui/assets`, then compiles the Go
+binary with embedded assets.
 
 ## Docker Compose profiles
 
@@ -253,7 +255,7 @@ placed in shell history:
 
 ```powershell
 $env:WINDFORCE_LITE_GIT_TOKEN = "<token>"
-python tools/windforce_control.py --api-url http://127.0.0.1:18090 --pretty variable-set `
+python tools/windforce_control.py --api-url http://127.0.0.1:18091 --pretty variable-set `
   --path secrets/git/token --value-env WINDFORCE_LITE_GIT_TOKEN --secret
 ```
 
@@ -270,24 +272,23 @@ windforce-register`; `WF_GIT_SOURCE_ID` is the numeric `id` returned by the
 control plane and used by `make windforce-sync`. `WF_GIT_CREDS_REF` defaults to
 `secrets/git/token`.
 
-For local development without the full UI, `tools/windforce_control.py` calls
+For local development without the Web UI, `tools/windforce_control.py` calls
 the same control-plane API. The examples below target the Docker Compose and
-Makefile default API URL, `http://127.0.0.1:18090`. Use
-`http://127.0.0.1:8080` only when running `go run ./cmd/windforce-lite
-standalone --addr 127.0.0.1:8080` directly.
+Makefile default API URL, `http://127.0.0.1:18091`. Use a custom URL only when
+running `go run ./cmd/windforce-lite standalone --addr <addr>` directly.
 
 ```powershell
-python tools/windforce_control.py --api-url http://127.0.0.1:18090 register `
+python tools/windforce_control.py --api-url http://127.0.0.1:18091 register `
   --name echo --repo-url . --subpath examples/echo --creds-ref secrets/git/token
-python tools/windforce_control.py --api-url http://127.0.0.1:18090 sync --git-source-id 1
-python tools/windforce_control.py --api-url http://127.0.0.1:18090 sample --app-key sample_hello
-python tools/windforce_control.py --api-url http://127.0.0.1:18090 --pretty run-wait `
+python tools/windforce_control.py --api-url http://127.0.0.1:18091 sync --git-source-id 1
+python tools/windforce_control.py --api-url http://127.0.0.1:18091 sample --app-key sample_hello
+python tools/windforce_control.py --api-url http://127.0.0.1:18091 --pretty run-wait `
   --app echo --action echo --input '{"message":"hello"}' --timeout-ms 5000
-python tools/windforce_control.py --api-url http://127.0.0.1:18090 --pretty jobs --status completed
-python tools/windforce_control.py --api-url http://127.0.0.1:18090 variables
-python tools/windforce_control.py --api-url http://127.0.0.1:18090 --pretty schema `
+python tools/windforce_control.py --api-url http://127.0.0.1:18091 --pretty jobs --status completed
+python tools/windforce_control.py --api-url http://127.0.0.1:18091 variables
+python tools/windforce_control.py --api-url http://127.0.0.1:18091 --pretty schema `
   --app echo --action echo
-python tools/windforce_control.py --api-url http://127.0.0.1:18090 --pretty control-openapi
+python tools/windforce_control.py --api-url http://127.0.0.1:18091 --pretty control-openapi
 ```
 
 The schema command reads the control-plane schema endpoint,
