@@ -93,6 +93,28 @@ func TestListRemoteBranches(t *testing.T) {
 	}
 }
 
+func TestParseRemoteHeadCommitIgnoresGitWarnings(t *testing.T) {
+	commit := strings.Repeat("a", 40)
+	out := "warning: redirecting to http://git.example.test/group/project.git/\n" +
+		commit + "\trefs/heads/main\n"
+
+	got, ok := parseRemoteHeadCommit(out, "main")
+	if !ok {
+		t.Fatal("parseRemoteHeadCommit did not find main")
+	}
+	if got != commit {
+		t.Fatalf("commit = %q, want %q", got, commit)
+	}
+}
+
+func TestParseRemoteHeadCommitRejectsWarningOnlyOutput(t *testing.T) {
+	out := "warning: redirecting to http://git.example.test/group/project.git/\n"
+
+	if got, ok := parseRemoteHeadCommit(out, "main"); ok {
+		t.Fatalf("parseRemoteHeadCommit = %q, true; want no commit", got)
+	}
+}
+
 func TestResolveBranchCommitRequiresExistingBranch(t *testing.T) {
 	repoDir := filepath.Join(t.TempDir(), "repo")
 	if err := os.MkdirAll(repoDir, 0o755); err != nil {

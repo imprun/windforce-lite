@@ -15,6 +15,7 @@ import (
 )
 
 var credentialPattern = regexp.MustCompile(`(https?://)[^@/\s]+@`)
+var gitObjectIDPattern = regexp.MustCompile(`^[0-9a-fA-F]{40}([0-9a-fA-F]{24})?$`)
 
 type gitCredential struct {
 	Type     string `json:"type"`
@@ -28,20 +29,29 @@ func ResolveBranchCommit(ctx context.Context, repoURL string, branch string, tok
 		branch = "main"
 	}
 
-	out, err := runGit(ctx, "", "ls-remote", authURL(repoURL, token), branch)
+	out, err := runGit(ctx, "", "ls-remote", "--heads", authURL(repoURL, token), branch)
 	if err != nil {
 		return "", err
 	}
-	out = strings.TrimSpace(out)
-	if out == "" {
+	commit, ok := parseRemoteHeadCommit(out, branch)
+	if !ok {
 		return "", fmt.Errorf("branch %q was not found in repository", branch)
 	}
+	return commit, nil
+}
 
-	fields := strings.Fields(out)
-	if len(fields) == 0 {
-		return "", fmt.Errorf("could not resolve commit for %s@%s", repoURL, branch)
+func parseRemoteHeadCommit(out string, branch string) (string, bool) {
+	branch = strings.TrimPrefix(branch, "refs/heads/")
+	for _, line := range strings.Split(out, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 2 || !gitObjectIDPattern.MatchString(fields[0]) {
+			continue
+		}
+		if fields[1] == branch || fields[1] == "refs/heads/"+branch {
+			return fields[0], true
+		}
 	}
-	return fields[0], nil
+	return "", false
 }
 
 func ListRemoteBranches(ctx context.Context, repoURL string, token string) ([]string, error) {
