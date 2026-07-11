@@ -1,14 +1,14 @@
 export default {
   order: 2,
   id: "deployment-overview",
-  title: "Manage deployments",
-  description: "Use the deployment console to inspect registered sources, active contracts, readiness, and deployment audit evidence.",
+  title: "Manage app releases",
+  description: "Use the app console to inspect registered apps, active contracts, readiness, and release audit evidence.",
   screenshot: "docs/assets/ui/deployment-overview.png",
   guide: [
-    "Open the deployment management console.",
-    "Use the sidebar to move between deployment, source, release, and audit work areas.",
-    "Use the release candidate table to compare registered sources.",
-    "Open a source sheet for deployment evidence.",
+    "Open the app release console.",
+    "Use the sidebar to move between Apps, Repositories, Contracts, History, and Settings.",
+    "Use the app table to compare registered apps.",
+    "Open an app sheet for release evidence.",
     "Use the active contracts table to confirm what workers can execute.",
   ],
   async run({ page, capture }) {
@@ -17,9 +17,9 @@ export default {
       localStorage.setItem("wf.actor", "ui-guide@example.test");
     });
     await page.goto();
-    await page.waitForText("#sourceList", "Deployable app sources");
+    await page.waitForText("#sourceList", "Registered apps");
     await page.waitForSelector("#sourceList .tableRow");
-    await page.waitForText("#deploymentOverview", "Worker-visible app contracts");
+    await page.waitForText("#deploymentOverview", "Worker-visible apps");
     await capture(this.id);
   },
 };

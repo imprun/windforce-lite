@@ -25,13 +25,11 @@ export default {
 
 async function resetGitSources(api) {
   const sources = await api("/git_sources");
-  await Promise.all(
-    sources.map((source) =>
-      api(`/git_sources/${encodeURIComponent(source.id)}`, {
-        method: "DELETE",
-      }),
-    ),
-  );
+  for (const source of sources) {
+    await api(`/git_sources/${encodeURIComponent(source.id)}`, {
+      method: "DELETE",
+    });
+  }
 }
 
 async function waitForSeedRun(api) {

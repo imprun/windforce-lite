@@ -14,11 +14,11 @@ type Props = {
 };
 
 const navItems: Array<{ key: ConsoleSection; label: string; shortLabel: string; description: string }> = [
-  { key: "deployments", label: "Deployments", shortLabel: "D", description: "Release control" },
-  { key: "sources", label: "Sources", shortLabel: "S", description: "Git registrations" },
-  { key: "releases", label: "Releases", shortLabel: "R", description: "Active contracts" },
-  { key: "audit", label: "Audit", shortLabel: "A", description: "Deployment trail" },
-  { key: "settings", label: "Settings", shortLabel: "G", description: "Workspace and actor" },
+  { key: "deployments", label: "Apps", shortLabel: "A", description: "Release control" },
+  { key: "sources", label: "Repositories", shortLabel: "R", description: "Git settings" },
+  { key: "releases", label: "Contracts", shortLabel: "C", description: "Worker view" },
+  { key: "audit", label: "History", shortLabel: "H", description: "Release audit" },
+  { key: "settings", label: "Settings", shortLabel: "S", description: "Workspace and actor" },
 ];
 
 export function Sidebar({ active, collapsed, sourceCount, appCount, credentialCount, liveWorkers, onNavigate, onToggleCollapsed }: Props) {
@@ -65,11 +65,11 @@ export function Sidebar({ active, collapsed, sourceCount, appCount, credentialCo
 
       <div className="sidebarStatus" aria-label="Environment summary">
         <div>
-          <span>Sources</span>
+          <span>Apps</span>
           <strong>{sourceCount}</strong>
         </div>
         <div>
-          <span>Apps</span>
+          <span>Contracts</span>
           <strong>{appCount}</strong>
         </div>
         <div>

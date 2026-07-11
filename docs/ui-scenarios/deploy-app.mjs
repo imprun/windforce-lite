@@ -1,15 +1,15 @@
 export default {
   order: 5,
   id: "deploy-app",
-  title: "Deploy a source",
-  description: "Use the Deployments view to publish the selected source as the active Windforce app contract.",
+  title: "Publish app release",
+  description: "Use the Apps view to publish the selected app as the active worker contract.",
   screenshot: "docs/assets/ui/deploy-app.png",
   guide: [
-    "Open the deployment management console.",
-    "Select a registered source.",
-    "Open the deploy dialog.",
+    "Open the app release console.",
+    "Select a registered app.",
+    "Open the release dialog.",
     "Confirm repository, branch, subpath, and current release.",
-    "Add a deployment note and deploy the source.",
+    "Add a release note and publish the app.",
   ],
   async run({ page, capture }) {
     await page.goto();
@@ -20,9 +20,9 @@ export default {
     await page.waitForSelector("#sourceList .tableRow");
     await page.click("#sourceList .compactButton.primary");
     await page.waitForSelector("#deploySourceDialog");
-    await page.fill("#deploySourceMessage", "UI guide deployment");
+    await page.fill("#deploySourceMessage", "UI guide release");
     await capture(this.id);
     await page.click("#deploySourceDialog .button.primary");
-    await page.waitForText("#toast", "Deployed");
+    await page.waitForText("#toast", "Published");
   },
 };

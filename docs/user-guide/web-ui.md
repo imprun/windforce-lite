@@ -6,67 +6,67 @@ This guide is generated from executable UI scenarios. Screenshots are captured f
 
 ## Set control plane context
 
-Use the Settings page to select the workspace, API token, and actor used by Web UI control-plane requests.
+Use the Settings page to select the workspace, API token, and audit actor used by Web UI control-plane requests.
 
 ![Set control plane context](../assets/ui/control-plane-settings.png)
 
 1. Open Settings from the command bar or sidebar.
 2. Set the workspace and optional API token when the control plane requires one.
-3. Set Actor before deploying a source so audit history has a subject.
+3. Set the audit actor that release history records for state-changing requests.
 
 ## Collapse navigation
 
-Collapse the sidebar while keeping deployment work visible.
+Collapse the sidebar while keeping app release work visible.
 
 ![Collapse navigation](../assets/ui/collapsed-sidebar.png)
 
 1. Click the sidebar collapse control.
-2. Use the compact navigation rail to keep deployment work visible.
+2. Use the compact navigation rail to keep app release work visible.
 
-## Manage deployments
+## Manage app releases
 
-Use the deployment console to inspect registered sources, active contracts, readiness, and deployment audit evidence.
+Use the app console to inspect registered apps, active contracts, readiness, and release audit evidence.
 
-![Manage deployments](../assets/ui/deployment-overview.png)
+![Manage app releases](../assets/ui/deployment-overview.png)
 
-1. Open the deployment management console.
-2. Use the sidebar to move between deployment, source, release, and audit work areas.
-3. Use the release candidate table to compare registered sources.
-4. Open a source sheet for deployment evidence.
+1. Open the app release console.
+2. Use the sidebar to move between Apps, Repositories, Contracts, History, and Settings.
+3. Use the app table to compare registered apps.
+4. Open an app sheet for release evidence.
 5. Use the active contracts table to confirm what workers can execute.
 
-## Inspect a source detail sheet
+## Inspect an app detail sheet
 
-Open a registered source sheet to review source registration, active contract, readiness, source snapshot, and audit evidence.
+Open a registered app sheet to review repository settings, active contract, readiness, repository snapshot, and audit evidence.
 
-![Inspect a source detail sheet](../assets/ui/source-detail.png)
+![Inspect an app detail sheet](../assets/ui/source-detail.png)
 
-1. Open the deployment management console.
-2. Open a registered source detail sheet.
+1. Open the app release console.
+2. Open a registered app detail sheet.
 3. Review the active worker contract and exposed actions.
-4. Check readiness signals before deploying.
-5. Inspect the active source snapshot and latest audit entries.
+4. Check readiness signals before publishing a release.
+5. Inspect the repository snapshot and latest audit entries.
 
-## Deploy a source
+## Publish app release
 
-Use the Deployments view to publish the selected source as the active Windforce app contract.
+Use the Apps view to publish the selected app as the active worker contract.
 
-![Deploy a source](../assets/ui/deploy-app.png)
+![Publish app release](../assets/ui/deploy-app.png)
 
-1. Open the deployment management console.
-2. Select a registered source.
-3. Open the deploy dialog.
+1. Open the app release console.
+2. Select a registered app.
+3. Open the release dialog.
 4. Confirm repository, branch, subpath, and current release.
-5. Add a deployment note and deploy the source.
+5. Add a release note and publish the app.
 
-## Inspect active deployment contracts
+## Inspect active contracts
 
-Use the Releases view to inspect the deployed app contract, history, and source snapshot.
+Use the Active Contracts view to inspect the worker-visible app contract, release history, and repository snapshot.
 
-![Inspect active deployment contracts](../assets/ui/deployment-contracts.png)
+![Inspect active contracts](../assets/ui/deployment-contracts.png)
 
-1. Open the deployment management console.
+1. Open the app release console.
 2. Select an active app contract.
 3. Use Contract to review the worker-visible action list and route tag.
-4. Use History to inspect deployment audit entries.
-5. Use Source Snapshot to inspect the materialized files used by the release.
+4. Use History to inspect release audit entries.
+5. Use Repository Snapshot to inspect the materialized files used by the release.

@@ -49,9 +49,9 @@ export function SourceRegistrationForm({ busy, onRegister, onProbe, onCreateSamp
     >
       <header className="dialogHeader">
         <div>
-          <span className="eyebrow">Source registry</span>
-          <h2>Register App Source</h2>
-          <p>Repository access, branch, manifest, schemas, and lockfile are validated before saving.</p>
+          <span className="eyebrow">App registration</span>
+          <h2>Register App</h2>
+          <p>Connect an app to a Git repository source. Repository access, manifest, schemas, and lockfile are validated before saving.</p>
         </div>
         <div className="actions">
           <button className="button" type="button" onClick={onCreateSample} disabled={busy}>
@@ -65,8 +65,8 @@ export function SourceRegistrationForm({ busy, onRegister, onProbe, onCreateSamp
 
       <div className="registrationGrid">
         <label className="field">
-          Source name
-          <input id="sourceName" value={name} onChange={(event) => setName(event.target.value)} required placeholder="4MDCPCM" spellCheck={false} />
+          App key
+          <input id="sourceName" value={name} onChange={(event) => setName(event.target.value)} required placeholder="MY_APP" spellCheck={false} />
         </label>
         <label className="field span2">
           Repository URL
@@ -77,11 +77,11 @@ export function SourceRegistrationForm({ busy, onRegister, onProbe, onCreateSamp
           <input id="sourceBranch" value={branch} onChange={(event) => setBranch(event.target.value)} spellCheck={false} />
         </label>
         <label className="field">
-          Subpath
+          Repository subpath
           <input id="sourceSubpath" value={subpath} onChange={(event) => setSubpath(event.target.value)} placeholder="apps/coupang-eats" spellCheck={false} />
         </label>
         <label className="field">
-          Git authentication
+          Repository authentication
           <select id="sourceAuthMethod" value={authMethod} onChange={(event) => setAuthMethod(event.target.value as AuthMethod)}>
             <option value="none">No authentication</option>
             <option value="pat">Personal access token</option>
@@ -89,7 +89,7 @@ export function SourceRegistrationForm({ busy, onRegister, onProbe, onCreateSamp
           </select>
         </label>
         <div className="credentialPreview">
-          <span>Credential storage</span>
+          <span>Credential reference</span>
           <strong>{authMethod === "none" ? "public repository" : credentialPath}</strong>
         </div>
         {authMethod === "pat" ? (
@@ -114,10 +114,10 @@ export function SourceRegistrationForm({ busy, onRegister, onProbe, onCreateSamp
 
       <div className="dialogFooter">
         <button className="button" type="button" onClick={() => void onProbe(payload())} disabled={busy}>
-          Probe Git
+          Validate Repository
         </button>
         <button className="button primary" type="submit" disabled={busy}>
-          Register Source
+          Register App
         </button>
       </div>
     </form>

@@ -27,7 +27,7 @@ export function DeploySourceDialog({ source, actor, busy, error, onClose, onDepl
     <div id="deploySourceDialog" className="modalBackdrop" role="presentation">
       <form
         className="modal"
-        aria-label="Deploy source"
+        aria-label="Publish app release"
         onSubmit={(event) => {
           event.preventDefault();
           void submit(event.currentTarget);
@@ -35,7 +35,7 @@ export function DeploySourceDialog({ source, actor, busy, error, onClose, onDepl
       >
         <header className="dialogHeader">
           <div>
-            <h2>Deploy Source</h2>
+            <h2>Publish Release</h2>
             <p>{source.repo_url}</p>
           </div>
           <button className="button" type="button" onClick={onClose}>
@@ -43,17 +43,17 @@ export function DeploySourceDialog({ source, actor, busy, error, onClose, onDepl
           </button>
         </header>
         <div className="detailGrid two">
-          <Field label="Source" value={source.name} />
+          <Field label="App" value={source.name} />
           <Field label="Branch" value={source.branch || "main"} />
           <Field label="Subpath" value={source.subpath || "root"} />
           <Field label="Current release" value={`${formatDate(source.last_synced_at)} / ${shortID(source.last_synced_commit, 14)}`} />
         </div>
         <label className="field">
-          Deployment note
-          <textarea id="deploySourceMessage" name="message" placeholder="change reason, rollout note, or validation context" />
+          Release note
+          <textarea id="deploySourceMessage" name="message" placeholder="release reason, validation context, or rollout note" />
         </label>
         <p className={actor.trim() ? "hint" : "hint warn"}>
-          {actor.trim() ? `Actor: ${actor}` : "Set Actor in Settings before deploying a source."}
+          {actor.trim() ? `Release history will record audit actor: ${actor}` : "Release history needs an audit actor."}
         </p>
         {error ? <p className="hint dangerText">{error}</p> : null}
         <div className="actions end">
@@ -66,11 +66,11 @@ export function DeploySourceDialog({ source, actor, busy, error, onClose, onDepl
                 onOpenSettings();
               }}
             >
-              Set Actor
+              Set Audit Actor
             </button>
           ) : null}
           <button className="button primary" type="submit" disabled={busy || !actor.trim()}>
-            {busy ? "Deploying..." : "Deploy"}
+            {busy ? "Publishing..." : "Publish Release"}
           </button>
         </div>
       </form>

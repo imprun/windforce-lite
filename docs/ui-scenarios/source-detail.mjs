@@ -1,15 +1,15 @@
 export default {
   order: 3,
   id: "source-detail",
-  title: "Inspect a source detail sheet",
-  description: "Open a registered source sheet to review source registration, active contract, readiness, source snapshot, and audit evidence.",
+  title: "Inspect an app detail sheet",
+  description: "Open a registered app sheet to review repository settings, active contract, readiness, repository snapshot, and audit evidence.",
   screenshot: "docs/assets/ui/source-detail.png",
   guide: [
-    "Open the deployment management console.",
-    "Open a registered source detail sheet.",
+    "Open the app release console.",
+    "Open a registered app detail sheet.",
     "Review the active worker contract and exposed actions.",
-    "Check readiness signals before deploying.",
-    "Inspect the active source snapshot and latest audit entries.",
+    "Check readiness signals before publishing a release.",
+    "Inspect the repository snapshot and latest audit entries.",
   ],
   async run({ page, capture }) {
     await page.goto();

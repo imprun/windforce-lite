@@ -37,22 +37,22 @@ export function DeploymentsSection(props: CommonProps) {
     <div id="deploymentOverview" className="deploymentConsole">
       <section className="deploymentCommandBar">
         <div className="commandSummary">
-          <MetricTile label="Release candidates" value={String(props.sources.length)} />
+          <MetricTile label="Registered apps" value={String(props.sources.length)} />
           <MetricTile label="Active contracts" value={String(props.apps.length)} tone={props.apps.length ? "ok" : "neutral"} />
-          <MetricTile label="Stored credentials" value={String(props.credentialCount)} />
+          <MetricTile label="Git credentials" value={String(props.credentialCount)} />
           <MetricTile label="Live workers" value={String(props.liveWorkers)} tone={props.liveWorkers ? "ok" : "warn"} />
         </div>
         <div className="commandActions">
-          <button className="button primary" type="button" onClick={props.onRegister}>Register Source</button>
+          <button className="button primary" type="button" onClick={props.onRegister}>Register App</button>
           <button className="button" type="button" onClick={props.onSettings}>Settings</button>
         </div>
       </section>
 
       <section id="sourceList" className="workspacePanel queuePanel">
         <PanelHeader
-          eyebrow="Release candidates"
-          title="Deployable app sources"
-          description="Register Git sources, inspect the materialized Windforce contract, then deploy a pinned release."
+          eyebrow="Apps"
+          title="Registered apps"
+          description="Each app points at one repository source. Publish a release to make its contract visible to workers."
         />
         <SourceToolbar search={props.search} onSearch={props.onSearch} />
         <SourceTable {...props} mode="deployment" />
@@ -60,8 +60,8 @@ export function DeploymentsSection(props: CommonProps) {
 
       <section className="workspacePanel queuePanel">
         <PanelHeader
-          eyebrow="Active releases"
-          title="Worker-visible app contracts"
+          eyebrow="Active contracts"
+          title="Worker-visible apps"
           description="These contracts are what workers read when jobs arrive for an app/action."
         />
         <AppTable apps={props.apps} selectedApp={props.selectedApp} onSelectSource={props.onSelectSource} sources={props.sources} />
@@ -75,10 +75,10 @@ export function SourcesSection(props: CommonProps) {
     <div id="deploymentOverview" className="deploymentConsole">
       <section id="sourceList" className="workspacePanel queuePanel">
         <PanelHeader
-          eyebrow="Source registry"
-          title="Registered Git sources"
-          description="Each row points at a repository and subpath containing a Windforce manifest."
-          action={<button className="button primary" type="button" aria-label="Register source from source registry" onClick={props.onRegister}>Register Source</button>}
+          eyebrow="Repository settings"
+          title="App repositories"
+          description="Manage the Git repository, branch, subpath, and credential reference used by each app."
+          action={<button className="button primary" type="button" aria-label="Register app repository" onClick={props.onRegister}>Register App</button>}
         />
         <SourceToolbar search={props.search} onSearch={props.onSearch} />
         <SourceTable {...props} mode="source" />
@@ -92,9 +92,9 @@ export function ReleasesSection(props: CommonProps) {
     <div id="deploymentOverview" className="workspaceGrid releasesGrid">
       <section className="workspacePanel queuePanel">
         <PanelHeader
-          eyebrow="Release contracts"
+          eyebrow="Active contracts"
           title="Worker-visible apps"
-          description="These contracts are generated from the latest deployment."
+          description="These contracts are generated from the latest published release."
         />
         <AppTable apps={props.apps} selectedApp={props.selectedApp} onSelectSource={props.onSelectSource} sources={props.sources} />
       </section>
@@ -108,12 +108,12 @@ export function AuditSection(props: CommonProps) {
     <div id="deploymentOverview" className="workspaceGrid auditGrid">
       <section id="deploymentHistory" className="workspacePanel queuePanel">
         <PanelHeader
-          eyebrow="Deployment audit"
-          title="Release activity"
-          description="Audit entries show the published commit, actor, deployment id, and note."
+          eyebrow="Release history"
+          title="Audit trail"
+          description="Audit entries show the published commit, actor, release id, and note."
         />
         <div className="auditTable">
-          {props.history.length === 0 ? <EmptyLine>No deployment history for the selected app.</EmptyLine> : null}
+          {props.history.length === 0 ? <EmptyLine>No release history for the selected app.</EmptyLine> : null}
           {props.history.map((item) => (
             <div className="auditRow" key={item.id}>
               <div>
@@ -143,9 +143,9 @@ function SourceToolbar({ search, onSearch }: { search: string; onSearch: (value:
     <div className="tableToolbar">
       <label className="field searchField">
         Search
-        <input id="sourceSearch" value={search} onChange={(event) => onSearch(event.target.value)} placeholder="source, repo, branch, subpath" spellCheck={false} />
+        <input id="sourceSearch" value={search} onChange={(event) => onSearch(event.target.value)} placeholder="app, repository, branch, subpath" spellCheck={false} />
       </label>
-      <div className="toolbarHint">Open a source sheet to inspect contract readiness, source snapshot, and deployment audit.</div>
+      <div className="toolbarHint">Open an app sheet to inspect repository settings, active contract, release history, and readiness.</div>
     </div>
   );
 }
@@ -160,24 +160,24 @@ function SourceTable(props: CommonProps & { mode: "deployment" | "source" }) {
   return (
     <div className={`dataTable sourceTable ${props.mode}`}>
       <div className="tableHead">
-        <span>Source</span>
+        <span>App</span>
         <span>Repository</span>
-        <span>Branch / path</span>
+        <span>Repository path</span>
         <span>Current release</span>
-        <span>Last deployed</span>
+        <span>Last release</span>
         <span>Action</span>
       </div>
-      {filtered.length === 0 ? <EmptyLine>No source matches this filter.</EmptyLine> : null}
+      {filtered.length === 0 ? <EmptyLine>No app matches this filter.</EmptyLine> : null}
       {filtered.map((source) => {
         const app = props.apps.find((item) => item.git_source_id === source.id) || null;
         const selected = source.id === props.selectedSourceID;
         return (
           <div className={`tableRow ${selected ? "selected" : ""}`} key={source.id}>
-            <button className="tableCellButton sourceIdentity" type="button" aria-label={`Open source ${source.name}`} onClick={() => props.onOpenSourceDetail(source.id)}>
+            <button className="tableCellButton sourceIdentity" type="button" aria-label={`Open app ${source.name}`} onClick={() => props.onOpenSourceDetail(source.id)}>
               <span className={source.last_synced_commit ? "statusDot ok" : "statusDot warn"} aria-hidden="true" />
               <span>
                 <strong>{source.name}</strong>
-                <small>{source.last_synced_commit ? "deployed" : "registered"}</small>
+                <small>{source.last_synced_commit ? "released" : "registered"}</small>
               </span>
             </button>
             <div className="tableCell repoCell">{source.repo_url}</div>
@@ -187,15 +187,15 @@ function SourceTable(props: CommonProps & { mode: "deployment" | "source" }) {
             </div>
             <div className="tableCell">
               <strong>{app?.app_key || "-"}</strong>
-              <small>{app ? `${app.entrypoint || "-"} / ${shortID(app.commit_sha, 10)}` : "not deployed"}</small>
+              <small>{app ? `${app.entrypoint || "-"} / ${shortID(app.commit_sha, 10)}` : "not released"}</small>
             </div>
             <div className="tableCell">
               <strong>{formatCompactDate(source.last_synced_at)}</strong>
               <small>{shortID(source.last_synced_commit, 12)}</small>
             </div>
             <div className="rowButtons nowrap">
-              <button className="button compactButton" type="button" onClick={() => props.onOpenSourceDetail(source.id)}>Details</button>
-              <button className="button primary compactButton" type="button" onClick={() => props.onDeploySource(source)}>Deploy</button>
+              <button className="button compactButton" type="button" onClick={() => props.onOpenSourceDetail(source.id)}>Open</button>
+              <button className="button primary compactButton" type="button" onClick={() => props.onDeploySource(source)}>Publish</button>
             </div>
           </div>
         );
@@ -214,14 +214,14 @@ function AppTable({ apps, sources, selectedApp, onSelectSource }: { apps: AppSum
         <span>Actions</span>
         <span>Updated</span>
       </div>
-      {apps.length === 0 ? <EmptyLine>No active app contracts.</EmptyLine> : null}
+      {apps.length === 0 ? <EmptyLine>No active contracts.</EmptyLine> : null}
       {apps.map((app) => {
         const source = sources.find((item) => item.id === app.git_source_id);
         return (
           <div className={`tableRow ${selectedApp?.app_key === app.app_key ? "selected" : ""}`} key={app.app_key}>
             <button className="tableCellButton" type="button" onClick={() => source ? onSelectSource(source.id) : undefined}>
               <strong>{app.app_key}</strong>
-              <small>{source?.name || `source ${app.git_source_id}`}</small>
+              <small>{source?.name || `repository ${app.git_source_id}`}</small>
             </button>
             <div className="tableCell">{app.entrypoint || "-"}</div>
             <div className="tableCell">{shortID(app.commit_sha, 16)}</div>
@@ -242,7 +242,7 @@ function ContractDetail(props: CommonProps) {
       <div className="tabBar" role="tablist" aria-label="Release contract tabs">
         <TabButton id="tab-contract" active={props.activeTab === "contract"} onClick={() => props.onTabChange("contract")}>Contract</TabButton>
         <TabButton id="tab-history" active={props.activeTab === "history"} onClick={() => props.onTabChange("history")}>History</TabButton>
-        <TabButton id="tab-source" active={props.activeTab === "source"} onClick={() => props.onTabChange("source")}>Source Snapshot</TabButton>
+        <TabButton id="tab-source" active={props.activeTab === "source"} onClick={() => props.onTabChange("source")}>Repository Snapshot</TabButton>
       </div>
       {props.activeTab === "contract" ? <ContractTab app={app} detail={props.detail} /> : null}
       {props.activeTab === "history" ? <HistoryTab history={props.history} /> : null}
@@ -252,7 +252,7 @@ function ContractDetail(props: CommonProps) {
 }
 
 export function ContractTab({ app, detail }: { app: AppSummary | null; detail: AppDetail | null }) {
-  if (!app) return <div id="actionList" className="emptyState"><strong>No deployed contract</strong><p>Select or deploy a source first.</p></div>;
+  if (!app) return <div id="actionList" className="emptyState"><strong>No active contract</strong><p>Publish an app release first.</p></div>;
   return (
     <div className="contractTab">
       <div className="sourceDetailGrid">
@@ -280,7 +280,7 @@ export function ContractTab({ app, detail }: { app: AppSummary | null; detail: A
 function HistoryTab({ history }: { history: AppHistoryItem[] }) {
   return (
     <div id="deploymentHistory" className="historyList">
-      {history.length === 0 ? <EmptyLine>No deployment history.</EmptyLine> : null}
+      {history.length === 0 ? <EmptyLine>No release history.</EmptyLine> : null}
       {history.map((item) => <HistoryItem item={item} key={item.id} />)}
     </div>
   );
@@ -291,22 +291,22 @@ export function ReadinessPanel({ source, app, actor, liveWorkers }: { source: Gi
     <div className="readinessPanel">
       <span className="eyebrow">Readiness</span>
       <div className="readinessList">
-        <ReadinessItem ok={Boolean(source)} label="Source registered" detail={source?.name || "No source selected"} />
+        <ReadinessItem ok={Boolean(source)} label="App registered" detail={source?.name || "No app selected"} />
         <ReadinessItem ok={Boolean(source?.repo_url)} label="Repository URL" detail={source?.repo_url || "Missing"} />
-        <ReadinessItem ok={Boolean(app)} label="Active contract" detail={app ? `${app.app_key} / ${shortID(app.commit_sha, 10)}` : "First deployment required"} warnOnly />
-        <ReadinessItem ok={Boolean(actor.trim())} label="Audit actor" detail={actor.trim() || "Set in Settings before deploy"} />
+        <ReadinessItem ok={Boolean(app)} label="Active contract" detail={app ? `${app.app_key} / ${shortID(app.commit_sha, 10)}` : "First release required"} warnOnly />
+        <ReadinessItem ok={Boolean(actor.trim())} label="Audit actor" detail={actor.trim() || "Set in Settings before publishing"} />
         <ReadinessItem ok={liveWorkers > 0} label="Live workers" detail={`${liveWorkers} worker${liveWorkers === 1 ? "" : "s"}`} warnOnly />
       </div>
     </div>
   );
 }
 
-export function LatestAudit({ history, title = "Deployment audit" }: { history: AppHistoryItem[]; title?: string }) {
+export function LatestAudit({ history, title = "Release history" }: { history: AppHistoryItem[]; title?: string }) {
   return (
     <div id="auditTimeline" className="latestAudit">
       <span className="eyebrow">{title}</span>
       <div className="historyList compactHistory">
-        {history.length === 0 ? <EmptyLine>No audit entries for this source.</EmptyLine> : null}
+        {history.length === 0 ? <EmptyLine>No audit entries for this app.</EmptyLine> : null}
         {history.slice(0, 4).map((item) => <HistoryItem item={item} key={item.id} compact />)}
       </div>
     </div>
@@ -316,9 +316,9 @@ export function LatestAudit({ history, title = "Deployment audit" }: { history: 
 export function SourceSnapshotPanel({ files, compact = false }: { files: Record<string, string>; compact?: boolean }) {
   return (
     <section className={compact ? "snapshotPanel compact" : "workspacePanel snapshotPanel"}>
-      {!compact ? <PanelHeader eyebrow="Source snapshot" title="Materialized files" description="The worker contract was built from this source snapshot." /> : null}
+      {!compact ? <PanelHeader eyebrow="Repository snapshot" title="Materialized files" description="The worker contract was built from this repository snapshot." /> : null}
       <pre id="sourceSnapshot" className="codeView">
-        {Object.entries(files).slice(0, 4).map(([name, content]) => `# ${name}\n${content}`).join("\n\n") || "No source snapshot loaded."}
+        {Object.entries(files).slice(0, 4).map(([name, content]) => `# ${name}\n${content}`).join("\n\n") || "No repository snapshot loaded."}
       </pre>
     </section>
   );
@@ -378,9 +378,9 @@ function ReadinessItem({ ok, label, detail, warnOnly = false }: { ok: boolean; l
 function HistoryItem({ item, compact = false }: { item: AppHistoryItem; compact?: boolean }) {
   return (
     <article className={compact ? "historyItem compact" : "historyItem"}>
-      <strong>{item.source || "deploy"} / {shortID(item.commit_sha, 12)}</strong>
+      <strong>{item.source || "release"} / {shortID(item.commit_sha, 12)}</strong>
       <p>{item.created_by || "-"} / {formatDate(item.created_at)}</p>
-      {!compact ? <p>{item.deployment_id ? `deploy ${shortID(item.deployment_id, 10)}` : "sync"}{item.message ? ` / ${item.message}` : ""}</p> : null}
+      {!compact ? <p>{item.deployment_id ? `release ${shortID(item.deployment_id, 10)}` : "sync"}{item.message ? ` / ${item.message}` : ""}</p> : null}
     </article>
   );
 }

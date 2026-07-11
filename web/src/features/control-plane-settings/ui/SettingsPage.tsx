@@ -40,7 +40,7 @@ export function SettingsPage({ settings, sourceCount, appCount, credentialCount,
           <div>
             <span className="eyebrow">Control plane context</span>
             <h2>Settings</h2>
-            <p>Workspace, API token, and actor are applied to control-plane requests from this browser.</p>
+            <p>Workspace and API token select the API context. Audit actor is written to release history.</p>
           </div>
           <button className="button" type="button" onClick={onRefresh} disabled={busy}>
             {busy ? "Refreshing" : "Refresh"}
@@ -68,10 +68,10 @@ export function SettingsPage({ settings, sourceCount, appCount, credentialCount,
             />
           </label>
           <label className="field">
-            Actor
+            Audit actor
             <input
               id="actorInput"
-              placeholder="Required for deploy"
+              placeholder="local-dev"
               value={draft.actor}
               onChange={(event) => setDraft({ ...draft, actor: event.target.value })}
               spellCheck={false}
@@ -91,14 +91,14 @@ export function SettingsPage({ settings, sourceCount, appCount, credentialCount,
           <div>
             <span className="eyebrow">Current context</span>
             <h2>{settings.workspace || "default"}</h2>
-            <p>{settings.actor ? `Actor ${settings.actor}` : "Actor is not set"}</p>
+            <p>{settings.actor ? `Audit actor ${settings.actor}` : "Audit actor is not set"}</p>
           </div>
-          <span className={settings.actor ? "badge ok" : "badge warn"}>{settings.actor ? "ready" : "needs actor"}</span>
+          <span className={settings.actor ? "badge ok" : "badge warn"}>{settings.actor ? "auditable" : "needs audit actor"}</span>
         </header>
         <div className="settingsSummaryGrid">
           <ContextItem label="Workspace" value={settings.workspace || "default"} tone="ok" />
           <ContextItem label="API token" value={settings.token ? "stored in browser" : "not set"} tone={settings.token ? "ok" : "neutral"} />
-          <ContextItem label="Actor" value={settings.actor || "not set"} tone={settings.actor ? "ok" : "warn"} />
+          <ContextItem label="Audit actor" value={settings.actor || "not set"} tone={settings.actor ? "ok" : "warn"} />
           <ContextItem label="Live workers" value={String(liveWorkers)} tone={liveWorkers > 0 ? "ok" : "warn"} />
         </div>
       </section>
@@ -112,9 +112,9 @@ export function SettingsPage({ settings, sourceCount, appCount, credentialCount,
           </div>
         </header>
         <div className="settingsMetricGrid">
-          <Metric label="Sources" value={sourceCount} />
-          <Metric label="Apps" value={appCount} />
-          <Metric label="Credentials" value={credentialCount} />
+          <Metric label="App registrations" value={sourceCount} />
+          <Metric label="Active contracts" value={appCount} />
+          <Metric label="Git credentials" value={credentialCount} />
           <Metric label="Workers" value={liveWorkers} />
         </div>
       </section>

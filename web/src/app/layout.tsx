@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "windforce-lite",
-  description: "windforce-lite deployment control plane",
+  description: "windforce-lite app release control plane",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

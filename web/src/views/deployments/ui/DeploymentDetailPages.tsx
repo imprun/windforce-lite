@@ -20,7 +20,7 @@ export function SourceDetailSection(props: CommonProps & { detailPage: Extract<D
   const actorReady = Boolean(props.actor.trim());
 
   if (!source) {
-    return <DetailNotFound title="Source not found" onBack={props.onBackToList} />;
+    return <DetailNotFound title="App not found" onBack={props.onBackToList} />;
   }
 
   return (
@@ -29,19 +29,19 @@ export function SourceDetailSection(props: CommonProps & { detailPage: Extract<D
         <div className="detailHeroMain">
           <button className="button compactButton" type="button" onClick={props.onBackToList}>Back to console</button>
           <div>
-            <span className="eyebrow">Source detail</span>
+            <span className="eyebrow">App detail</span>
             <h2>{source.name}</h2>
             <p>{source.repo_url}</p>
           </div>
         </div>
         <div className="detailHeroActions">
-          <span className={source.last_synced_commit ? "badge ok" : "badge warn"}>{source.last_synced_commit ? "deployed" : "registered"}</span>
+          <span className={source.last_synced_commit ? "badge ok" : "badge warn"}>{source.last_synced_commit ? "released" : "registered"}</span>
           {actorReady ? (
-            <button className="button primary" type="button" onClick={() => props.onDeploySource(source)}>Deploy</button>
+            <button className="button primary" type="button" onClick={() => props.onDeploySource(source)}>Publish Release</button>
           ) : (
             <>
-              <button className="button primary" type="button" onClick={props.onSettings}>Set actor</button>
-              <button className="button" type="button" disabled>Deploy</button>
+              <button className="button primary" type="button" onClick={props.onSettings}>Set audit actor</button>
+              <button className="button" type="button" disabled>Publish Release</button>
             </>
           )}
         </div>
@@ -50,30 +50,30 @@ export function SourceDetailSection(props: CommonProps & { detailPage: Extract<D
       <div className="detailLayout">
         <div className="detailMain">
           <section className="workspacePanel">
-            <PanelHeader eyebrow="Active contract" title={app?.app_key || "No active contract"} description={app?.entrypoint || "Deploy this source to publish a worker-visible app contract."} />
+            <PanelHeader eyebrow="Active contract" title={app?.app_key || "No active contract"} description={app?.entrypoint || "Publish a release to make this app visible to workers."} />
             <ContractEvidence app={app} detail={props.detail} />
           </section>
 
           <section className="workspacePanel">
-            <PanelHeader eyebrow="Deployment audit" title="Release history" description="Each deployment records the published commit, actor, deployment id, and note." />
+            <PanelHeader eyebrow="Release history" title="Audit trail" description="Each release records the published commit, actor, release id, and note." />
             <LatestAudit history={props.history} title="Release audit" />
           </section>
 
           <section className="workspacePanel">
-            <PanelHeader eyebrow="Source snapshot" title="Materialized files" description="The active contract was generated from this source snapshot." />
+            <PanelHeader eyebrow="Repository snapshot" title="Materialized files" description="The active contract was generated from this repository snapshot." />
             <SourceSnapshotPanel files={props.sourceFiles} compact />
           </section>
         </div>
 
         <aside className="detailAside">
           <section className="workspacePanel">
-            <PanelHeader eyebrow="Source registration" title="Git source" description={source.kind || "git"} />
+            <PanelHeader eyebrow="Repository settings" title="Git source" description={source.kind || "git"} />
             <div className="sourceDetailGrid">
               <Field label="Branch" value={source.branch || "main"} />
               <Field label="Subpath" value={source.subpath || "root"} />
               <Field label="Credential" value={source.creds_ref ? "configured" : "public repository"} />
-              <Field label="Source ID" value={String(source.id)} />
-              <Field label="Last deployed" value={formatDate(source.last_synced_at)} />
+              <Field label="Repository ID" value={String(source.id)} />
+              <Field label="Last release" value={formatDate(source.last_synced_at)} />
               <CopyField label="Last commit" value={source.last_synced_commit || ""} display={shortID(source.last_synced_commit, 16)} />
             </div>
           </section>
@@ -84,10 +84,10 @@ export function SourceDetailSection(props: CommonProps & { detailPage: Extract<D
 
           <section className="workspacePanel dangerZonePanel">
             <div>
-              <strong>Source registration</strong>
-              <p>Remove only when this source should no longer be deployable from the control plane.</p>
+              <strong>App registration</strong>
+              <p>Remove only when this app should no longer be publishable from the control plane.</p>
             </div>
-            <button className="button dangerGhost" type="button" onClick={() => props.onRemove(source)}>Remove Source</button>
+            <button className="button dangerGhost" type="button" onClick={() => props.onRemove(source)}>Remove App</button>
           </section>
         </aside>
       </div>
@@ -97,7 +97,7 @@ export function SourceDetailSection(props: CommonProps & { detailPage: Extract<D
 
 function ContractEvidence({ app, detail }: { app: AppSummary | null; detail: AppDetail | null }) {
   if (!app) {
-    return <div id="actionList" className="emptyState"><strong>No deployed contract</strong><p>Select or deploy a source first.</p></div>;
+    return <div id="actionList" className="emptyState"><strong>No active contract</strong><p>Publish this app first.</p></div>;
   }
   return (
     <div className="contractTab">
