@@ -45,6 +45,43 @@ func TestParseAcceptsFCodeAppAndModuleKeys(t *testing.T) {
 	}
 }
 
+func TestParseAcceptsCommandAdapterManifestWithoutAppEntrypoint(t *testing.T) {
+	app, err := Parse([]byte(`{
+		"app": "4MDCPCM",
+		"name": "Coupang Eats",
+		"actions": {
+			"1000": {
+				"runtime": "python",
+				"entrypoint": "coupang_eats.app:fcode",
+				"inputSchema": "src/coupang_eats/modules/m1000/input.schema.json",
+				"outputSchema": "src/coupang_eats/modules/m1000/output.schema.json",
+				"timeoutMs": 120000,
+				"adapter": {
+					"type": "command",
+					"command": ["scraping-windforce-adapter"],
+					"options": {"module": "1000"}
+				}
+			}
+		}
+	}`))
+	if err != nil {
+		t.Fatalf("Parse returned error: %v", err)
+	}
+	action := app.Actions["1000"]
+	if app.Entrypoint != "" {
+		t.Fatalf("app entrypoint = %q, want empty for command adapter manifest", app.Entrypoint)
+	}
+	if action.Runtime != "python" || action.Entrypoint != "coupang_eats.app:fcode" || action.TimeoutMs != 120000 {
+		t.Fatalf("action execution fields = %#v", action)
+	}
+	if action.Adapter == nil || action.Adapter.Type != "command" || !reflect.DeepEqual(action.Adapter.Command, []string{"scraping-windforce-adapter"}) {
+		t.Fatalf("action adapter = %#v", action.Adapter)
+	}
+	if string(action.Adapter.Options["module"]) != `"1000"` {
+		t.Fatalf("adapter module option = %s", action.Adapter.Options["module"])
+	}
+}
+
 func TestLoadMissingManifestUsesCanonicalMessage(t *testing.T) {
 	_, err := Load(t.TempDir())
 	if err == nil || err.Error() != "no windforce.json manifest at source root (subpath)" {
@@ -290,6 +327,22 @@ func TestParseRejectsMissingEntrypoint(t *testing.T) {
 	}
 }
 
+func TestParseRejectsCommandAdapterWithoutCommand(t *testing.T) {
+	_, err := Parse([]byte(`{
+		"app": "echo",
+		"actions": {
+			"run": {
+				"runtime": "python",
+				"entrypoint": "echo.app:fcode",
+				"adapter": {"type": "command"}
+			}
+		}
+	}`))
+	if err == nil || !strings.Contains(err.Error(), "adapter command is required") {
+		t.Fatalf("Parse error = %v, want adapter command validation", err)
+	}
+}
+
 func TestParseRejectsUnsupportedFlows(t *testing.T) {
 	_, err := Parse([]byte(`{
 		"app": "echo",
@@ -310,7 +363,7 @@ func TestParseRejectsUnsupportedFlows(t *testing.T) {
 	}
 }
 
-func TestParseIgnoresNonCanonicalManifestFields(t *testing.T) {
+func TestParsePreservesExecutionFieldsAndIgnoresRuntimeOwnedFields(t *testing.T) {
 	tagOverride := "operator-owned"
 	app, err := Parse([]byte(`{
 		"app": "echo",
@@ -340,11 +393,16 @@ func TestParseIgnoresNonCanonicalManifestFields(t *testing.T) {
 		t.Fatalf("app runtime = %q, want ignored", app.Runtime)
 	}
 	run := app.Actions["run"]
-	if run.Action != "run" || run.Entrypoint != "main.ts" || run.Runtime != "typescript" || run.TimeoutMs != 120000 {
-		t.Fatalf("run canonical fields = %#v", run)
+	if run.Action != "run" || run.Entrypoint != "run.ts" || run.Runtime != "go" || run.TimeoutMs != 30000 {
+		t.Fatalf("run execution fields = %#v", run)
 	}
-	if run.TagOverride != nil || len(run.Command) != 0 || run.Adapter != nil ||
-		len(run.InputSchemaBody) != 0 || len(run.OutputSchemaBody) != 0 || run.UpdatedAt != nil {
+	if !reflect.DeepEqual(run.Command, []string{"go", "run", "./main.go"}) {
+		t.Fatalf("run command = %#v", run.Command)
+	}
+	if run.Adapter == nil || run.Adapter.Type != "command" || !reflect.DeepEqual(run.Adapter.Command, []string{"adapter"}) {
+		t.Fatalf("run adapter = %#v", run.Adapter)
+	}
+	if run.TagOverride != nil || len(run.InputSchemaBody) != 0 || len(run.OutputSchemaBody) != 0 || run.UpdatedAt != nil {
 		t.Fatalf("run non-canonical fields leaked = %#v; tagOverride input was %q", run, tagOverride)
 	}
 }
