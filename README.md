@@ -51,6 +51,22 @@ The Docker Compose control-plane runs inside a container and maps the API to
 registers a remote git URL. Local development uses `tools/windforce_control.py`
 against the same API instead of a separate source-sync command.
 
+## Docker Compose profiles
+
+The Compose file keeps PostgreSQL, the control-plane backend, and the worker as
+separate profiles.
+
+```bash
+docker compose --profile standalone up -d
+docker compose --profile pg up -d postgres
+docker compose --profile backend up -d control-plane
+docker compose --profile worker up -d worker
+```
+
+`standalone` starts PostgreSQL, backend, and worker together. When another
+devstack provides PostgreSQL, set `WINDFORCE_LITE_DATABASE_URL` and start only
+the `backend` and `worker` profiles.
+
 ## Run
 
 A queued run executes an action from the active catalog:

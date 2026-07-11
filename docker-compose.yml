@@ -1,7 +1,12 @@
 name: windforce-lite
 
+x-windforce-lite-database-url: &windforce-lite-database-url "${WINDFORCE_LITE_DATABASE_URL:-postgres://postgres@postgres:5432/windforce_lite?sslmode=disable}"
+
 services:
   postgres:
+    profiles:
+      - pg
+      - standalone
     image: postgres:16-alpine
     restart: unless-stopped
     ports:
@@ -19,6 +24,9 @@ services:
       - postgres-data:/var/lib/postgresql/data
 
   control-plane:
+    profiles:
+      - backend
+      - standalone
     image: ${WINDFORCE_LITE_IMAGE:-imprun/windforce-lite:local}
     build:
       context: .
@@ -26,6 +34,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+        required: false
     ports:
       - "127.0.0.1:${WINDFORCE_LITE_API_PORT:-18090}:8080"
     command:
@@ -35,7 +44,7 @@ services:
       - --state-backend
       - postgres
       - --database-url
-      - postgres://${WINDFORCE_POSTGRES_USER:-postgres}@postgres:5432/${WINDFORCE_POSTGRES_DB:-windforce_lite}?sslmode=disable
+      - *windforce-lite-database-url
       - --migrate
       - --store
       - /data/store
@@ -47,6 +56,9 @@ services:
       - windforce-data:/data
 
   worker:
+    profiles:
+      - worker
+      - standalone
     image: ${WINDFORCE_LITE_IMAGE:-imprun/windforce-lite:local}
     build:
       context: .
@@ -54,12 +66,13 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+        required: false
     command:
       - worker
       - --state-backend
       - postgres
       - --database-url
-      - postgres://${WINDFORCE_POSTGRES_USER:-postgres}@postgres:5432/${WINDFORCE_POSTGRES_DB:-windforce_lite}?sslmode=disable
+      - *windforce-lite-database-url
       - --migrate
       - --store
       - /data/store
