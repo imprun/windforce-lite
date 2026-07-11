@@ -97,54 +97,6 @@ func buildControlPlaneOpenAPI(baseURL string, workspaceID string) map[string]any
 				}, "400", "401", "403", "404", "422"),
 			},
 		},
-		"/api/w/{workspace}/deployment_requests": map[string]any{
-			"get": map[string]any{
-				"operationId": "listDeploymentRequests",
-				"summary":     "List deployment requests",
-				"parameters": []any{
-					oapiWorkspaceParam(workspaceID),
-					oapiQueryParam("status", "Optional request status filter.", oapiStringEnumSchema("pending", "deployed", "rejected"), false),
-					oapiQueryParam("git_source_id", "Optional git source id filter.", oapiStringSchema(), false),
-				},
-				"responses": withErrors(map[string]any{
-					"200": oapiResponse("Deployment requests.", oapiSchemaRef("DeploymentRequestsResponse")),
-				}, "401", "403"),
-			},
-			"post": map[string]any{
-				"operationId": "createDeploymentRequest",
-				"summary":     "Validate a git source and create a deployment request",
-				"description": "Creates a pending request pinned to the commit validated at request time. Requires X-Windforce-Actor.",
-				"parameters":  []any{oapiWorkspaceParam(workspaceID)},
-				"requestBody": oapiJSONBody(oapiSchemaRef("CreateDeploymentRequestRequest"), true),
-				"responses": withErrors(map[string]any{
-					"201": oapiResponse("Created deployment request.", oapiSchemaRef("DeploymentRequest")),
-				}, "400", "401", "403", "404", "409", "422"),
-			},
-		},
-		"/api/w/{workspace}/deployment_requests/{requestId}/deploy": map[string]any{
-			"post": map[string]any{
-				"operationId": "deployDeploymentRequest",
-				"summary":     "Approve and deploy a pending deployment request",
-				"description": "Publishes the commit pinned on the deployment request. Requires X-Windforce-Actor.",
-				"parameters":  []any{oapiWorkspaceParam(workspaceID), oapiPathParam("requestId", "Deployment request id.")},
-				"requestBody": oapiJSONBody(oapiSchemaRef("DeploymentRequestActionRequest"), true),
-				"responses": withErrors(map[string]any{
-					"200": oapiResponse("Updated request and deployment result.", oapiSchemaRef("DeploymentRequestDeployResponse")),
-				}, "400", "401", "403", "404", "409", "422"),
-			},
-		},
-		"/api/w/{workspace}/deployment_requests/{requestId}/reject": map[string]any{
-			"post": map[string]any{
-				"operationId": "rejectDeploymentRequest",
-				"summary":     "Reject a pending deployment request",
-				"description": "Marks a pending request as rejected. Requires X-Windforce-Actor.",
-				"parameters":  []any{oapiWorkspaceParam(workspaceID), oapiPathParam("requestId", "Deployment request id.")},
-				"requestBody": oapiJSONBody(oapiSchemaRef("DeploymentRequestActionRequest"), false),
-				"responses": withErrors(map[string]any{
-					"200": oapiResponse("Rejected deployment request.", oapiSchemaRef("DeploymentRequest")),
-				}, "400", "401", "403", "404", "409"),
-			},
-		},
 		"/api/w/{workspace}/apps": map[string]any{
 			"get": map[string]any{
 				"operationId": "listApps",
@@ -615,63 +567,6 @@ func controlPlaneSchemas() map[string]any {
 				"message": nullableString,
 			},
 			"required": []any{"confirm"},
-		},
-		"DeploymentRequest": map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"id":               oapiStringSchema(),
-				"workspace_id":     oapiStringSchema(),
-				"git_source_id":    oapiIntegerSchema(),
-				"source_name":      oapiStringSchema(),
-				"repo_url":         oapiStringSchema(),
-				"branch":           oapiStringSchema(),
-				"subpath":          oapiStringSchema(),
-				"status":           oapiStringEnumSchema("pending", "deployed", "rejected"),
-				"app_key":          oapiStringSchema(),
-				"entrypoint":       oapiStringSchema(),
-				"target_commit":    oapiStringSchema(),
-				"current_commit":   oapiStringSchema(),
-				"actions_count":    oapiIntegerSchema(),
-				"requested_by":     oapiStringSchema(),
-				"request_message":  oapiStringSchema(),
-				"operator_message": oapiStringSchema(),
-				"reviewed_by":      nullableString,
-				"deployed_by":      nullableString,
-				"deployment_id":    nullableString,
-				"deployed_commit":  nullableString,
-				"deployed_at":      nullableDateTime,
-				"created_at":       oapiDateTimeSchema(),
-				"updated_at":       oapiDateTimeSchema(),
-			},
-			"required": []any{"id", "workspace_id", "git_source_id", "source_name", "repo_url", "branch", "subpath", "status", "app_key", "entrypoint", "target_commit", "actions_count", "requested_by", "created_at", "updated_at"},
-		},
-		"DeploymentRequestsResponse": map[string]any{
-			"type":       "object",
-			"properties": map[string]any{"requests": map[string]any{"type": "array", "items": oapiSchemaRef("DeploymentRequest")}},
-			"required":   []any{"requests"},
-		},
-		"CreateDeploymentRequestRequest": map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"git_source_id": oapiStringSchema(),
-				"message":       nullableString,
-			},
-			"required": []any{"git_source_id"},
-		},
-		"DeploymentRequestActionRequest": map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"confirm": oapiBooleanSchema(),
-				"message": nullableString,
-			},
-		},
-		"DeploymentRequestDeployResponse": map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"request":     oapiSchemaRef("DeploymentRequest"),
-				"sync_result": oapiSchemaRef("GitSourceSyncResult"),
-			},
-			"required": []any{"request", "sync_result"},
 		},
 		"PatchGitSourceRequest": map[string]any{
 			"type": "object",

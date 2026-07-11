@@ -1,4 +1,4 @@
-import type { AppDetail, AppHistoryItem, AppSummary, DeploymentRequest } from "@/entities/app";
+import type { AppDetail, AppHistoryItem, AppSummary } from "@/entities/app";
 import type { GitSource } from "@/entities/git-source";
 
 export type Notice = {
@@ -10,9 +10,7 @@ export type ConsoleSection = "deployments" | "sources" | "releases" | "audit" | 
 
 export type DetailTab = "contract" | "history" | "source";
 
-export type DetailPage =
-  | { kind: "fcode"; sourceID: number }
-  | { kind: "request"; requestID: string };
+export type DetailPage = { kind: "source"; sourceID: number };
 
 export type DeploymentSelection = {
   source: GitSource | null;
@@ -20,9 +18,4 @@ export type DeploymentSelection = {
   detail: AppDetail | null;
   history: AppHistoryItem[];
   sourceFiles: Record<string, string>;
-};
-
-export type DeploymentRequestAction = {
-  request: DeploymentRequest;
-  source: GitSource | null;
 };

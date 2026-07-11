@@ -1,10 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type ComponentProps } from "react";
-import type { AppDetail, AppHistoryItem, AppSummary, DeploymentRequest } from "@/entities/app";
+import { useCallback, useEffect, useMemo, useState, type ComponentProps, type ReactNode } from "react";
+import type { AppDetail, AppHistoryItem, AppSummary } from "@/entities/app";
 import type { GitSource } from "@/entities/git-source";
 import { SettingsPage } from "@/features/control-plane-settings/ui/SettingsPage";
-import { RequestDeploymentDialog, ReviewDeploymentRequestDialog } from "@/features/deployment-request/ui/DeploymentRequestDialogs";
+import { DeploySourceDialog } from "@/features/source-deployment/ui/DeploySourceDialog";
 import { SourceRegistrationForm } from "@/features/source-registration/ui/SourceRegistrationForm";
 import { Sidebar } from "@/widgets/sidebar";
 import { Topbar } from "@/widgets/topbar";
@@ -12,7 +12,7 @@ import { WindforceApi } from "@/shared/api/client";
 import type { ApiSettings, VariableRow, WorkerTagsResponse } from "@/shared/api/types";
 import { shortID } from "@/shared/lib/format";
 import { AuditSection, DeploymentsSection, ReleasesSection, SourcesSection } from "./DeploymentPanels";
-import { DeploymentRequestDetailSection, FCodeDetailSection } from "./DeploymentDetailPages";
+import { SourceDetailSection } from "./DeploymentDetailPages";
 import type { ConsoleSection, DetailPage, DetailTab, Notice } from "./types";
 
 const defaultSettings: ApiSettings = {
@@ -24,7 +24,7 @@ const defaultSettings: ApiSettings = {
 const sectionCopy: Record<ConsoleSection, { title: string; subtitle: string }> = {
   deployments: {
     title: "Deployment Console",
-    subtitle: "Review deployment requests, inspect pinned commits, and publish guarded releases.",
+    subtitle: "Register app sources, inspect pinned contracts, and publish guarded releases.",
   },
   sources: {
     title: "Source Registry",
@@ -48,7 +48,6 @@ export function DeploymentsView() {
   const [settings, setSettings] = useState<ApiSettings>(defaultSettings);
   const [sources, setSources] = useState<GitSource[]>([]);
   const [apps, setApps] = useState<AppSummary[]>([]);
-  const [deploymentRequests, setDeploymentRequests] = useState<DeploymentRequest[]>([]);
   const [variables, setVariables] = useState<VariableRow[]>([]);
   const [workerTags, setWorkerTags] = useState<WorkerTagsResponse>({});
   const [selectedSourceID, setSelectedSourceID] = useState<number | null>(null);
@@ -56,8 +55,7 @@ export function DeploymentsView() {
   const [appDetail, setAppDetail] = useState<AppDetail | null>(null);
   const [history, setHistory] = useState<AppHistoryItem[]>([]);
   const [sourceFiles, setSourceFiles] = useState<Record<string, string>>({});
-  const [requestSource, setRequestSource] = useState<GitSource | null>(null);
-  const [reviewRequest, setReviewRequest] = useState<DeploymentRequest | null>(null);
+  const [deploySource, setDeploySource] = useState<GitSource | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<Notice>({ tone: "info", text: "" });
   const [deployError, setDeployError] = useState("");
@@ -115,18 +113,16 @@ export function DeploymentsView() {
     setBusy(true);
     setNotice({ tone: "info", text: "Refreshing deployment state..." });
     try {
-      const [nextVariables, nextSources, nextApps, nextTags, nextRequests] = await Promise.all([
+      const [nextVariables, nextSources, nextApps, nextTags] = await Promise.all([
         api.variables(),
         api.gitSources(),
         api.apps(),
         api.workerTags(),
-        api.deploymentRequests(),
       ]);
       setVariables(nextVariables);
       setSources(nextSources);
       setApps(nextApps.apps || []);
       setWorkerTags(nextTags);
-      setDeploymentRequests(nextRequests.requests || []);
       setSelectedSourceID((current) => {
         if (current && nextSources.some((source) => source.id === current)) return current;
         return nextSources[0]?.id || null;
@@ -148,16 +144,10 @@ export function DeploymentsView() {
   }, [refresh]);
 
   useEffect(() => {
-    if (detailPage?.kind === "fcode" && sources.some((source) => source.id === detailPage.sourceID)) {
+    if (detailPage?.kind === "source" && sources.some((source) => source.id === detailPage.sourceID)) {
       setSelectedSourceID(detailPage.sourceID);
     }
-    if (detailPage?.kind === "request") {
-      const request = deploymentRequests.find((item) => item.id === detailPage.requestID);
-      if (request && sources.some((source) => source.id === request.git_source_id)) {
-        setSelectedSourceID(request.git_source_id);
-      }
-    }
-  }, [deploymentRequests, detailPage, sources]);
+  }, [detailPage, sources]);
 
   useEffect(() => {
     const appKey = selectedApp?.app_key || (selectedSource ? "" : selectedAppKey);
@@ -220,19 +210,10 @@ export function DeploymentsView() {
     setNotice({ tone: "ok", text: "Settings saved." });
   }
 
-  function openFCodeDetail(sourceID: number) {
-    const next = { kind: "fcode", sourceID } satisfies DetailPage;
+  function openSourceDetail(sourceID: number) {
+    const next = { kind: "source", sourceID } satisfies DetailPage;
     setActiveSection("deployments");
     setSelectedSourceID(sourceID);
-    setDetailPage(next);
-    writeDetailPageToHistory(next);
-  }
-
-  function openRequestDetail(requestID: string) {
-    const next = { kind: "request", requestID } satisfies DetailPage;
-    const request = deploymentRequests.find((item) => item.id === requestID);
-    if (request) setSelectedSourceID(request.git_source_id);
-    setActiveSection("deployments");
     setDetailPage(next);
     writeDetailPageToHistory(next);
   }
@@ -242,45 +223,21 @@ export function DeploymentsView() {
     writeDetailPageToHistory(null);
   }
 
-  async function createDeploymentRequest(message: string) {
-    if (!requestSource) return;
+  async function deploySelectedSource(message: string) {
+    if (!deploySource) return;
+    const source = deploySource;
     setDeployError("");
-    await run(`Creating deployment request for ${requestSource.name}`, async () => {
-      const created = await api.createDeploymentRequest(requestSource.id, message ? { message } : {});
-      setRequestSource(null);
-      setSelectedSourceID(requestSource.id);
-      await refresh();
-      return `Requested ${created.source_name} at ${shortID(created.target_commit, 12)}.`;
-    });
-  }
-
-  async function deployDeploymentRequest(message: string) {
-    if (!reviewRequest) return;
-    setDeployError("");
-    await run(`Deploying request ${reviewRequest.id}`, async () => {
-      const result = await api.deployDeploymentRequest(reviewRequest.id, message ? { confirm: true, message } : { confirm: true });
-      setReviewRequest(null);
-      setSelectedSourceID(result.request.git_source_id);
-      setSelectedAppKey(result.sync_result.app);
+    await run(`Deploying ${source.name}`, async () => {
+      const result = await api.deployGitSource(source.id, message ? { confirm: true, message } : { confirm: true });
+      setDeploySource(null);
+      setSelectedSourceID(source.id);
+      setSelectedAppKey(result.app);
       setDetailTab("history");
-      setDetailPage({ kind: "request", requestID: reviewRequest.id });
-      writeDetailPageToHistory({ kind: "request", requestID: reviewRequest.id });
+      const next = { kind: "source", sourceID: source.id } satisfies DetailPage;
+      setDetailPage(next);
+      writeDetailPageToHistory(next);
       await refresh();
-      return `Deployed ${result.sync_result.app} at ${shortID(result.sync_result.commit, 12)}.`;
-    });
-  }
-
-  async function rejectDeploymentRequest(message: string) {
-    if (!reviewRequest) return;
-    setDeployError("");
-    await run(`Rejecting request ${reviewRequest.id}`, async () => {
-      const result = await api.rejectDeploymentRequest(reviewRequest.id, message ? { message } : {});
-      setReviewRequest(null);
-      setSelectedSourceID(result.git_source_id);
-      setDetailPage({ kind: "request", requestID: result.id });
-      writeDetailPageToHistory({ kind: "request", requestID: result.id });
-      await refresh();
-      return `Rejected deployment request for ${result.source_name}.`;
+      return `Deployed ${result.app} at ${shortID(result.commit, 12)}.`;
     });
   }
 
@@ -292,7 +249,33 @@ export function DeploymentsView() {
     return `Removed ${source.name}.`;
   });
 
-  const topbarCopy = detailPage ? detailCopy(detailPage, sources, deploymentRequests) : sectionCopy[activeSection];
+  const topbarCopy = sectionCopy[activeSection];
+  const commonProps = {
+    sources,
+    apps,
+    selectedSourceID,
+    selectedSource,
+    selectedApp,
+    detail: appDetail,
+    history,
+    sourceFiles,
+    search,
+    activeTab: detailTab,
+    actor: settings.actor,
+    liveWorkers,
+    credentialCount,
+    detailPage,
+    onSearch: setSearch,
+    onSelectSource: setSelectedSourceID,
+    onRegister: () => setRegistrationOpen(true),
+    onDeploySource: setDeploySource,
+    onOpenSourceDetail: openSourceDetail,
+    onBackToList: closeDetailPage,
+    onRemove: removeSource,
+    onTabChange: setDetailTab,
+    onSettings: openSettingsPage,
+  } satisfies ComponentProps<typeof DeploymentsSection>;
+  const detailSheetCopy = detailPage ? detailCopy(detailPage, sources) : null;
 
   return (
     <main className={sidebarCollapsed ? "appShell sidebarCollapsed" : "appShell"}>
@@ -326,34 +309,7 @@ export function DeploymentsView() {
               onRefresh={refresh}
             />
           ) : (
-            <ActiveSection
-              section={activeSection}
-              sources={sources}
-              apps={apps}
-              selectedSourceID={selectedSourceID}
-              selectedSource={selectedSource}
-              selectedApp={selectedApp}
-              detail={appDetail}
-              history={history}
-              sourceFiles={sourceFiles}
-              search={search}
-              activeTab={detailTab}
-              actor={settings.actor}
-              liveWorkers={liveWorkers}
-              deploymentRequests={deploymentRequests}
-              detailPage={detailPage}
-              onSearch={setSearch}
-              onSelectSource={setSelectedSourceID}
-              onRegister={() => setRegistrationOpen(true)}
-              onRequestDeploy={setRequestSource}
-              onReviewRequest={setReviewRequest}
-              onOpenFCodeDetail={openFCodeDetail}
-              onOpenRequestDetail={openRequestDetail}
-              onBackToList={closeDetailPage}
-              onRemove={removeSource}
-              onTabChange={setDetailTab}
-              onSettings={openSettingsPage}
-            />
+            <ActiveSection section={activeSection} {...commonProps} />
           )}
         </div>
       </section>
@@ -362,7 +318,7 @@ export function DeploymentsView() {
 
       {registrationOpen ? (
         <div id="registerSourceDialog" className="modalBackdrop" role="presentation">
-          <section className="dialog wideDialog" aria-label="Register FCode source">
+          <section className="dialog wideDialog" aria-label="Register app source">
             <SourceRegistrationForm
               busy={busy}
               onCancel={() => setRegistrationOpen(false)}
@@ -388,31 +344,22 @@ export function DeploymentsView() {
         </div>
       ) : null}
 
-      <RequestDeploymentDialog
-        source={requestSource}
-        actor={settings.actor}
-        busy={busy}
-        error={deployError}
-        onClose={() => {
-          setDeployError("");
-          setRequestSource(null);
-        }}
-        onRequest={createDeploymentRequest}
-        onOpenSettings={openSettingsPage}
-      />
+      {detailPage && detailSheetCopy ? (
+        <DetailSheet title={detailSheetCopy.title} subtitle={detailSheetCopy.subtitle} onClose={closeDetailPage}>
+          <SourceDetailSection {...commonProps} detailPage={detailPage} />
+        </DetailSheet>
+      ) : null}
 
-      <ReviewDeploymentRequestDialog
-        request={reviewRequest}
-        source={reviewRequest ? sources.find((source) => source.id === reviewRequest.git_source_id) || null : null}
+      <DeploySourceDialog
+        source={deploySource}
         actor={settings.actor}
         busy={busy}
         error={deployError}
         onClose={() => {
           setDeployError("");
-          setReviewRequest(null);
+          setDeploySource(null);
         }}
-        onDeploy={deployDeploymentRequest}
-        onReject={rejectDeploymentRequest}
+        onDeploy={deploySelectedSource}
         onOpenSettings={openSettingsPage}
       />
     </main>
@@ -424,25 +371,40 @@ type ActiveSectionProps = ComponentProps<typeof DeploymentsSection> & {
 };
 
 function ActiveSection({ section, ...props }: ActiveSectionProps) {
-  if (props.detailPage?.kind === "fcode") return <FCodeDetailSection {...props} detailPage={props.detailPage} />;
-  if (props.detailPage?.kind === "request") return <DeploymentRequestDetailSection {...props} detailPage={props.detailPage} />;
   if (section === "sources") return <SourcesSection {...props} />;
   if (section === "releases") return <ReleasesSection {...props} />;
   if (section === "audit") return <AuditSection {...props} />;
   return <DeploymentsSection {...props} />;
 }
 
+function DetailSheet({ title, subtitle, children, onClose }: { title: string; subtitle: string; children: ReactNode; onClose: () => void }) {
+  return (
+    <div className="sheetLayer" role="presentation">
+      <button className="sheetScrim" type="button" aria-label="Close detail sheet" onClick={onClose} />
+      <aside className="detailSheet" role="dialog" aria-modal="true" aria-label={title}>
+        <header className="sheetHeader">
+          <div>
+            <span className="eyebrow">Detail sheet</span>
+            <h2>{title}</h2>
+            <p>{subtitle}</p>
+          </div>
+          <button className="button compactButton" type="button" onClick={onClose}>Close</button>
+        </header>
+        <div className="sheetBody">
+          {children}
+        </div>
+      </aside>
+    </div>
+  );
+}
+
 function readDetailPageFromLocation(): DetailPage | null {
   if (typeof window === "undefined") return null;
   const params = new URLSearchParams(window.location.search);
   const detail = params.get("detail");
-  if (detail === "fcode") {
+  if (detail === "source") {
     const sourceID = Number(params.get("source"));
-    if (Number.isFinite(sourceID) && sourceID > 0) return { kind: "fcode", sourceID };
-  }
-  if (detail === "request") {
-    const requestID = params.get("id");
-    if (requestID) return { kind: "request", requestID };
+    if (Number.isFinite(sourceID) && sourceID > 0) return { kind: "source", sourceID };
   }
   return null;
 }
@@ -452,30 +414,18 @@ function writeDetailPageToHistory(detailPage: DetailPage | null) {
   const url = new URL(window.location.href);
   url.searchParams.delete("detail");
   url.searchParams.delete("source");
-  url.searchParams.delete("id");
-  if (detailPage?.kind === "fcode") {
-    url.searchParams.set("detail", "fcode");
+  if (detailPage?.kind === "source") {
+    url.searchParams.set("detail", "source");
     url.searchParams.set("source", String(detailPage.sourceID));
-  }
-  if (detailPage?.kind === "request") {
-    url.searchParams.set("detail", "request");
-    url.searchParams.set("id", detailPage.requestID);
   }
   window.history.pushState(null, "", `${url.pathname}${url.search}${url.hash}`);
 }
 
-function detailCopy(detailPage: DetailPage, sources: GitSource[], deploymentRequests: DeploymentRequest[]) {
-  if (detailPage.kind === "fcode") {
-    const source = sources.find((item) => item.id === detailPage.sourceID);
-    const state = source?.last_synced_commit ? "deployed" : "registered";
-    return {
-      title: source ? `FCode / ${source.name} / ${state}` : "FCode Detail",
-      subtitle: "Inspect source registration, active contract, deployment readiness, and audit evidence.",
-    };
-  }
-  const request = deploymentRequests.find((item) => item.id === detailPage.requestID);
+function detailCopy(detailPage: DetailPage, sources: GitSource[]) {
+  const source = sources.find((item) => item.id === detailPage.sourceID);
+  const state = source?.last_synced_commit ? "deployed" : "registered";
   return {
-    title: request ? `Deployment Request / ${request.source_name} / ${request.status}` : "Deployment Request",
-    subtitle: "Review the request timeline, pinned commit, operator decision, and deployment evidence.",
+    title: source ? `Source / ${source.name} / ${state}` : "Source detail",
+    subtitle: "Inspect source registration, active contract, deployment readiness, and audit evidence.",
   };
 }

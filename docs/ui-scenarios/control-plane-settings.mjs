@@ -7,7 +7,7 @@ export default {
   guide: [
     "Open Settings from the command bar or sidebar.",
     "Set the workspace and optional API token when the control plane requires one.",
-    "Set Actor before creating or reviewing deployment requests so audit history has a subject.",
+    "Set Actor before deploying a source so audit history has a subject.",
   ],
   async run({ page, capture }) {
     await page.goto();

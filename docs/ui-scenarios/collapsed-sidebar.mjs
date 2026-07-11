@@ -2,7 +2,7 @@ export default {
   order: 2,
   id: "collapsed-sidebar",
   title: "Collapse navigation",
-  description: "Collapse the sidebar while keeping the deployment queue visible.",
+  description: "Collapse the sidebar while keeping deployment work visible.",
   screenshot: "docs/assets/ui/collapsed-sidebar.png",
   guide: [
     "Click the sidebar collapse control.",

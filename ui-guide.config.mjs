@@ -14,12 +14,10 @@ export default {
 
   async seed({ api }) {
     await resetGitSources(api);
-    await resetDeploymentRequests(api);
     await api("/git_sources/sample", {
       method: "POST",
       body: { app_key: "echo" },
     });
-    await seedDeploymentRequest(api);
     await waitForSeedRun(api);
   },
 };
@@ -33,27 +31,6 @@ async function resetGitSources(api) {
       }),
     ),
   );
-}
-
-async function resetDeploymentRequests(api) {
-  await api("/state?path=control-plane/deployment-requests/v1", {
-    method: "POST",
-    body: { requests: [] },
-  });
-}
-
-async function seedDeploymentRequest(api) {
-  const sources = await api("/git_sources");
-  const source = sources.find((item) => item.name === "echo") || sources[0];
-  if (!source) return;
-  await api("/deployment_requests", {
-    method: "POST",
-    headers: { "x-windforce-actor": "ui-guide@example.test" },
-    body: {
-      git_source_id: String(source.id),
-      message: "UI guide deployment request",
-    },
-  });
 }
 
 async function waitForSeedRun(api) {

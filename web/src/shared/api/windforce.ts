@@ -30,34 +30,6 @@ export type GitSourceSyncResult = {
   message?: string | null;
 };
 
-export type DeploymentRequestStatus = "pending" | "deployed" | "rejected";
-
-export type DeploymentRequest = {
-  id: string;
-  workspace_id: string;
-  git_source_id: number;
-  source_name: string;
-  repo_url: string;
-  branch: string;
-  subpath: string;
-  status: DeploymentRequestStatus;
-  app_key: string;
-  entrypoint: string;
-  target_commit: string;
-  current_commit?: string;
-  actions_count: number;
-  requested_by: string;
-  request_message?: string;
-  operator_message?: string;
-  reviewed_by?: string | null;
-  deployed_by?: string | null;
-  deployment_id?: string | null;
-  deployed_commit?: string | null;
-  deployed_at?: string | null;
-  created_at: string;
-  updated_at: string;
-};
-
 export type AppSummary = {
   app_key: string;
   git_source_id: number;

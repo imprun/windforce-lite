@@ -407,6 +407,39 @@ h3 {
   min-width: 0;
 }
 
+.deploymentConsole {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.deploymentCommandBar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  padding: 12px;
+}
+
+.commandSummary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  gap: 10px;
+  min-width: 0;
+}
+
+.commandActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
 .settingsPage {
   display: grid;
   grid-template-columns: minmax(0, 1.1fr) minmax(340px, 0.9fr);
@@ -463,6 +496,16 @@ h3 {
 .metricTile strong {
   font-size: 24px;
   line-height: 1;
+}
+
+.metricTile.ok {
+  border-color: #b7dfc6;
+  background: #f4fbf6;
+}
+
+.metricTile.warn {
+  border-color: #f1d18d;
+  background: #fffaf0;
 }
 
 .leftStack {
@@ -715,7 +758,7 @@ textarea:focus {
 
 .sourceTable .tableHead,
 .sourceTable .tableRow {
-  grid-template-columns: minmax(100px, 0.6fr) minmax(220px, 1.7fr) minmax(90px, 0.48fr) minmax(120px, 0.66fr) minmax(120px, 0.64fr);
+  grid-template-columns: minmax(130px, 0.7fr) minmax(260px, 1.55fr) minmax(120px, 0.52fr) minmax(160px, 0.72fr) minmax(140px, 0.58fr) minmax(130px, 0.48fr);
 }
 
 .requestTable .tableHead,
@@ -818,6 +861,10 @@ textarea:focus {
 
 .rowButtons {
   justify-content: flex-start;
+}
+
+.rowButtons.nowrap {
+  flex-wrap: nowrap;
 }
 
 .statusDot {
@@ -1184,6 +1231,62 @@ textarea:focus {
   width: min(1040px, 100%);
 }
 
+.sheetLayer {
+  position: fixed;
+  inset: 0;
+  z-index: 35;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.sheetScrim {
+  border: 0;
+  background: rgba(17, 24, 28, 0.38);
+  cursor: pointer;
+}
+
+.detailSheet {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  width: min(1040px, calc(100vw - 32px));
+  height: 100vh;
+  border-left: 1px solid var(--line);
+  background: #f5f8fa;
+  box-shadow: -18px 0 36px rgba(18, 33, 38, 0.18);
+}
+
+.sheetHeader {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  padding: 16px;
+}
+
+.sheetHeader > div {
+  min-width: 0;
+}
+
+.sheetHeader p {
+  color: var(--muted);
+}
+
+.sheetBody {
+  min-width: 0;
+  overflow: auto;
+  padding: 14px;
+}
+
+.detailSheet .detailLayout {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.detailSheet .detailAside {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .registrationGrid {
   display: grid;
   grid-template-columns: minmax(180px, 0.65fr) minmax(260px, 1.2fr) minmax(150px, 0.45fr);
@@ -1233,6 +1336,9 @@ textarea:focus {
   .appShell,
   .topbar,
   .tableToolbar,
+  .deploymentCommandBar,
+  .commandSummary,
+  .detailSheet .detailAside,
   .briefMeta,
   .sourceDetailGrid,
   .settingsPage,
@@ -1312,5 +1418,17 @@ textarea:focus {
   .detailHeroActions .button,
   .dialogFooter .button {
     width: 100%;
+  }
+
+  .sheetLayer {
+    grid-template-columns: 1fr;
+  }
+
+  .sheetScrim {
+    display: none;
+  }
+
+  .detailSheet {
+    width: 100vw;
   }
 }

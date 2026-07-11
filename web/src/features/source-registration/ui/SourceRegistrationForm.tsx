@@ -50,7 +50,7 @@ export function SourceRegistrationForm({ busy, onRegister, onProbe, onCreateSamp
       <header className="dialogHeader">
         <div>
           <span className="eyebrow">Source registry</span>
-          <h2>Register FCode Source</h2>
+          <h2>Register App Source</h2>
           <p>Repository access, branch, manifest, schemas, and lockfile are validated before saving.</p>
         </div>
         <div className="actions">

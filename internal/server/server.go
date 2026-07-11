@@ -217,22 +217,6 @@ func (h *Handler) handleAPI(w http.ResponseWriter, r *http.Request) bool {
 		h.handleCanonicalGitSourceDeploy(w, r, parts[2], parts[4])
 		return true
 	}
-	if len(parts) == 4 && parts[0] == "api" && parts[1] == "w" && parts[3] == "deployment_requests" && r.Method == http.MethodGet {
-		h.handleCanonicalDeploymentRequests(w, r, parts[2])
-		return true
-	}
-	if len(parts) == 4 && parts[0] == "api" && parts[1] == "w" && parts[3] == "deployment_requests" && r.Method == http.MethodPost {
-		h.handleCanonicalCreateDeploymentRequest(w, r, parts[2])
-		return true
-	}
-	if len(parts) == 6 && parts[0] == "api" && parts[1] == "w" && parts[3] == "deployment_requests" && parts[5] == "deploy" && r.Method == http.MethodPost {
-		h.handleCanonicalDeployDeploymentRequest(w, r, parts[2], parts[4])
-		return true
-	}
-	if len(parts) == 6 && parts[0] == "api" && parts[1] == "w" && parts[3] == "deployment_requests" && parts[5] == "reject" && r.Method == http.MethodPost {
-		h.handleCanonicalRejectDeploymentRequest(w, r, parts[2], parts[4])
-		return true
-	}
 	if len(parts) == 4 && parts[0] == "api" && parts[1] == "w" && parts[3] == "apps" && r.Method == http.MethodGet {
 		h.handleCanonicalApps(w, r, parts[2])
 		return true

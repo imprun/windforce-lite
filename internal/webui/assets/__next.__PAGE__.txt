@@ -1,6 +1,6 @@
 1:"$Sreact.fragment"
-2:I[82508,["/ui/_next/static/chunks/158myu8e_yme3.js","/ui/_next/static/chunks/1taa3hncl4azf.js"],"DeploymentsView"]
+2:I[82508,["/ui/_next/static/chunks/158myu8e_yme3.js","/ui/_next/static/chunks/170bix7bl9mj3.js"],"DeploymentsView"]
 3:I[97367,["/ui/_next/static/chunks/158myu8e_yme3.js"],"OutletBoundary"]
 4:"$Sreact.suspense"
-0:{"rsc":["$","$1","c",{"children":[["$","$L2",null,{}],[["$","script","script-0",{"src":"/ui/_next/static/chunks/1taa3hncl4azf.js","async":true}]],["$","$L3",null,{"children":["$","$4",null,{"name":"Next.MetadataOutlet","children":"$@5"}]}]]}],"isPartial":false,"staleTime":300,"varyParams":null,"buildId":"windforce-lite"}
+0:{"rsc":["$","$1","c",{"children":[["$","$L2",null,{}],[["$","script","script-0",{"src":"/ui/_next/static/chunks/170bix7bl9mj3.js","async":true}]],["$","$L3",null,{"children":["$","$4",null,{"name":"Next.MetadataOutlet","children":"$@5"}]}]]}],"isPartial":false,"staleTime":300,"varyParams":null,"buildId":"windforce-lite"}
 5:null

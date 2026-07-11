@@ -1,1 +1,1 @@
-export type { AppDetail, AppHistoryItem, AppSummary, DeploymentRequest } from "@/shared/api/windforce";
+export type { AppDetail, AppHistoryItem, AppSummary } from "@/shared/api/windforce";

@@ -1,5 +1,5 @@
 import type { ApiErrorPayload, ApiSettings, VariableRow, WorkerTagsResponse } from "./types";
-import type { AppDetail, AppHistoryItem, AppSummary, DeploymentRequest, GitSource, GitSourceProbeResult, GitSourceSyncResult } from "@/shared/api/windforce";
+import type { AppDetail, AppHistoryItem, AppSummary, GitSource, GitSourceProbeResult, GitSourceSyncResult } from "@/shared/api/windforce";
 
 export type RequestOptions = {
   method?: string;
@@ -23,10 +23,6 @@ export class WindforceApi {
 
   async apps(): Promise<{ apps: AppSummary[] }> {
     return this.request("/apps?view=summary");
-  }
-
-  async deploymentRequests(): Promise<{ requests: DeploymentRequest[] }> {
-    return this.request("/deployment_requests");
   }
 
   async app(appKey: string): Promise<AppDetail> {
@@ -55,27 +51,6 @@ export class WindforceApi {
 
   async deployGitSource(sourceID: number, body: { confirm: true; message?: string }): Promise<GitSourceSyncResult> {
     return this.request(`/git_sources/${encodeURIComponent(String(sourceID))}/deploy`, {
-      method: "POST",
-      body,
-    });
-  }
-
-  async createDeploymentRequest(sourceID: number, body: { message?: string }): Promise<DeploymentRequest> {
-    return this.request("/deployment_requests", {
-      method: "POST",
-      body: { git_source_id: String(sourceID), ...body },
-    });
-  }
-
-  async deployDeploymentRequest(requestID: string, body: { confirm: true; message?: string }): Promise<{ request: DeploymentRequest; sync_result: GitSourceSyncResult }> {
-    return this.request(`/deployment_requests/${encodeURIComponent(requestID)}/deploy`, {
-      method: "POST",
-      body,
-    });
-  }
-
-  async rejectDeploymentRequest(requestID: string, body: { message?: string }): Promise<DeploymentRequest> {
-    return this.request(`/deployment_requests/${encodeURIComponent(requestID)}/reject`, {
       method: "POST",
       body,
     });
