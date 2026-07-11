@@ -2,13 +2,13 @@ import { PHASE_DEVELOPMENT_SERVER } from "next/constants.js";
 
 /** @type {import('next').NextConfig} */
 const sharedConfig = {
-  assetPrefix: "/ui",
   trailingSlash: true,
   generateBuildId: async () => "windforce-lite",
 };
 
 const exportConfig = {
   ...sharedConfig,
+  assetPrefix: "/ui",
   basePath: "/ui",
   output: "export",
 };
