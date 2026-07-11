@@ -8,6 +8,8 @@
 /web/.next/
 /web/out/
 /web/*.tsbuildinfo
+.env
 *.exe
 __pycache__/
 *.pyc
+.claude/

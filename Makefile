@@ -24,6 +24,10 @@ endif
 COMPOSE ?= docker compose
 BUN ?= bun
 
+ifneq (,$(wildcard .env))
+include .env
+endif
+
 WFL_TMP ?= .tmp
 DEV_DIR ?= $(WFL_TMP)/dev
 BIN_DIR ?= $(WFL_TMP)/bin
@@ -65,11 +69,17 @@ WF_VARIABLE_DESCRIPTION ?=
 WINDFORCE_POSTGRES_DB ?= windforce_lite
 WINDFORCE_POSTGRES_USER ?= postgres
 WINDFORCE_POSTGRES_PORT ?= 5432
+ifneq ($(strip $(WINDFORCE_LITE_DATABASE_URL)),)
+POSTGRES_DSN ?= $(WINDFORCE_LITE_DATABASE_URL)
+else
 POSTGRES_DSN ?= postgres://$(WINDFORCE_POSTGRES_USER)@127.0.0.1:$(WINDFORCE_POSTGRES_PORT)/$(WINDFORCE_POSTGRES_DB)?sslmode=disable
+endif
 export WINDFORCE_POSTGRES_DB
 export WINDFORCE_POSTGRES_USER
 export WINDFORCE_POSTGRES_PORT
 export WINDFORCE_LITE_API_PORT
+export WINDFORCE_LITE_DATABASE_URL
+export POSTGRES_DSN
 
 help:
 	@echo "targets:"
