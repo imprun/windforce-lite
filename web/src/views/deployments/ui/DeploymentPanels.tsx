@@ -32,7 +32,7 @@ export type CommonProps = {
   onSettings: () => void;
 };
 
-export function DeploymentsSection(props: CommonProps) {
+export function AppsSection(props: CommonProps) {
   return (
     <div id="deploymentOverview" className="deploymentConsole">
       <section className="deploymentCommandBar">
@@ -48,14 +48,14 @@ export function DeploymentsSection(props: CommonProps) {
         </div>
       </section>
 
-      <section id="sourceList" className="workspacePanel queuePanel">
+      <section id="appList" className="workspacePanel queuePanel">
         <PanelHeader
           eyebrow="Apps"
           title="Registered apps"
           description="Each app points at one repository source. Publish a release to make its contract visible to workers."
         />
-        <SourceToolbar search={props.search} onSearch={props.onSearch} />
-        <SourceTable {...props} mode="deployment" />
+        <AppToolbar search={props.search} onSearch={props.onSearch} />
+        <RegisteredAppTable {...props} />
       </section>
 
       <section className="workspacePanel queuePanel">
@@ -65,23 +65,6 @@ export function DeploymentsSection(props: CommonProps) {
           description="These contracts are what workers read when jobs arrive for an app/action."
         />
         <AppTable apps={props.apps} selectedApp={props.selectedApp} onSelectSource={props.onSelectSource} sources={props.sources} />
-      </section>
-    </div>
-  );
-}
-
-export function SourcesSection(props: CommonProps) {
-  return (
-    <div id="deploymentOverview" className="deploymentConsole">
-      <section id="sourceList" className="workspacePanel queuePanel">
-        <PanelHeader
-          eyebrow="Repository settings"
-          title="App repositories"
-          description="Manage the Git repository, branch, subpath, and credential reference used by each app."
-          action={<button className="button primary" type="button" aria-label="Register app repository" onClick={props.onRegister}>Register App</button>}
-        />
-        <SourceToolbar search={props.search} onSearch={props.onSearch} />
-        <SourceTable {...props} mode="source" />
       </section>
     </div>
   );
@@ -138,7 +121,7 @@ export function AuditSection(props: CommonProps) {
   );
 }
 
-function SourceToolbar({ search, onSearch }: { search: string; onSearch: (value: string) => void }) {
+function AppToolbar({ search, onSearch }: { search: string; onSearch: (value: string) => void }) {
   return (
     <div className="tableToolbar">
       <label className="field searchField">
@@ -150,7 +133,7 @@ function SourceToolbar({ search, onSearch }: { search: string; onSearch: (value:
   );
 }
 
-function SourceTable(props: CommonProps & { mode: "deployment" | "source" }) {
+function RegisteredAppTable(props: CommonProps) {
   const filtered = props.sources.filter((source) => {
     const needle = props.search.trim().toLowerCase();
     if (!needle) return true;
@@ -158,7 +141,7 @@ function SourceTable(props: CommonProps & { mode: "deployment" | "source" }) {
   });
 
   return (
-    <div className={`dataTable sourceTable ${props.mode}`}>
+    <div className="dataTable sourceTable deployment">
       <div className="tableHead">
         <span>App</span>
         <span>Repository</span>

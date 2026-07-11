@@ -1,9 +1,9 @@
 export default {
   order: 3,
-  id: "source-detail",
+  id: "app-detail",
   title: "Inspect an app detail sheet",
   description: "Open a registered app sheet to review repository settings, active contract, readiness, repository snapshot, and audit evidence.",
-  screenshot: "docs/assets/ui/source-detail.png",
+  screenshot: "docs/assets/ui/app-detail.png",
   guide: [
     "Open the app release console.",
     "Open a registered app detail sheet.",
@@ -17,11 +17,11 @@ export default {
       localStorage.setItem("wf.actor", "ui-guide@example.test");
     });
     await page.goto();
-    await page.waitForSelector("#sourceList .tableRow");
-    await page.click("#sourceList .rowButtons .button");
-    await page.waitForSelector("#sourceDetailPage");
-    await page.waitForText("#sourceDetailPage", "Active contract");
-    await page.waitForText("#sourceDetailPage", "Release audit");
+    await page.waitForSelector("#appList .tableRow");
+    await page.click("#appList .rowButtons .button");
+    await page.waitForSelector("#appDetailPage");
+    await page.waitForText("#appDetailPage", "Active contract");
+    await page.waitForText("#appDetailPage", "Release audit");
     await page.waitForText("#sourceSnapshot", "windforce.json");
     await capture(this.id);
   },

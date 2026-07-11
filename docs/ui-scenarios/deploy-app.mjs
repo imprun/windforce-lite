@@ -17,8 +17,8 @@ export default {
       localStorage.setItem("wf.actor", "ui-guide@example.test");
     });
     await page.goto();
-    await page.waitForSelector("#sourceList .tableRow");
-    await page.click("#sourceList .compactButton.primary");
+    await page.waitForSelector("#appList .tableRow");
+    await page.click("#appList .compactButton.primary");
     await page.waitForSelector("#deploySourceDialog");
     await page.fill("#deploySourceMessage", "UI guide release");
     await capture(this.id);

@@ -14,8 +14,7 @@ type Props = {
 };
 
 const navItems: Array<{ key: ConsoleSection; label: string; shortLabel: string; description: string }> = [
-  { key: "deployments", label: "Apps", shortLabel: "A", description: "Release control" },
-  { key: "sources", label: "Repositories", shortLabel: "R", description: "Git settings" },
+  { key: "apps", label: "Apps", shortLabel: "A", description: "Release control" },
   { key: "releases", label: "Contracts", shortLabel: "C", description: "Worker view" },
   { key: "audit", label: "History", shortLabel: "H", description: "Release audit" },
   { key: "settings", label: "Settings", shortLabel: "S", description: "Workspace and actor" },

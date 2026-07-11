@@ -14,7 +14,7 @@ import {
   type CommonProps,
 } from "./DeploymentPanels";
 
-export function SourceDetailSection(props: CommonProps & { detailPage: Extract<DetailPage, { kind: "source" }> }) {
+export function AppDetailSection(props: CommonProps & { detailPage: Extract<DetailPage, { kind: "app" }> }) {
   const source = props.sources.find((item) => item.id === props.detailPage.sourceID) || null;
   const app = source ? props.apps.find((item) => item.git_source_id === source.id) || null : null;
   const actorReady = Boolean(props.actor.trim());
@@ -24,7 +24,7 @@ export function SourceDetailSection(props: CommonProps & { detailPage: Extract<D
   }
 
   return (
-    <div id="sourceDetailPage" className="detailPage">
+    <div id="appDetailPage" className="detailPage">
       <section className="workspacePanel detailHero">
         <div className="detailHeroMain">
           <button className="button compactButton" type="button" onClick={props.onBackToList}>Back to console</button>
@@ -50,6 +50,18 @@ export function SourceDetailSection(props: CommonProps & { detailPage: Extract<D
       <div className="detailLayout">
         <div className="detailMain">
           <section className="workspacePanel">
+            <PanelHeader eyebrow="Repository settings" title="Git source" description={source.kind || "git"} />
+            <div className="sourceDetailGrid">
+              <Field label="Branch" value={source.branch || "main"} />
+              <Field label="Subpath" value={source.subpath || "root"} />
+              <Field label="Credential" value={source.creds_ref ? "configured" : "public repository"} />
+              <Field label="Repository ID" value={String(source.id)} />
+              <Field label="Last release" value={formatDate(source.last_synced_at)} />
+              <CopyField label="Last commit" value={source.last_synced_commit || ""} display={shortID(source.last_synced_commit, 16)} />
+            </div>
+          </section>
+
+          <section className="workspacePanel">
             <PanelHeader eyebrow="Active contract" title={app?.app_key || "No active contract"} description={app?.entrypoint || "Publish a release to make this app visible to workers."} />
             <ContractEvidence app={app} detail={props.detail} />
           </section>
@@ -66,18 +78,6 @@ export function SourceDetailSection(props: CommonProps & { detailPage: Extract<D
         </div>
 
         <aside className="detailAside">
-          <section className="workspacePanel">
-            <PanelHeader eyebrow="Repository settings" title="Git source" description={source.kind || "git"} />
-            <div className="sourceDetailGrid">
-              <Field label="Branch" value={source.branch || "main"} />
-              <Field label="Subpath" value={source.subpath || "root"} />
-              <Field label="Credential" value={source.creds_ref ? "configured" : "public repository"} />
-              <Field label="Repository ID" value={String(source.id)} />
-              <Field label="Last release" value={formatDate(source.last_synced_at)} />
-              <CopyField label="Last commit" value={source.last_synced_commit || ""} display={shortID(source.last_synced_commit, 16)} />
-            </div>
-          </section>
-
           <section className="workspacePanel">
             <ReadinessPanel source={source} app={app} actor={props.actor} liveWorkers={props.liveWorkers} />
           </section>

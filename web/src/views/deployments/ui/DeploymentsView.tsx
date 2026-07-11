@@ -11,8 +11,8 @@ import { Topbar } from "@/widgets/topbar";
 import { WindforceApi } from "@/shared/api/client";
 import type { ApiSettings, VariableRow, WorkerTagsResponse } from "@/shared/api/types";
 import { shortID } from "@/shared/lib/format";
-import { AuditSection, DeploymentsSection, ReleasesSection, SourcesSection } from "./DeploymentPanels";
-import { SourceDetailSection } from "./DeploymentDetailPages";
+import { AppsSection, AuditSection, ReleasesSection } from "./DeploymentPanels";
+import { AppDetailSection } from "./DeploymentDetailPages";
 import type { ConsoleSection, DetailPage, DetailTab, Notice } from "./types";
 
 const defaultSettings: ApiSettings = {
@@ -22,13 +22,9 @@ const defaultSettings: ApiSettings = {
 };
 
 const sectionCopy: Record<ConsoleSection, { title: string; subtitle: string }> = {
-  deployments: {
+  apps: {
     title: "Apps",
     subtitle: "Register apps, review repository settings, and publish worker-visible releases.",
-  },
-  sources: {
-    title: "Repository Settings",
-    subtitle: "Manage Git access, branch, subpath, credentials, and manifest validation for apps.",
   },
   releases: {
     title: "Active Contracts",
@@ -59,7 +55,7 @@ export function DeploymentsView() {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<Notice>({ tone: "info", text: "" });
   const [deployError, setDeployError] = useState("");
-  const [activeSection, setActiveSection] = useState<ConsoleSection>("deployments");
+  const [activeSection, setActiveSection] = useState<ConsoleSection>("apps");
   const [detailPage, setDetailPage] = useState<DetailPage | null>(null);
   const [detailTab, setDetailTab] = useState<DetailTab>("contract");
   const [search, setSearch] = useState("");
@@ -144,7 +140,7 @@ export function DeploymentsView() {
   }, [refresh]);
 
   useEffect(() => {
-    if (detailPage?.kind === "source" && sources.some((source) => source.id === detailPage.sourceID)) {
+    if (detailPage?.kind === "app" && sources.some((source) => source.id === detailPage.sourceID)) {
       setSelectedSourceID(detailPage.sourceID);
     }
   }, [detailPage, sources]);
@@ -196,7 +192,6 @@ export function DeploymentsView() {
     setDetailPage(null);
     writeDetailPageToHistory(null);
     setActiveSection(section);
-    if (section === "sources") setDetailTab("source");
     if (section === "releases") setDetailTab("contract");
     if (section === "audit") setDetailTab("history");
   }
@@ -211,8 +206,8 @@ export function DeploymentsView() {
   }
 
   function openSourceDetail(sourceID: number) {
-    const next = { kind: "source", sourceID } satisfies DetailPage;
-    setActiveSection("deployments");
+    const next = { kind: "app", sourceID } satisfies DetailPage;
+    setActiveSection("apps");
     setSelectedSourceID(sourceID);
     setDetailPage(next);
     writeDetailPageToHistory(next);
@@ -233,7 +228,7 @@ export function DeploymentsView() {
       setSelectedSourceID(source.id);
       setSelectedAppKey(result.app);
       setDetailTab("history");
-      const next = { kind: "source", sourceID: source.id } satisfies DetailPage;
+      const next = { kind: "app", sourceID: source.id } satisfies DetailPage;
       setDetailPage(next);
       writeDetailPageToHistory(next);
       await refresh();
@@ -274,7 +269,7 @@ export function DeploymentsView() {
     onRemove: removeSource,
     onTabChange: setDetailTab,
     onSettings: openSettingsPage,
-  } satisfies ComponentProps<typeof DeploymentsSection>;
+  } satisfies ComponentProps<typeof AppsSection>;
   const detailSheetCopy = detailPage ? detailCopy(detailPage, sources) : null;
 
   return (
@@ -346,7 +341,7 @@ export function DeploymentsView() {
 
       {detailPage && detailSheetCopy ? (
         <DetailSheet title={detailSheetCopy.title} subtitle={detailSheetCopy.subtitle} onClose={closeDetailPage}>
-          <SourceDetailSection {...commonProps} detailPage={detailPage} />
+          <AppDetailSection {...commonProps} detailPage={detailPage} />
         </DetailSheet>
       ) : null}
 
@@ -366,15 +361,14 @@ export function DeploymentsView() {
   );
 }
 
-type ActiveSectionProps = ComponentProps<typeof DeploymentsSection> & {
+type ActiveSectionProps = ComponentProps<typeof AppsSection> & {
   section: ConsoleSection;
 };
 
 function ActiveSection({ section, ...props }: ActiveSectionProps) {
-  if (section === "sources") return <SourcesSection {...props} />;
   if (section === "releases") return <ReleasesSection {...props} />;
   if (section === "audit") return <AuditSection {...props} />;
-  return <DeploymentsSection {...props} />;
+  return <AppsSection {...props} />;
 }
 
 function DetailSheet({ title, subtitle, children, onClose }: { title: string; subtitle: string; children: ReactNode; onClose: () => void }) {
@@ -402,9 +396,9 @@ function readDetailPageFromLocation(): DetailPage | null {
   if (typeof window === "undefined") return null;
   const params = new URLSearchParams(window.location.search);
   const detail = params.get("detail");
-  if (detail === "source") {
-    const sourceID = Number(params.get("source"));
-    if (Number.isFinite(sourceID) && sourceID > 0) return { kind: "source", sourceID };
+  if (detail === "app") {
+    const sourceID = Number(params.get("app"));
+    if (Number.isFinite(sourceID) && sourceID > 0) return { kind: "app", sourceID };
   }
   return null;
 }
@@ -414,9 +408,10 @@ function writeDetailPageToHistory(detailPage: DetailPage | null) {
   const url = new URL(window.location.href);
   url.searchParams.delete("detail");
   url.searchParams.delete("source");
-  if (detailPage?.kind === "source") {
-    url.searchParams.set("detail", "source");
-    url.searchParams.set("source", String(detailPage.sourceID));
+  url.searchParams.delete("app");
+  if (detailPage?.kind === "app") {
+    url.searchParams.set("detail", "app");
+    url.searchParams.set("app", String(detailPage.sourceID));
   }
   window.history.pushState(null, "", `${url.pathname}${url.search}${url.hash}`);
 }

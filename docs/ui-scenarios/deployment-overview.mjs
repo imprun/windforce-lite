@@ -6,7 +6,7 @@ export default {
   screenshot: "docs/assets/ui/deployment-overview.png",
   guide: [
     "Open the app release console.",
-    "Use the sidebar to move between Apps, Repositories, Contracts, History, and Settings.",
+    "Use the sidebar to move between Apps, Contracts, History, and Settings.",
     "Use the app table to compare registered apps.",
     "Open an app sheet for release evidence.",
     "Use the active contracts table to confirm what workers can execute.",
@@ -17,8 +17,8 @@ export default {
       localStorage.setItem("wf.actor", "ui-guide@example.test");
     });
     await page.goto();
-    await page.waitForText("#sourceList", "Registered apps");
-    await page.waitForSelector("#sourceList .tableRow");
+    await page.waitForText("#appList", "Registered apps");
+    await page.waitForSelector("#appList .tableRow");
     await page.waitForText("#deploymentOverview", "Worker-visible apps");
     await capture(this.id);
   },

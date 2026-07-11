@@ -30,7 +30,7 @@ Use the app console to inspect registered apps, active contracts, readiness, and
 ![Manage app releases](../assets/ui/deployment-overview.png)
 
 1. Open the app release console.
-2. Use the sidebar to move between Apps, Repositories, Contracts, History, and Settings.
+2. Use the sidebar to move between Apps, Contracts, History, and Settings.
 3. Use the app table to compare registered apps.
 4. Open an app sheet for release evidence.
 5. Use the active contracts table to confirm what workers can execute.
@@ -39,7 +39,7 @@ Use the app console to inspect registered apps, active contracts, readiness, and
 
 Open a registered app sheet to review repository settings, active contract, readiness, repository snapshot, and audit evidence.
 
-![Inspect an app detail sheet](../assets/ui/source-detail.png)
+![Inspect an app detail sheet](../assets/ui/app-detail.png)
 
 1. Open the app release console.
 2. Open a registered app detail sheet.

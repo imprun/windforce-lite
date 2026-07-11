@@ -6,11 +6,11 @@ export type Notice = {
   text: string;
 };
 
-export type ConsoleSection = "deployments" | "sources" | "releases" | "audit" | "settings";
+export type ConsoleSection = "apps" | "releases" | "audit" | "settings";
 
 export type DetailTab = "contract" | "history" | "source";
 
-export type DetailPage = { kind: "source"; sourceID: number };
+export type DetailPage = { kind: "app"; sourceID: number };
 
 export type DeploymentSelection = {
   source: GitSource | null;

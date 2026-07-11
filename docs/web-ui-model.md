@@ -38,9 +38,18 @@ Apps 화면은 다음 질문에 답한다.
 - 마지막 release commit과 시각은 무엇인가?
 - 지금 release할 수 있는가?
 
-### Repository Settings
+App 상세는 다음 정보를 한 화면에서 다룬다.
 
-Repository source를 등록하거나 수정하기 위한 설정 화면이다. 이 화면은 App 자체를 설명하지 않는다. Git 접근, credential, branch, subpath, manifest validation 상태를 다룬다.
+- active contract
+- repository settings
+- readiness
+- release history
+- repository snapshot
+- app 삭제 같은 위험 작업
+
+### App Detail: Repository Settings
+
+Repository source를 등록하거나 확인하기 위한 App의 하위 설정이다. 최상위 메뉴나 독립 목록으로 노출하지 않는다. Git 접근, credential, branch, subpath, manifest validation 상태를 다룬다.
 
 ### Active Contracts
 
@@ -58,6 +67,7 @@ workspace, API token, actor를 설정한다. actor는 인증 수단이 아니라
 ## 문구 규칙
 
 - 버튼은 App 관점으로 쓴다: `Register App`, `Publish Release`, `Open App`.
+- `Repository`는 최상위 메뉴로 쓰지 않는다. App 상세 안의 `repository settings` 또는 `repository snapshot`에서만 쓴다.
 - `Source`는 단독 메뉴나 주 대상 이름으로 쓰지 않고 `repository source` 또는 `source settings`처럼 범위를 붙인다.
 - `Deployment`는 사용자 작업 이름으로 남발하지 않는다. 상태 변경 record나 audit 맥락에서는 `release` 또는 `deployment record`로 쓴다.
 - `FCode`는 windforce-lite UI 용어로 쓰지 않는다.
