@@ -5,9 +5,9 @@ import (
 	"testing"
 )
 
-func TestValidAppKeyMatchesCanonicalCatalogRules(t *testing.T) {
-	valid := []string{"greet", "a1", "my_app"}
-	invalid := []string{"", "a", " Greet", "greet ", "1greet", "my-app", "my.app", "with space"}
+func TestValidAppKeyAcceptsLiteAndFCodeKeys(t *testing.T) {
+	valid := []string{"greet", "a1", "my_app", "4MDCPCM", "CESTORE", "A1", "1greet"}
+	invalid := []string{"", "a", " Greet", "greet ", "my-app", "my.app", "with space", "a/b", "\uD55C\uAE00"}
 	for _, value := range valid {
 		if !ValidAppKey(value) {
 			t.Fatalf("ValidAppKey(%q) = false, want true", value)
@@ -20,9 +20,9 @@ func TestValidAppKeyMatchesCanonicalCatalogRules(t *testing.T) {
 	}
 }
 
-func TestValidActionKeyMatchesCanonicalCatalogRules(t *testing.T) {
-	valid := []string{"hello", "a", "approval.sync", "a.b.c.d.e.f.g.h", "sync_now"}
-	invalid := []string{"", " hello", "hello ", "Hello", "a..b", ".a", "a.", "hel-lo", "a.b.c.d.e.f.g.h.i"}
+func TestValidActionKeyAcceptsLiteAndFCodeModuleKeys(t *testing.T) {
+	valid := []string{"hello", "a", "approval.sync", "a.b.c.d.e.f.g.h", "sync_now", "1000", "M1000", "4MDCPCM.1000"}
+	invalid := []string{"", " hello", "hello ", "a..b", ".a", "a.", "hel-lo", "a/b", `a\b`, "a.b.c.d.e.f.g.h.i", "\uD55C\uAE00"}
 	for _, value := range valid {
 		if !ValidActionKey(value) {
 			t.Fatalf("ValidActionKey(%q) = false, want true", value)

@@ -258,23 +258,10 @@ func ValidAppKey(value string) bool {
 	if len(value) < 2 || len(value) > 64 || !utf8.ValidString(value) {
 		return false
 	}
-	for index, item := range value {
-		if index == 0 {
-			if item < 'a' || item > 'z' {
-				return false
-			}
-			continue
+	for _, item := range value {
+		if !validPortableKeyRune(item) {
+			return false
 		}
-		if item >= 'a' && item <= 'z' {
-			continue
-		}
-		if item >= '0' && item <= '9' {
-			continue
-		}
-		if item == '_' {
-			continue
-		}
-		return false
 	}
 	return true
 }
@@ -294,26 +281,26 @@ func ValidActionKey(value string) bool {
 		if segment == "" {
 			return false
 		}
-		for index, item := range segment {
-			if index == 0 {
-				if item < 'a' || item > 'z' {
-					return false
-				}
-				continue
+		for _, item := range segment {
+			if !validPortableKeyRune(item) {
+				return false
 			}
-			if item >= 'a' && item <= 'z' {
-				continue
-			}
-			if item >= '0' && item <= '9' {
-				continue
-			}
-			if item == '_' {
-				continue
-			}
-			return false
 		}
 	}
 	return true
+}
+
+func validPortableKeyRune(item rune) bool {
+	if item >= 'a' && item <= 'z' {
+		return true
+	}
+	if item >= 'A' && item <= 'Z' {
+		return true
+	}
+	if item >= '0' && item <= '9' {
+		return true
+	}
+	return item == '_'
 }
 
 func NormalizeSourcePath(value string) (string, error) {

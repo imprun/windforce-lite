@@ -2545,7 +2545,7 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 	server := httptest.NewServer(handler)
 	defer server.Close()
 
-	invalidAppResp, err := http.Get(server.URL + "/api/w/ws-a/apps/Echo")
+	invalidAppResp, err := http.Get(server.URL + "/api/w/ws-a/apps/bad-app")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2553,7 +2553,7 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 	if invalidAppResp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("invalid app status = %d, want %d", invalidAppResp.StatusCode, http.StatusBadRequest)
 	}
-	invalidRunResp, err := http.Post(server.URL+"/api/w/ws-a/jobs/run/Echo/echo", "application/json", bytes.NewBufferString(`{}`))
+	invalidRunResp, err := http.Post(server.URL+"/api/w/ws-a/jobs/run/bad-app/echo", "application/json", bytes.NewBufferString(`{}`))
 	if err != nil {
 		t.Fatal(err)
 	}

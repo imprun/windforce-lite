@@ -25,6 +25,26 @@ func TestParseFillsActionName(t *testing.T) {
 	}
 }
 
+func TestParseAcceptsFCodeAppAndModuleKeys(t *testing.T) {
+	app, err := Parse([]byte(`{
+		"app": "4MDCPCM",
+		"entrypoint": "main.py",
+		"scriptLang": "python",
+		"actions": {
+			"1000": {}
+		}
+	}`))
+	if err != nil {
+		t.Fatalf("Parse returned error: %v", err)
+	}
+	if app.App != "4MDCPCM" {
+		t.Fatalf("app key = %q, want 4MDCPCM", app.App)
+	}
+	if app.Actions["1000"].Action != "1000" {
+		t.Fatalf("action key = %q, want 1000", app.Actions["1000"].Action)
+	}
+}
+
 func TestLoadMissingManifestUsesCanonicalMessage(t *testing.T) {
 	_, err := Load(t.TempDir())
 	if err == nil || err.Error() != "no windforce.json manifest at source root (subpath)" {
@@ -236,7 +256,7 @@ func TestParseIgnoresActionNameFieldAndUsesMapKey(t *testing.T) {
 	}
 }
 
-func TestParseRejectsInvalidCanonicalKeys(t *testing.T) {
+func TestParseRejectsUnsafeKeys(t *testing.T) {
 	tests := []struct {
 		name string
 		body string
@@ -244,7 +264,7 @@ func TestParseRejectsInvalidCanonicalKeys(t *testing.T) {
 	}{
 		{
 			name: "app",
-			body: `{"app":"Echo","entrypoint":"main.ts","actions":{"run":{}}}`,
+			body: `{"app":"bad-app","entrypoint":"main.ts","actions":{"run":{}}}`,
 			want: "invalid app key",
 		},
 		{
