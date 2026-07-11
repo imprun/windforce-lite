@@ -31,8 +31,8 @@ Use the Deployments view to register an app source and deploy the active Windfor
 ![Deploy an app source](../assets/ui/deploy-app.png)
 
 1. Open the Deployments view.
-2. Select repository access and save an access token when the repository is private.
-3. Register the Git source with branch and subpath. The deployed app key is read from the Windforce manifest.
+2. Choose the Git authentication mode: no authentication, personal access token, or username/password.
+3. Register the Git source with branch and subpath. Credentials entered during registration are stored as a workspace secret.
 4. Use Deploy to validate the source, materialize the manifest, and publish the active app contract.
 
 ## Inspect active deployment contracts

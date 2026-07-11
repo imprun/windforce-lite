@@ -42,6 +42,14 @@ func oapiStringSchema() map[string]any {
 	return map[string]any{"type": "string"}
 }
 
+func oapiStringEnumSchema(values ...string) map[string]any {
+	items := make([]any, 0, len(values))
+	for _, value := range values {
+		items = append(items, value)
+	}
+	return map[string]any{"type": "string", "enum": items}
+}
+
 func oapiIntegerSchema() map[string]any {
 	return map[string]any{"type": "integer"}
 }

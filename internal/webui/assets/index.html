@@ -130,36 +130,37 @@
                   Subpath
                   <input id="sourceSubpath" placeholder="apps/coupang-eats" spellcheck="false" />
                 </label>
-                <label class="access-field" for="sourceAuthProfile">
-                  Repository access
-                  <select id="sourceAuthProfile"></select>
+                <label class="access-field" for="sourceAuthMethod">
+                  Git authentication
+                  <select id="sourceAuthMethod"></select>
                 </label>
                 <section class="git-access-panel" aria-labelledby="gitAccessTitle">
                   <div class="git-access-head">
                     <div>
-                      <h3 id="gitAccessTitle">Git Access</h3>
-                      <p id="sourceAuthHelp">Private repositories need a saved access token before Probe or Deploy.</p>
+                      <h3 id="gitAccessTitle">Authentication Details</h3>
+                      <p id="sourceAuthHelp">Public repositories do not need credentials.</p>
                     </div>
-                    <span id="sourceCredsStatus" class="pill muted">token not saved</span>
+                    <span id="sourceCredsStatus" class="pill muted">public</span>
                   </div>
                   <div class="git-access-grid">
-                    <label id="sourceCredentialValueLabel" for="sourceCredentialValue">
-                      Access token
-                      <input id="sourceCredentialValue" type="password" placeholder="paste token to save or update" autocomplete="new-password" spellcheck="false" />
+                    <label id="sourceAccessTokenLabel" for="sourceAccessToken" hidden>
+                      Personal access token
+                      <input id="sourceAccessToken" type="password" placeholder="paste token for this source" autocomplete="new-password" spellcheck="false" />
                     </label>
-                    <div class="form-actions token-actions">
-                      <button class="button" id="saveCredentialButton" type="button">Save Token</button>
-                    </div>
+                    <label id="sourceUsernameLabel" for="sourceUsername" hidden>
+                      Username
+                      <input id="sourceUsername" autocomplete="username" spellcheck="false" />
+                    </label>
+                    <label id="sourcePasswordLabel" for="sourcePassword" hidden>
+                      Password or token
+                      <input id="sourcePassword" type="password" autocomplete="new-password" spellcheck="false" />
+                    </label>
                   </div>
                   <details id="sourceCredsDetails" class="advanced-details">
-                    <summary>Advanced credential reference</summary>
-                    <label id="sourceCredsLabel" for="sourceCreds">
-                      Variable path
-                      <input id="sourceCreds" placeholder="credentials/git/custom/profile" spellcheck="false" />
-                    </label>
+                    <summary>Internal credential storage</summary>
                     <div class="credential-summary">
                       <span>Using</span>
-                      <strong id="sourceCredsPreview">credentials/git/gitlab/default</strong>
+                      <strong id="sourceCredsPreview">no credential</strong>
                     </div>
                   </details>
                 </section>

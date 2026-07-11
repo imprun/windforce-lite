@@ -2,7 +2,7 @@ const state = {
   workspace: localStorage.getItem("wf.workspace") || "default",
   token: localStorage.getItem("wf.token") || "",
   actor: localStorage.getItem("wf.actor") || "",
-  credentialProfile: localStorage.getItem("wf.gitCredentialProfile") || "gitlab-default",
+  gitAuthMethod: localStorage.getItem("wf.gitAuthMethod") || "none",
   variables: [],
   apps: [],
   appDetails: new Map(),
@@ -10,38 +10,24 @@ const state = {
   selectedAction: "",
 };
 
-const credentialProfiles = [
+const gitAuthMethods = [
   {
-    id: "gitlab-default",
-    label: "Private GitLab repo",
-    ref: "credentials/git/gitlab/default",
-    help: "Use the saved GitLab token for private repositories.",
-    storedLabel: "GitLab token saved",
-    missingLabel: "GitLab token not saved",
+    id: "none",
+    label: "No authentication",
+    help: "Public repositories do not need credentials.",
+    status: "public",
   },
   {
-    id: "github-default",
-    label: "Private GitHub repo",
-    ref: "credentials/git/github/default",
-    help: "Use the saved GitHub token for private repositories.",
-    storedLabel: "GitHub token saved",
-    missingLabel: "GitHub token not saved",
+    id: "pat",
+    label: "Personal access token",
+    help: "Use a repository read token for private Git remotes.",
+    status: "token will be stored",
   },
   {
-    id: "public",
-    label: "Public repository",
-    ref: "",
-    help: "No token is sent. Use this only when the repository can be cloned without authentication.",
-    storedLabel: "public",
-    missingLabel: "public",
-  },
-  {
-    id: "custom",
-    label: "Custom credential",
-    ref: "",
-    help: "Use a named workspace secret variable for this repository.",
-    storedLabel: "custom token saved",
-    missingLabel: "custom token not saved",
+    id: "basic",
+    label: "Username / password",
+    help: "Use a username with a password or token accepted by the Git server.",
+    status: "credential will be stored",
   },
 ];
 
@@ -133,9 +119,9 @@ function readSettings() {
   $("#workspaceInput").value = state.workspace;
   $("#tokenInput").value = state.token;
   $("#actorInput").value = state.actor;
-  renderCredentialProfileOptions();
+  renderGitAuthOptions();
   updateContextBadges();
-  updateCredentialControls();
+  updateGitAuthControls();
 }
 
 function saveSettings() {
@@ -153,25 +139,26 @@ function updateContextBadges() {
   $("#currentActor").textContent = state.actor || "system";
 }
 
-function renderCredentialProfileOptions() {
-  const select = $("#sourceAuthProfile");
-  select.innerHTML = credentialProfiles.map((profile) => `<option value="${escapeAttr(profile.id)}">${escapeHTML(profile.label)}</option>`).join("");
-  if (!credentialProfiles.some((profile) => profile.id === state.credentialProfile)) {
-    state.credentialProfile = credentialProfiles[0].id;
+function renderGitAuthOptions() {
+  const select = $("#sourceAuthMethod");
+  select.innerHTML = gitAuthMethods.map((method) => `<option value="${escapeAttr(method.id)}">${escapeHTML(method.label)}</option>`).join("");
+  if (!gitAuthMethods.some((method) => method.id === state.gitAuthMethod)) {
+    state.gitAuthMethod = gitAuthMethods[0].id;
   }
-  select.value = state.credentialProfile;
+  select.value = state.gitAuthMethod;
 }
 
-function selectedCredentialProfile() {
-  const id = $("#sourceAuthProfile").value || credentialProfiles[0].id;
-  return credentialProfiles.find((profile) => profile.id === id) || credentialProfiles[0];
+function selectedGitAuthMethod() {
+  const id = $("#sourceAuthMethod").value || gitAuthMethods[0].id;
+  return gitAuthMethods.find((method) => method.id === id) || gitAuthMethods[0];
 }
 
-function resolveCredentialRef() {
-  const profile = selectedCredentialProfile();
-  if (profile.id === "public") return "";
-  if (profile.id === "custom") return $("#sourceCreds").value.trim();
-  return profile.ref;
+function sourceCredentialPath(sourceName = $("#sourceName").value.trim()) {
+  const slug = sourceName
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "source";
+  return `git/${slug}/credential`;
 }
 
 function credentialVariable(ref) {
@@ -179,36 +166,31 @@ function credentialVariable(ref) {
 }
 
 function credentialLabelForRef(ref) {
-  if (!ref) return "Public repository";
-  const profile = credentialProfiles.find((item) => item.ref === ref);
-  return profile ? profile.label : `Custom profile (${ref})`;
+  return ref ? "Git credential configured" : "Public repository";
 }
 
-function updateCredentialControls() {
-  const profile = selectedCredentialProfile();
-  const isPublic = profile.id === "public";
-  const isCustom = profile.id === "custom";
-  const ref = resolveCredentialRef();
-  $("#sourceCredsDetails").open = isCustom;
-  $("#sourceCredentialValueLabel").hidden = isPublic;
-  $("#saveCredentialButton").hidden = isPublic;
-  $("#sourceCreds").required = isCustom;
-  $("#sourceCredsPreview").textContent = ref || "no credentials";
-  $("#sourceAuthHelp").textContent = profile.help;
+function updateGitAuthControls() {
+  const method = selectedGitAuthMethod();
+  const isPAT = method.id === "pat";
+  const isBasic = method.id === "basic";
+  const ref = method.id === "none" ? "" : sourceCredentialPath();
+  $("#sourceAccessTokenLabel").hidden = !isPAT;
+  $("#sourceUsernameLabel").hidden = !isBasic;
+  $("#sourcePasswordLabel").hidden = !isBasic;
+  $("#sourceAccessToken").required = isPAT;
+  $("#sourceUsername").required = isBasic;
+  $("#sourcePassword").required = isBasic;
+  $("#sourceCredsPreview").textContent = ref || "no credential";
+  $("#sourceAuthHelp").textContent = method.help;
 
   const status = $("#sourceCredsStatus");
-  if (isPublic) {
-    status.textContent = "public";
+  if (method.id === "none") {
+    status.textContent = method.status;
     status.className = "pill muted";
     return;
   }
-  if (!ref) {
-    status.textContent = "path required";
-    status.className = "pill bad";
-    return;
-  }
   const variable = credentialVariable(ref);
-  status.textContent = variable ? profile.storedLabel : profile.missingLabel;
+  status.textContent = variable ? "stored for this source" : method.status;
   status.className = `pill ${variable ? "ok" : "warn"}`;
 }
 
@@ -231,7 +213,7 @@ async function refreshAll() {
 
 async function loadVariables() {
   state.variables = await api("/variables");
-  updateCredentialControls();
+  updateGitAuthControls();
 }
 
 async function loadOverview() {
@@ -350,23 +332,20 @@ async function loadSources() {
 
 async function registerSource(event) {
   event.preventDefault();
-  const credsRef = resolveCredentialRef();
-  const payload = {
-    name: $("#sourceName").value.trim(),
-    repo_url: $("#sourceRepo").value.trim(),
-    branch: $("#sourceBranch").value.trim(),
-    subpath: $("#sourceSubpath").value.trim(),
-    creds_ref: credsRef,
-  };
   await runAction("Registering Git source", async () => {
-    await saveCredentialIfProvided(credsRef);
-    requireCredentialReady(credsRef);
+    const payload = {
+      name: $("#sourceName").value.trim(),
+      repo_url: $("#sourceRepo").value.trim(),
+      branch: $("#sourceBranch").value.trim(),
+      subpath: $("#sourceSubpath").value.trim(),
+      ...gitAuthPayload(),
+    };
     await api("/git_sources", { method: "POST", body: payload });
     event.target.reset();
-    $("#sourceAuthProfile").value = state.credentialProfile;
-    $("#sourceCredentialValue").value = "";
-    updateCredentialControls();
-    await Promise.all([loadSources(), loadApps()]);
+    $("#sourceAuthMethod").value = state.gitAuthMethod;
+    clearGitAuthInputs();
+    updateGitAuthControls();
+    await Promise.all([loadVariables(), loadSources(), loadApps()]);
   });
 }
 
@@ -377,64 +356,38 @@ async function probeSource() {
     return;
   }
   await runAction("Probing app source", async () => {
-    const credsRef = resolveCredentialRef();
-    await saveCredentialIfProvided(credsRef);
-    requireCredentialReady(credsRef);
     const result = await api("/git_sources/probe", {
       method: "POST",
       body: {
         repo_url: repoURL,
         branch: $("#sourceBranch").value.trim(),
-        creds_ref: credsRef,
+        ...gitAuthPayload(),
       },
     });
     showNotice(result.reachable ? "Repository reachable for deployment." : result.error || "Repository is not reachable.", result.reachable ? "ok" : "error");
-  });
-}
-
-function requireCredentialReady(credsRef) {
-  const profile = selectedCredentialProfile();
-  if (profile.id === "public") return;
-  if (credsRef && credentialVariable(credsRef)) return;
-  throw new Error("Save an access token first, or choose Public repository.");
-}
-
-async function saveCredentialIfProvided(credsRef) {
-  const tokenInput = $("#sourceCredentialValue");
-  const value = tokenInput.value.trim();
-  if (!value) return;
-  if (!credsRef) {
-    throw new Error("Credential profile path is required.");
-  }
-  await api("/variables", {
-    method: "POST",
-    body: {
-      path: credsRef,
-      value,
-      is_secret: true,
-      description: `Git credential for ${credentialLabelForRef(credsRef)}`,
-    },
-  });
-  tokenInput.value = "";
-  await loadVariables();
-}
-
-async function saveSelectedCredential() {
-  const credsRef = resolveCredentialRef();
-  const profile = selectedCredentialProfile();
-  const tokenInput = $("#sourceCredentialValue");
-  if (profile.id === "public") {
-    showNotice("Public repositories do not use a token.", "ok");
-    return;
-  }
-  if (!tokenInput.value.trim()) {
-    showNotice("Paste an access token before saving.", "error");
-    return;
-  }
-  await runAction("Saving Git access token", async () => {
-    await saveCredentialIfProvided(credsRef);
-    showNotice(`${credentialLabelForRef(credsRef)} saved`, "ok");
   }, false);
+}
+
+function gitAuthPayload() {
+  const method = selectedGitAuthMethod().id;
+  if (method === "none") return { auth_method: "none" };
+  if (method === "pat") {
+    const token = $("#sourceAccessToken").value.trim();
+    if (!token) throw new Error("Personal access token is required.");
+    return { auth_method: "pat", access_token: token };
+  }
+  const username = $("#sourceUsername").value.trim();
+  const password = $("#sourcePassword").value.trim();
+  if (!username || !password) {
+    throw new Error("Username and password are required.");
+  }
+  return { auth_method: "basic", username, password };
+}
+
+function clearGitAuthInputs() {
+  $("#sourceAccessToken").value = "";
+  $("#sourceUsername").value = "";
+  $("#sourcePassword").value = "";
 }
 
 async function createSampleSource() {
@@ -628,13 +581,12 @@ function bindForms() {
     await refreshAll();
   });
   $("#refreshButton").addEventListener("click", refreshAll);
-  $("#sourceAuthProfile").addEventListener("change", () => {
-    state.credentialProfile = $("#sourceAuthProfile").value;
-    localStorage.setItem("wf.gitCredentialProfile", state.credentialProfile);
-    updateCredentialControls();
+  $("#sourceAuthMethod").addEventListener("change", () => {
+    state.gitAuthMethod = $("#sourceAuthMethod").value;
+    localStorage.setItem("wf.gitAuthMethod", state.gitAuthMethod);
+    updateGitAuthControls();
   });
-  $("#sourceCreds").addEventListener("input", updateCredentialControls);
-  $("#saveCredentialButton").addEventListener("click", saveSelectedCredential);
+  $("#sourceName").addEventListener("input", updateGitAuthControls);
   $("#sourceForm").addEventListener("submit", registerSource);
   $("#probeSourceButton").addEventListener("click", probeSource);
   $("#sampleSourceButton").addEventListener("click", createSampleSource);

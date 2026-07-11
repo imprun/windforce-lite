@@ -2,7 +2,9 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"sort"
 	"strings"
@@ -15,6 +17,13 @@ import (
 	sourcepkg "github.com/imprun/windforce-lite/internal/source"
 	"github.com/imprun/windforce-lite/internal/syncer"
 )
+
+type gitCredentialRequest struct {
+	AuthMethod  string
+	AccessToken string
+	Username    string
+	Password    string
+}
 
 func (h *Handler) handleCanonicalGitSources(w http.ResponseWriter, r *http.Request, workspaceID string) {
 	snapshot, ok := h.loadGitSourceSnapshot(w, r)
@@ -50,6 +59,11 @@ func (h *Handler) handleCanonicalRegisterGitSource(w http.ResponseWriter, r *htt
 		Subpath  string `json:"subpath"`
 		CredsRef string `json:"creds_ref"`
 
+		AuthMethod  string `json:"auth_method"`
+		AccessToken string `json:"access_token"`
+		Username    string `json:"username"`
+		Password    string `json:"password"`
+
 		NameCamel     string `json:"Name"`
 		RepoURLCamel  string `json:"RepoURL"`
 		BranchCamel   string `json:"Branch"`
@@ -65,9 +79,35 @@ func (h *Handler) handleCanonicalRegisterGitSource(w http.ResponseWriter, r *htt
 	branch := strings.TrimSpace(firstNonEmpty(request.Branch, request.BranchCamel))
 	subpath := strings.TrimSpace(firstNonEmpty(request.Subpath, request.SubpathCamel))
 	credsRef := strings.TrimSpace(firstNonEmpty(request.CredsRef, request.CredsRefCamel))
+	credential, err := gitCredentialFromRequest(gitCredentialRequest{
+		AuthMethod:  request.AuthMethod,
+		AccessToken: request.AccessToken,
+		Username:    request.Username,
+		Password:    request.Password,
+	})
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	if name == "" || repoURL == "" {
 		writeError(w, http.StatusBadRequest, "name and repo_url required")
 		return
+	}
+	if credential != "" && credsRef == "" {
+		if h.store == nil {
+			writeError(w, http.StatusServiceUnavailable, "state store is not configured")
+			return
+		}
+		credsRef = defaultGitCredentialPath(name)
+		encrypted, err := h.encryptSecretVariable(r.Context(), workspaceID, credential)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if err := h.store.SetVariable(r.Context(), workspaceID, "", credsRef, encrypted, true, fmt.Sprintf("Git credential for source %s", name)); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 	}
 	source := gitsourcepkg.Source{
 		Workspace: workspaceID,
@@ -123,14 +163,26 @@ func (h *Handler) handleCanonicalProbeGitSource(w http.ResponseWriter, r *http.R
 	var request struct {
 		RepoURL     string `json:"repo_url"`
 		Branch      string `json:"branch"`
+		AuthMethod  string `json:"auth_method"`
 		AccessToken string `json:"access_token"`
+		Username    string `json:"username"`
+		Password    string `json:"password"`
 		CredsRef    string `json:"creds_ref"`
 	}
 	if err := readOptionalJSON(r, &request); err != nil || strings.TrimSpace(request.RepoURL) == "" {
 		writeError(w, http.StatusBadRequest, "repo_url required")
 		return
 	}
-	token := strings.TrimSpace(request.AccessToken)
+	token, err := gitCredentialFromRequest(gitCredentialRequest{
+		AuthMethod:  request.AuthMethod,
+		AccessToken: request.AccessToken,
+		Username:    request.Username,
+		Password:    request.Password,
+	})
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	if token == "" {
 		resolved, err := h.resolveGitSourceCreds(r.Context(), workspaceID, request.CredsRef)
 		if err != nil {
@@ -384,4 +436,73 @@ func (h *Handler) resolveGitSourceCreds(ctx context.Context, workspaceID string,
 		return h.decryptSecretVariable(ctx, workspaceID, variable.Value)
 	}
 	return variable.Value, nil
+}
+
+func gitCredentialFromRequest(request gitCredentialRequest) (string, error) {
+	authMethod := strings.ToLower(strings.TrimSpace(request.AuthMethod))
+	token := strings.TrimSpace(request.AccessToken)
+	username := strings.TrimSpace(request.Username)
+	password := strings.TrimSpace(request.Password)
+	if authMethod == "" {
+		authMethod = "pat"
+		if token == "" && username == "" && password == "" {
+			return "", nil
+		}
+		if username != "" || password != "" {
+			authMethod = "basic"
+		}
+	}
+	switch authMethod {
+	case "none", "public":
+		return "", nil
+	case "pat", "token", "access_token":
+		if token == "" {
+			return "", errors.New("access_token is required for personal access token authentication")
+		}
+		return mustGitCredentialJSON(gitCredentialRequest{AuthMethod: "pat", AccessToken: token})
+	case "basic", "password":
+		if username == "" || password == "" {
+			return "", errors.New("username and password are required for username/password authentication")
+		}
+		return mustGitCredentialJSON(gitCredentialRequest{AuthMethod: "basic", Username: username, Password: password})
+	default:
+		return "", fmt.Errorf("unsupported auth_method %q", request.AuthMethod)
+	}
+}
+
+func mustGitCredentialJSON(request gitCredentialRequest) (string, error) {
+	payload := map[string]string{"type": strings.ToLower(strings.TrimSpace(request.AuthMethod))}
+	if payload["type"] == "basic" {
+		payload["username"] = strings.TrimSpace(request.Username)
+		payload["password"] = strings.TrimSpace(request.Password)
+	} else {
+		payload["token"] = strings.TrimSpace(request.AccessToken)
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+func defaultGitCredentialPath(sourceName string) string {
+	var builder strings.Builder
+	lastWasDash := false
+	for _, r := range strings.ToLower(strings.TrimSpace(sourceName)) {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == '.', r == '_', r == '-':
+			builder.WriteRune(r)
+			lastWasDash = r == '-'
+		default:
+			if builder.Len() > 0 && !lastWasDash {
+				builder.WriteByte('-')
+				lastWasDash = true
+			}
+		}
+	}
+	slug := strings.Trim(builder.String(), "-")
+	if slug == "" {
+		slug = "source"
+	}
+	return "git/" + slug + "/credential"
 }

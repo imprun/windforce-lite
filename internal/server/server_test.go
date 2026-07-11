@@ -1709,7 +1709,18 @@ func TestCanonicalControlPlaneOpenAPIExposesSchemaDiscovery(t *testing.T) {
 	if gitSourceProperties["updated_at"] != nil {
 		t.Fatalf("git source schema must match canonical response without updated_at: %#v", gitSourceProperties)
 	}
+	registerRequest := schemas["RegisterGitSourceRequest"].(map[string]any)["properties"].(map[string]any)
+	for _, field := range []string{"auth_method", "access_token", "username", "password", "creds_ref"} {
+		if registerRequest[field] == nil {
+			t.Fatalf("register request schema missing %s: %#v", field, registerRequest)
+		}
+	}
 	probeRequest := schemas["ProbeGitSourceRequest"].(map[string]any)["properties"].(map[string]any)
+	for _, field := range []string{"auth_method", "access_token", "username", "password", "creds_ref"} {
+		if probeRequest[field] == nil {
+			t.Fatalf("probe request schema missing %s: %#v", field, probeRequest)
+		}
+	}
 	if probeRequest["access_token"] == nil || probeRequest["creds_ref"] == nil {
 		t.Fatalf("probe request schema = %#v", probeRequest)
 	}
@@ -2320,6 +2331,60 @@ func TestCanonicalRegisterGitSourcePreservesRawSubpath(t *testing.T) {
 	}
 	if registered.Subpath != "/apps/echo" {
 		t.Fatalf("subpath = %q, want raw value", registered.Subpath)
+	}
+}
+
+func TestCanonicalRegisterGitSourceStoresCredentialFromRequest(t *testing.T) {
+	tempDir := t.TempDir()
+	store := state.NewLocalStore(filepath.Join(tempDir, "state.json"))
+	handler := New(Config{
+		Store:      store,
+		GitSources: gitsource.NewFileRegistry(filepath.Join(tempDir, "git-sources.json")),
+		EnableAPI:  true,
+		SecretKey:  "git-source-register-secret",
+	})
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	registerResp, err := http.Post(server.URL+"/api/w/ws-a/git_sources", "application/json", bytes.NewBufferString(`{
+		"name": "Coupang Eats",
+		"repo_url": "https://git.example.test/group/coupang-eats.git",
+		"branch": "main",
+		"auth_method": "basic",
+		"username": "deploy-user",
+		"password": "deploy-token"
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer registerResp.Body.Close()
+	if registerResp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(registerResp.Body)
+		t.Fatalf("register status = %d, want %d: %s", registerResp.StatusCode, http.StatusCreated, body)
+	}
+	var registered struct {
+		CredsRef string `json:"creds_ref"`
+	}
+	if err := json.NewDecoder(registerResp.Body).Decode(&registered); err != nil {
+		t.Fatal(err)
+	}
+	if registered.CredsRef != "git/coupang-eats/credential" {
+		t.Fatalf("creds_ref = %q, want generated source credential path", registered.CredsRef)
+	}
+	resolved, err := handler.(*Handler).resolveGitSourceCreds(context.Background(), "ws-a", registered.CredsRef)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var credential struct {
+		Type     string `json:"type"`
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+	if err := json.Unmarshal([]byte(resolved), &credential); err != nil {
+		t.Fatalf("stored credential is not JSON: %q: %v", resolved, err)
+	}
+	if credential.Type != "basic" || credential.Username != "deploy-user" || credential.Password != "deploy-token" {
+		t.Fatalf("stored credential = %#v", credential)
 	}
 }
 

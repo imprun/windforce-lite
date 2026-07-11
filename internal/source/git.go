@@ -2,6 +2,7 @@ package source
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"os/exec"
@@ -14,6 +15,13 @@ import (
 )
 
 var credentialPattern = regexp.MustCompile(`(https?://)[^@/\s]+@`)
+
+type gitCredential struct {
+	Type     string `json:"type"`
+	Token    string `json:"token"`
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
 
 func ResolveBranchCommit(ctx context.Context, repoURL string, branch string, token string) (string, error) {
 	if branch == "" {
@@ -125,16 +133,46 @@ func CloneCommitSparse(ctx context.Context, repoURL string, branch string, commi
 	return nil
 }
 
-func authURL(repoURL string, token string) string {
-	if token == "" || !strings.HasPrefix(repoURL, "https://") {
+func authURL(repoURL string, credentialValue string) string {
+	username, password, ok := parseGitCredential(credentialValue)
+	if !ok || !strings.HasPrefix(repoURL, "https://") {
 		return repoURL
 	}
 	parsed, err := url.Parse(repoURL)
 	if err != nil {
 		return repoURL
 	}
-	parsed.User = url.UserPassword("x-access-token", token)
+	parsed.User = url.UserPassword(username, password)
 	return parsed.String()
+}
+
+func parseGitCredential(value string) (string, string, bool) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", "", false
+	}
+	if strings.HasPrefix(value, "{") {
+		var credential gitCredential
+		if err := json.Unmarshal([]byte(value), &credential); err != nil {
+			return "", "", false
+		}
+		credential.Type = strings.ToLower(strings.TrimSpace(credential.Type))
+		switch credential.Type {
+		case "basic":
+			if credential.Username == "" || credential.Password == "" {
+				return "", "", false
+			}
+			return credential.Username, credential.Password, true
+		case "pat", "token", "access_token", "":
+			if credential.Token == "" {
+				return "", "", false
+			}
+			return "x-access-token", credential.Token, true
+		default:
+			return "", "", false
+		}
+	}
+	return "x-access-token", value, true
 }
 
 func runGit(ctx context.Context, dir string, args ...string) (string, error) {

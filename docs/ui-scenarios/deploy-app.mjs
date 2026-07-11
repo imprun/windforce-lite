@@ -6,8 +6,8 @@ export default {
   screenshot: "docs/assets/ui/deploy-app.png",
   guide: [
     "Open the Deployments view.",
-    "Select repository access and save an access token when the repository is private.",
-    "Register the Git source with branch and subpath. The deployed app key is read from the Windforce manifest.",
+    "Choose the Git authentication mode: no authentication, personal access token, or username/password.",
+    "Register the Git source with branch and subpath. Credentials entered during registration are stored as a workspace secret.",
     "Use Deploy to validate the source, materialize the manifest, and publish the active app contract.",
   ],
   async run({ page, capture }) {

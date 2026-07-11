@@ -55,12 +55,14 @@ def main(argv: list[str] | None = None) -> int:
     register.add_argument("--branch", default="main")
     register.add_argument("--subpath", default="")
     register.add_argument("--creds-ref", dest="creds_ref", default="")
+    add_git_auth_args(register)
     register.set_defaults(func=cmd_register)
 
     probe = sub.add_parser("probe", help="probe a remote git source")
     probe.add_argument("--repo-url", "--repo", dest="repo_url", required=True)
     probe.add_argument("--branch", default="main")
     probe.add_argument("--creds-ref", dest="creds_ref", default="")
+    add_git_auth_args(probe)
     probe.set_defaults(func=cmd_probe)
 
     list_sources = sub.add_parser("git-sources", help="list registered git sources")
@@ -232,6 +234,56 @@ def add_json_input_args(parser: argparse.ArgumentParser) -> None:
     group.add_argument("--input-file", help="file containing the JSON request body, or '-' for stdin")
 
 
+def parse_git_auth_method(value: str) -> str:
+    value = value.strip()
+    if value not in ("", "none", "pat", "basic"):
+        raise argparse.ArgumentTypeError("expected one of: none, pat, basic")
+    return value
+
+
+def add_git_auth_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--git-auth-method",
+        metavar="{none,pat,basic}",
+        type=parse_git_auth_method,
+        default="",
+        help="git credential mode for register/probe; inferred when omitted",
+    )
+    parser.add_argument("--git-access-token", default="", help="PAT for the git remote")
+    parser.add_argument(
+        "--git-access-token-env",
+        default="",
+        help="env var containing a PAT for the git remote",
+    )
+    parser.add_argument("--git-username", default="", help="username for basic git auth")
+    parser.add_argument("--git-password", default="", help="password or token for basic git auth")
+    parser.add_argument(
+        "--git-password-env",
+        default="",
+        help="env var containing the password/token for basic git auth",
+    )
+
+
+def git_auth_payload(args: argparse.Namespace) -> dict[str, str]:
+    token = args.git_access_token or (os.environ.get(args.git_access_token_env, "") if args.git_access_token_env else "")
+    password = args.git_password or (os.environ.get(args.git_password_env, "") if args.git_password_env else "")
+    method = args.git_auth_method
+    if not method:
+        if args.git_username or password:
+            method = "basic"
+        elif token:
+            method = "pat"
+        else:
+            return {}
+    payload = {"auth_method": method}
+    if method == "pat":
+        payload["access_token"] = token
+    elif method == "basic":
+        payload["username"] = args.git_username
+        payload["password"] = password
+    return compact(payload)
+
+
 def cmd_register(args: argparse.Namespace) -> Any:
     return request(
         args,
@@ -244,6 +296,7 @@ def cmd_register(args: argparse.Namespace) -> Any:
                 "branch": args.branch,
                 "subpath": args.subpath,
                 "creds_ref": args.creds_ref,
+                **git_auth_payload(args),
             }
         ),
     )
@@ -259,6 +312,7 @@ def cmd_probe(args: argparse.Namespace) -> Any:
                 "repo_url": args.repo_url,
                 "branch": args.branch,
                 "creds_ref": args.creds_ref,
+                **git_auth_payload(args),
             }
         ),
     )

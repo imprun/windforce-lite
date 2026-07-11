@@ -421,13 +421,9 @@ textarea:focus {
 
 .git-access-grid {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) auto;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 10px;
   align-items: end;
-}
-
-.token-actions {
-  align-self: end;
 }
 
 .advanced-details {

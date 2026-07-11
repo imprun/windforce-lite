@@ -17,6 +17,22 @@ func TestAuthURLInjectsTokenForHTTPS(t *testing.T) {
 	}
 }
 
+func TestAuthURLInjectsTokenCredentialJSONForHTTPS(t *testing.T) {
+	got := authURL("https://git.example.test/group/project.git", `{"type":"pat","token":"secret-token"}`)
+	want := "https://x-access-token:secret-token@git.example.test/group/project.git"
+	if got != want {
+		t.Fatalf("authURL() = %q, want %q", got, want)
+	}
+}
+
+func TestAuthURLInjectsBasicCredentialJSONForHTTPS(t *testing.T) {
+	got := authURL("https://git.example.test/group/project.git", `{"type":"basic","username":"user@example.com","password":"secret token"}`)
+	want := "https://user%40example.com:secret%20token@git.example.test/group/project.git"
+	if got != want {
+		t.Fatalf("authURL() = %q, want %q", got, want)
+	}
+}
+
 func TestAuthURLKeepsNonHTTPSRepos(t *testing.T) {
 	for _, repoURL := range []string{
 		"http://git.example.test/group/project.git",
