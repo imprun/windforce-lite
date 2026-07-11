@@ -17,6 +17,14 @@ func TestAuthURLInjectsTokenForHTTPS(t *testing.T) {
 	}
 }
 
+func TestAuthURLInjectsTokenForHTTP(t *testing.T) {
+	got := authURL("http://git.example.test/group/project.git", "secret-token")
+	want := "http://x-access-token:secret-token@git.example.test/group/project.git"
+	if got != want {
+		t.Fatalf("authURL() = %q, want %q", got, want)
+	}
+}
+
 func TestAuthURLInjectsTokenCredentialJSONForHTTPS(t *testing.T) {
 	got := authURL("https://git.example.test/group/project.git", `{"type":"pat","token":"secret-token"}`)
 	want := "https://x-access-token:secret-token@git.example.test/group/project.git"
@@ -33,10 +41,18 @@ func TestAuthURLInjectsBasicCredentialJSONForHTTPS(t *testing.T) {
 	}
 }
 
-func TestAuthURLKeepsNonHTTPSRepos(t *testing.T) {
+func TestAuthURLInjectsBasicCredentialJSONForHTTP(t *testing.T) {
+	got := authURL("http://git.example.test/group/project.git", `{"type":"basic","username":"user@example.com","password":"secret token"}`)
+	want := "http://user%40example.com:secret%20token@git.example.test/group/project.git"
+	if got != want {
+		t.Fatalf("authURL() = %q, want %q", got, want)
+	}
+}
+
+func TestAuthURLKeepsNonHTTPRemotes(t *testing.T) {
 	for _, repoURL := range []string{
-		"http://git.example.test/group/project.git",
 		"ssh://git@git.example.test/group/project.git",
+		"file:///tmp/repo.git",
 	} {
 		if got := authURL(repoURL, "secret-token"); got != repoURL {
 			t.Fatalf("authURL(%q) = %q, want original URL", repoURL, got)

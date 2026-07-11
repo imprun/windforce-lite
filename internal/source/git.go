@@ -135,11 +135,14 @@ func CloneCommitSparse(ctx context.Context, repoURL string, branch string, commi
 
 func authURL(repoURL string, credentialValue string) string {
 	username, password, ok := parseGitCredential(credentialValue)
-	if !ok || !strings.HasPrefix(repoURL, "https://") {
+	if !ok {
 		return repoURL
 	}
 	parsed, err := url.Parse(repoURL)
 	if err != nil {
+		return repoURL
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
 		return repoURL
 	}
 	parsed.User = url.UserPassword(username, password)
