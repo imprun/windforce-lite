@@ -3,6 +3,7 @@ package server
 import (
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -28,13 +29,14 @@ func TestWebUIServedWithoutAPIAuth(t *testing.T) {
 		t.Fatalf("ui page did not contain product name")
 	}
 
+	assetPath := regexp.MustCompile(`src="/ui/([^"]+\.js)"`).FindStringSubmatch(page.Body.String())
+	if len(assetPath) != 2 {
+		t.Fatalf("ui page did not reference a Next.js script asset")
+	}
 	script := httptest.NewRecorder()
-	handler.ServeHTTP(script, httptest.NewRequest(http.MethodGet, "/ui/app.js", nil))
+	handler.ServeHTTP(script, httptest.NewRequest(http.MethodGet, "/ui/"+assetPath[1], nil))
 	if script.Code != http.StatusOK {
 		t.Fatalf("ui script status = %d, want %d", script.Code, http.StatusOK)
-	}
-	if !strings.Contains(script.Body.String(), "git_sources") {
-		t.Fatalf("ui script did not contain control-plane client code")
 	}
 
 	api := httptest.NewRecorder()

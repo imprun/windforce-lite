@@ -145,10 +145,14 @@ func stringSliceContains(values []string, target string) bool {
 }
 
 type canonicalSyncResult struct {
-	Commit  string   `json:"commit"`
-	App     string   `json:"app"`
-	Actions []string `json:"actions"`
-	Flows   []string `json:"flows,omitempty"`
+	Commit       string   `json:"commit"`
+	App          string   `json:"app"`
+	Actions      []string `json:"actions"`
+	Flows        []string `json:"flows,omitempty"`
+	Source       string   `json:"source,omitempty"`
+	DeploymentID *string  `json:"deployment_id,omitempty"`
+	CreatedBy    *string  `json:"created_by,omitempty"`
+	Message      *string  `json:"message,omitempty"`
 }
 
 func newCanonicalSyncResult(deployment contract.Deployment) canonicalSyncResult {
@@ -158,9 +162,13 @@ func newCanonicalSyncResult(deployment contract.Deployment) canonicalSyncResult 
 	}
 	sort.Strings(actions)
 	return canonicalSyncResult{
-		Commit:  deployment.Commit,
-		App:     deployment.App,
-		Actions: actions,
+		Commit:       deployment.Commit,
+		App:          deployment.App,
+		Actions:      actions,
+		Source:       strings.TrimSpace(deployment.Source),
+		DeploymentID: cloneStringPtr(deployment.DeploymentID),
+		CreatedBy:    cloneStringPtr(deployment.CreatedBy),
+		Message:      cloneStringPtr(deployment.Message),
 	}
 }
 
@@ -199,6 +207,7 @@ type canonicalAppHistoryItem struct {
 	Source       string    `json:"source"`
 	DeploymentID *string   `json:"deployment_id,omitempty"`
 	Message      *string   `json:"message,omitempty"`
+	CreatedBy    *string   `json:"created_by,omitempty"`
 	CreatedAt    time.Time `json:"created_at"`
 }
 
@@ -272,6 +281,7 @@ func newCanonicalAppHistoryItem(item catalogpkg.DeploymentHistory) canonicalAppH
 		Source:       firstNonEmpty(item.Source, "external_sync"),
 		DeploymentID: cloneStringPtr(item.DeploymentID),
 		Message:      item.Message,
+		CreatedBy:    cloneStringPtr(item.CreatedBy),
 		CreatedAt:    item.CreatedAt,
 	}
 }

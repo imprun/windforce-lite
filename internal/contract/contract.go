@@ -92,6 +92,9 @@ type Deployment struct {
 	RequiredCapabilities []string          `json:"requiredCapabilities,omitempty"`
 	Commit               string            `json:"commit"`
 	Message              *string           `json:"message,omitempty"`
+	Source               string            `json:"source,omitempty"`
+	DeploymentID         *string           `json:"deploymentId,omitempty"`
+	CreatedBy            *string           `json:"createdBy,omitempty"`
 	BundleDigest         string            `json:"bundleDigest,omitempty"`
 	ObjectURI            string            `json:"objectUri"`
 	Actions              map[string]Action `json:"actions"`

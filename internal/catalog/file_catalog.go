@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/imprun/windforce-lite/internal/contract"
@@ -36,6 +37,7 @@ type DeploymentHistory struct {
 	Status       string              `json:"status"`
 	DeploymentID *string             `json:"deploymentId,omitempty"`
 	Message      *string             `json:"message,omitempty"`
+	CreatedBy    *string             `json:"createdBy,omitempty"`
 	ObjectURI    string              `json:"objectUri,omitempty"`
 	Deployment   contract.Deployment `json:"deployment"`
 	CreatedAt    time.Time           `json:"createdAt"`
@@ -221,19 +223,25 @@ func newDeploymentHistory(deployment contract.Deployment) DeploymentHistory {
 	createdAt := time.Now().UTC()
 	workspace := deployment.SourceWorkspace()
 	gitSourceID := deployment.SourceGitSourceID()
+	source := strings.TrimSpace(deployment.Source)
+	if source == "" {
+		source = "external_sync"
+	}
 	return DeploymentHistory{
-		ID:          newAppVersionID(createdAt),
-		Workspace:   workspace,
-		GitSourceID: gitSourceID,
-		App:         deployment.App,
-		Commit:      deployment.Commit,
-		Entrypoint:  deployment.Entrypoint,
-		Source:      "external_sync",
-		Status:      "deployed",
-		Message:     deployment.Message,
-		ObjectURI:   deployment.ObjectURI,
-		Deployment:  deployment,
-		CreatedAt:   createdAt,
+		ID:           newAppVersionID(createdAt),
+		Workspace:    workspace,
+		GitSourceID:  gitSourceID,
+		App:          deployment.App,
+		Commit:       deployment.Commit,
+		Entrypoint:   deployment.Entrypoint,
+		Source:       source,
+		Status:       "deployed",
+		DeploymentID: cloneStringPtr(deployment.DeploymentID),
+		Message:      deployment.Message,
+		CreatedBy:    cloneStringPtr(deployment.CreatedBy),
+		ObjectURI:    deployment.ObjectURI,
+		Deployment:   deployment,
+		CreatedAt:    createdAt,
 	}
 }
 

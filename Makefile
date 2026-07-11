@@ -1,4 +1,4 @@
-.PHONY: help fmt test test-postgres build clean \
+.PHONY: help fmt test test-postgres build web-install web-build web-typecheck clean \
 	compose-up compose-db compose-worker compose-build compose-down compose-reset compose-logs compose-ps postgres-dsn \
 	dev-standalone dev-standalone-postgres dev-api dev-worker worker-once \
 	windforce-variable-set windforce-git-token windforce-register windforce-sync windforce-deploy windforce-sample \
@@ -22,6 +22,7 @@ GO ?= go
 endif
 
 COMPOSE ?= docker compose
+BUN ?= bun
 
 WFL_TMP ?= .tmp
 DEV_DIR ?= $(WFL_TMP)/dev
@@ -47,6 +48,7 @@ WF_JOB_STATUS ?=
 WF_TAIL_BYTES ?=
 WF_GIT_SOURCE_NAME ?= $(WF_APP)
 WF_GIT_SOURCE_ID ?= 1
+WF_ACTOR ?= local-dev
 WF_REPO_URL ?= https://github.com/imprun/windforce-lite.git
 WF_BRANCH ?= main
 WF_SUBPATH ?= examples/echo
@@ -72,7 +74,10 @@ export WINDFORCE_LITE_API_PORT
 help:
 	@echo "targets:"
 	@echo "  fmt                    run gofmt"
-	@echo "  test                   run go test ./..."
+	@echo "  web-install            install Next.js Web UI dependencies"
+	@echo "  web-build              build Next.js Web UI and sync Go embed assets"
+	@echo "  web-typecheck          type-check the Next.js Web UI"
+	@echo "  test                   build Web UI and run go test ./..."
 	@echo "  test-postgres          run PostgreSQL integration test against docker compose"
 	@echo "  build                  build $(BIN)"
 	@echo "  dev-standalone         run local JSON-state standalone server"
@@ -104,13 +109,22 @@ help:
 fmt:
 	$(GO) fmt ./...
 
-test:
+web-install:
+	cd web && $(BUN) install
+
+web-build:
+	cd web && $(BUN) run build
+
+web-typecheck:
+	cd web && $(BUN) run typecheck
+
+test: web-build
 	$(GO) test ./...
 
 test-postgres: compose-db
 	WINDFORCE_LITE_POSTGRES_TEST_DSN="$(POSTGRES_DSN)" $(GO) test ./internal/state -run Postgres -count=1 -v
 
-build:
+build: web-build
 	@mkdir -p "$(BIN_DIR)"
 	$(GO) build -o "$(BIN)" $(CMD)
 
@@ -141,11 +155,11 @@ compose-ps:
 postgres-dsn:
 	@echo "$(POSTGRES_DSN)"
 
-ui-guide: compose-build
+ui-guide: web-build compose-build
 	node --check tools/ui-guide/capture.mjs
 	node tools/ui-guide/capture.mjs
 
-ui-guide-verify: compose-build
+ui-guide-verify: web-build compose-build
 	node --check tools/ui-guide/capture.mjs
 	node tools/ui-guide/capture.mjs --verify
 
@@ -177,7 +191,7 @@ windforce-sync:
 	python tools/windforce_control.py --api-url "$(WF_API_URL)" --workspace "$(WF_WORKSPACE)" --pretty sync --git-source-id "$(WF_GIT_SOURCE_ID)"
 
 windforce-deploy:
-	python tools/windforce_control.py --api-url "$(WF_API_URL)" --workspace "$(WF_WORKSPACE)" --pretty deploy --git-source-id "$(WF_GIT_SOURCE_ID)"
+	python tools/windforce_control.py --api-url "$(WF_API_URL)" --workspace "$(WF_WORKSPACE)" --actor "$(WF_ACTOR)" --pretty deploy --git-source-id "$(WF_GIT_SOURCE_ID)"
 
 windforce-sample:
 	python tools/windforce_control.py --api-url "$(WF_API_URL)" --workspace "$(WF_WORKSPACE)" --pretty sample --app-key "$(WF_APP)"

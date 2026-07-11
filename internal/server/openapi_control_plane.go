@@ -91,6 +91,7 @@ func buildControlPlaneOpenAPI(baseURL string, workspaceID string) map[string]any
 				"operationId": "deployGitSource",
 				"summary":     "Deploy the current commit of a registered git source",
 				"parameters":  []any{oapiWorkspaceParam(workspaceID), oapiPathParam("gitSourceId", "Numeric git source id returned by register/list.")},
+				"requestBody": oapiJSONBody(oapiSchemaRef("DeployGitSourceRequest"), true),
 				"responses": withErrors(map[string]any{
 					"200": oapiResponse("Deployment result and discovered actions.", oapiSchemaRef("GitSourceSyncResult")),
 				}, "400", "401", "403", "404", "422"),
@@ -559,6 +560,14 @@ func controlPlaneSchemas() map[string]any {
 			},
 			"required": []any{"repo_url"},
 		},
+		"DeployGitSourceRequest": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"confirm": oapiBooleanSchema(),
+				"message": nullableString,
+			},
+			"required": []any{"confirm"},
+		},
 		"PatchGitSourceRequest": map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -587,10 +596,14 @@ func controlPlaneSchemas() map[string]any {
 		"GitSourceSyncResult": map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"commit":  oapiStringSchema(),
-				"app":     oapiStringSchema(),
-				"actions": stringArray,
-				"flows":   stringArray,
+				"commit":        oapiStringSchema(),
+				"app":           oapiStringSchema(),
+				"actions":       stringArray,
+				"flows":         stringArray,
+				"source":        oapiStringSchema(),
+				"deployment_id": nullableString,
+				"created_by":    nullableString,
+				"message":       nullableString,
 			},
 			"required": []any{"commit", "app", "actions"},
 		},
@@ -699,6 +712,7 @@ func controlPlaneSchemas() map[string]any {
 				"source":        oapiStringSchema(),
 				"deployment_id": nullableString,
 				"message":       nullableString,
+				"created_by":    nullableString,
 				"created_at":    oapiDateTimeSchema(),
 			},
 		},

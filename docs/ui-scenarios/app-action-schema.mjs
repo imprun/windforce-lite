@@ -2,20 +2,19 @@ export default {
   order: 4,
   id: "app-action-schema",
   title: "Inspect active deployment contracts",
-  description: "Use the Contracts view to inspect the active app deployment, action contracts, and materialized source snapshot.",
+  description: "Use the active contract detail to inspect the deployed app, actions, deployment history, and materialized source snapshot.",
   screenshot: "docs/assets/ui/deployment-contracts.png",
   guide: [
-    "Open the Contracts view.",
-    "Select a deployed app.",
-    "Select an action to load input and output schemas.",
-    "Use Action Schema, Deployments, and Source Snapshot tabs to inspect the deployed contract.",
+    "Open the deployment management console.",
+    "Select an active app contract.",
+    "Review its action list and route tag.",
+    "Use Deployment History and Source Snapshot to inspect the deployed contract.",
   ],
   async run({ page, capture }) {
     await page.goto();
-    await page.clickText("Contracts");
-    await page.waitForSelector("#actionList [data-action]");
-    await page.click("#actionList [data-action]");
-    await page.waitForText("#schemaTab", "input_schema");
+    await page.waitForSelector("#actionList .actionItem");
+    await page.waitForText("#deploymentHistory", "external_sync");
+    await page.waitForText("#sourceSnapshot", "windforce.json");
     await capture(this.id);
   },
 };

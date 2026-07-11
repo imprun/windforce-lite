@@ -22,15 +22,19 @@ type Catalog interface {
 }
 
 type Source struct {
-	Workspace   string
-	GitSourceID string
-	App         string
-	RepoURL     string
-	Branch      string
-	Commit      string
-	Subpath     string
-	Token       string
-	LocalDir    string
+	Workspace    string
+	GitSourceID  string
+	App          string
+	RepoURL      string
+	Branch       string
+	Commit       string
+	Subpath      string
+	Token        string
+	LocalDir     string
+	Source       string
+	DeploymentID *string
+	Message      *string
+	CreatedBy    *string
 }
 
 type Syncer struct {
@@ -143,6 +147,9 @@ func (s *Syncer) inspect(ctx context.Context, src Source) (inspectedSource, erro
 			message = &trimmed
 		}
 	}
+	if override := optionalTrimmedString(src.Message); override != nil {
+		message = override
+	}
 	deployment := contract.Deployment{
 		Workspace:            contract.NormalizeWorkspace(src.Workspace),
 		GitSourceID:          contract.NormalizeGitSourceID(src.GitSourceID, app.App),
@@ -156,6 +163,9 @@ func (s *Syncer) inspect(ctx context.Context, src Source) (inspectedSource, erro
 		RequiredCapabilities: app.Capabilities,
 		Commit:               commit,
 		Message:              message,
+		Source:               strings.TrimSpace(src.Source),
+		DeploymentID:         optionalTrimmedString(src.DeploymentID),
+		CreatedBy:            optionalTrimmedString(src.CreatedBy),
 		Actions:              app.Actions,
 		UpdatedAt:            &updatedAt,
 	}
@@ -168,6 +178,17 @@ func (s *Syncer) inspect(ctx context.Context, src Source) (inspectedSource, erro
 	prepared.deployment = deployment
 	keepPrepared = true
 	return prepared, nil
+}
+
+func optionalTrimmedString(value *string) *string {
+	if value == nil {
+		return nil
+	}
+	trimmed := strings.TrimSpace(*value)
+	if trimmed == "" {
+		return nil
+	}
+	return &trimmed
 }
 
 func (s *Syncer) prepareSource(ctx context.Context, src Source, commit string) (string, string, func(), error) {

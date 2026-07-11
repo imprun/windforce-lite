@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -23,6 +24,22 @@ type gitCredentialRequest struct {
 	AccessToken string
 	Username    string
 	Password    string
+}
+
+type canonicalGitSourceDeployRequest struct {
+	Confirm        bool    `json:"confirm"`
+	Confirmed      bool    `json:"confirmed"`
+	ConfirmCamel   bool    `json:"Confirm"`
+	ConfirmedCamel bool    `json:"Confirmed"`
+	Message        *string `json:"message"`
+	MessageCamel   *string `json:"Message"`
+}
+
+type gitSourceOperationAudit struct {
+	Source       string
+	DeploymentID *string
+	Message      *string
+	CreatedBy    *string
 }
 
 const sourceValidationTimeout = 2 * time.Minute
@@ -287,7 +304,7 @@ func (h *Handler) handleCanonicalSampleGitSource(w http.ResponseWriter, r *http.
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	deployment, ok := h.syncGitSource(w, r, workspaceID, source)
+	deployment, ok := h.syncGitSource(w, r, workspaceID, source, gitSourceOperationAudit{})
 	if !ok {
 		return
 	}
@@ -432,7 +449,7 @@ func (h *Handler) handleCanonicalGitSourceSync(w http.ResponseWriter, r *http.Re
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	deployment, ok := h.syncGitSource(w, r, workspaceID, source)
+	deployment, ok := h.syncGitSource(w, r, workspaceID, source, gitSourceOperationAudit{})
 	if !ok {
 		return
 	}
@@ -443,6 +460,20 @@ func (h *Handler) handleCanonicalGitSourceDeploy(w http.ResponseWriter, r *http.
 	var ok bool
 	sourceID, ok = requireCanonicalGitSourceRouteID(w, sourceID)
 	if !ok {
+		return
+	}
+	var request canonicalGitSourceDeployRequest
+	if err := readOptionalJSON(r, &request); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if !deployRequestConfirmed(request) {
+		writeError(w, http.StatusBadRequest, "deploy confirmation is required")
+		return
+	}
+	actor := strings.TrimSpace(requestActorSubject(r))
+	if actor == "" {
+		writeError(w, http.StatusBadRequest, "deploy actor is required")
 		return
 	}
 	if h.syncer == nil {
@@ -462,14 +493,21 @@ func (h *Handler) handleCanonicalGitSourceDeploy(w http.ResponseWriter, r *http.
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	deployment, ok := h.syncGitSource(w, r, workspaceID, source)
+	deploymentID := newDeploymentOperationID()
+	message := deployRequestMessage(request)
+	deployment, ok := h.syncGitSource(w, r, workspaceID, source, gitSourceOperationAudit{
+		Source:       "deploy",
+		DeploymentID: &deploymentID,
+		Message:      message,
+		CreatedBy:    &actor,
+	})
 	if !ok {
 		return
 	}
 	writeJSON(w, http.StatusOK, newCanonicalSyncResult(deployment))
 }
 
-func (h *Handler) syncGitSource(w http.ResponseWriter, r *http.Request, workspaceID string, source gitsourcepkg.Source) (contract.Deployment, bool) {
+func (h *Handler) syncGitSource(w http.ResponseWriter, r *http.Request, workspaceID string, source gitsourcepkg.Source, audit gitSourceOperationAudit) (contract.Deployment, bool) {
 	release, ok := h.acquireGitSourceOperation(workspaceID, source)
 	if !ok {
 		writeError(w, http.StatusConflict, "git source operation already in progress")
@@ -484,12 +522,16 @@ func (h *Handler) syncGitSource(w http.ResponseWriter, r *http.Request, workspac
 	}
 	s := *h.syncer
 	deployment, err := s.Sync(r.Context(), syncer.Source{
-		Workspace:   workspaceID,
-		GitSourceID: source.ID,
-		RepoURL:     source.RepoURL,
-		Branch:      source.Branch,
-		Subpath:     source.Subpath,
-		Token:       token,
+		Workspace:    workspaceID,
+		GitSourceID:  source.ID,
+		RepoURL:      source.RepoURL,
+		Branch:       source.Branch,
+		Subpath:      source.Subpath,
+		Token:        token,
+		Source:       audit.Source,
+		DeploymentID: audit.DeploymentID,
+		Message:      audit.Message,
+		CreatedBy:    audit.CreatedBy,
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -504,6 +546,32 @@ func (h *Handler) syncGitSource(w http.ResponseWriter, r *http.Request, workspac
 		}
 	}
 	return deployment, true
+}
+
+func deployRequestConfirmed(request canonicalGitSourceDeployRequest) bool {
+	return request.Confirm || request.Confirmed || request.ConfirmCamel || request.ConfirmedCamel
+}
+
+func deployRequestMessage(request canonicalGitSourceDeployRequest) *string {
+	value, ok := firstPresentString(request.Message, request.MessageCamel)
+	if !ok {
+		return nil
+	}
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	return &value
+}
+
+func newDeploymentOperationID() string {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err == nil {
+		b[6] = (b[6] & 0x0f) | 0x40
+		b[8] = (b[8] & 0x3f) | 0x80
+		return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+	}
+	return fmt.Sprintf("%d", time.Now().UTC().UnixNano())
 }
 
 func (h *Handler) validateGitSourceContract(w http.ResponseWriter, r *http.Request, source gitsourcepkg.Source, token string) (contract.Deployment, bool) {

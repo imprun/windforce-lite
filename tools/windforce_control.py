@@ -84,6 +84,7 @@ def main(argv: list[str] | None = None) -> int:
         required=True,
         help="numeric git source id returned by register/list",
     )
+    deploy.add_argument("--message", default="", help="optional audit note for deployment history")
     deploy.set_defaults(func=cmd_deploy)
 
     sample = sub.add_parser("sample", help="create and sync a managed sample git source")
@@ -340,10 +341,14 @@ def cmd_sync(args: argparse.Namespace) -> Any:
 
 
 def cmd_deploy(args: argparse.Namespace) -> Any:
+    body = {"confirm": True}
+    if args.message:
+        body["message"] = args.message
     return request(
         args,
         "POST",
         f"/api/w/{quote_path(args.workspace)}/git_sources/{quote_path(args.git_source_id)}/deploy",
+        body,
     )
 
 

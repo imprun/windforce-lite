@@ -1681,7 +1681,7 @@ func TestCanonicalControlPlaneOpenAPIExposesSchemaDiscovery(t *testing.T) {
 	assertSchemaRef("ActionSchema", schemas["ActionSchema"].(map[string]any), "input_schema", "#/components/schemas/JSONSchema")
 	assertSchemaRef("ActionSchema", schemas["ActionSchema"].(map[string]any), "output_schema", "#/components/schemas/JSONSchema")
 	assertSchemaFields("AppHistoryItem", []string{
-		"id", "commit_sha", "entrypoint", "source", "deployment_id", "message", "created_at",
+		"id", "commit_sha", "entrypoint", "source", "deployment_id", "message", "created_by", "created_at",
 	})
 	assertSchemaFields("JobStatus", []string{
 		"id", "workspace_id", "state", "status", "worker", "app_key", "action_key", "trigger_kind", "kind",
@@ -1733,12 +1733,23 @@ func TestCanonicalControlPlaneOpenAPIExposesSchemaDiscovery(t *testing.T) {
 	if probeResult["commit"] != nil {
 		t.Fatalf("probe result schema must match canonical response without commit: %#v", probeResult)
 	}
+	deployRequest := schemas["DeployGitSourceRequest"].(map[string]any)["properties"].(map[string]any)
+	for _, field := range []string{"confirm", "message"} {
+		if deployRequest[field] == nil {
+			t.Fatalf("deploy request schema missing %s: %#v", field, deployRequest)
+		}
+	}
 	sampleSyncResponse := schemas["SampleSyncResponse"].(map[string]any)
 	sampleSyncProperties := sampleSyncResponse["properties"].(map[string]any)
 	if sampleSyncProperties["source"] == nil || sampleSyncProperties["sync_result"] == nil {
 		t.Fatalf("sample sync response schema properties = %#v", sampleSyncProperties)
 	}
 	syncResultProperties := schemas["GitSourceSyncResult"].(map[string]any)["properties"].(map[string]any)
+	for _, field := range []string{"flows", "source", "deployment_id", "created_by", "message"} {
+		if syncResultProperties[field] == nil {
+			t.Fatalf("sync result schema missing %s: %#v", field, syncResultProperties)
+		}
+	}
 	if syncResultProperties["flows"] == nil {
 		t.Fatalf("sync result schema must preserve canonical optional flows field: %#v", syncResultProperties)
 	}
@@ -2801,7 +2812,50 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 		t.Fatalf("sources = %#v", sources)
 	}
 
-	syncResp, err := http.Post(server.URL+"/api/w/ws-a/git_sources/"+registeredID+"/deploy", "", nil)
+	unconfirmedResp, err := http.Post(server.URL+"/api/w/ws-a/git_sources/"+registeredID+"/deploy", "application/json", bytes.NewBufferString(`{"confirm":false}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unconfirmedResp.Body.Close()
+	if unconfirmedResp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("unconfirmed deploy status = %d, want %d", unconfirmedResp.StatusCode, http.StatusBadRequest)
+	}
+	var unconfirmedBody struct {
+		Error string `json:"error"`
+	}
+	if err := json.NewDecoder(unconfirmedResp.Body).Decode(&unconfirmedBody); err != nil {
+		t.Fatal(err)
+	}
+	if unconfirmedBody.Error != "deploy confirmation is required" {
+		t.Fatalf("unconfirmed deploy error = %#v", unconfirmedBody)
+	}
+
+	missingActorResp, err := http.Post(server.URL+"/api/w/ws-a/git_sources/"+registeredID+"/deploy", "application/json", bytes.NewBufferString(`{"confirm":true}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer missingActorResp.Body.Close()
+	if missingActorResp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("missing actor deploy status = %d, want %d", missingActorResp.StatusCode, http.StatusBadRequest)
+	}
+	var missingActorBody struct {
+		Error string `json:"error"`
+	}
+	if err := json.NewDecoder(missingActorResp.Body).Decode(&missingActorBody); err != nil {
+		t.Fatal(err)
+	}
+	if missingActorBody.Error != "deploy actor is required" {
+		t.Fatalf("missing actor deploy error = %#v", missingActorBody)
+	}
+
+	deployBody := bytes.NewBufferString(`{"confirm":true,"message":"audit note"}`)
+	deployReq, err := http.NewRequest(http.MethodPost, server.URL+"/api/w/ws-a/git_sources/"+registeredID+"/deploy", deployBody)
+	if err != nil {
+		t.Fatal(err)
+	}
+	deployReq.Header.Set("Content-Type", "application/json")
+	deployReq.Header.Set("X-Windforce-Actor", "deployer@example.test")
+	syncResp, err := http.DefaultClient.Do(deployReq)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2810,15 +2864,24 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 		t.Fatalf("deploy status = %d, want %d", syncResp.StatusCode, http.StatusOK)
 	}
 	var syncBody struct {
-		Commit  string   `json:"commit"`
-		App     string   `json:"app"`
-		Actions []string `json:"actions"`
+		Commit       string   `json:"commit"`
+		App          string   `json:"app"`
+		Actions      []string `json:"actions"`
+		Source       string   `json:"source"`
+		DeploymentID *string  `json:"deployment_id"`
+		CreatedBy    *string  `json:"created_by"`
+		Message      *string  `json:"message"`
 	}
 	if err := json.NewDecoder(syncResp.Body).Decode(&syncBody); err != nil {
 		t.Fatal(err)
 	}
 	if syncBody.Commit == "" || syncBody.App != "echo" || len(syncBody.Actions) != 1 || syncBody.Actions[0] != "echo.echo" {
 		t.Fatalf("sync body = %#v", syncBody)
+	}
+	if syncBody.Source != "deploy" || syncBody.DeploymentID == nil || *syncBody.DeploymentID == "" ||
+		syncBody.CreatedBy == nil || *syncBody.CreatedBy != "deployer@example.test" ||
+		syncBody.Message == nil || *syncBody.Message != "audit note" {
+		t.Fatalf("deploy audit body = %#v", syncBody)
 	}
 
 	syncedSourcesResp, err := http.Get(server.URL + "/api/w/ws-a/git_sources")
@@ -3142,7 +3205,8 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(history) != 1 || history[0]["id"] == "" || history[0]["commit_sha"] != syncBody.Commit ||
-		history[0]["source"] != "external_sync" {
+		history[0]["source"] != "deploy" || history[0]["created_by"] != "deployer@example.test" ||
+		history[0]["deployment_id"] == "" || history[0]["message"] != "audit note" {
 		t.Fatalf("history = %#v", history)
 	}
 	if _, ok := history[0]["git_source_key"]; ok {
@@ -3236,6 +3300,7 @@ func TestCanonicalAppHistoryPreservesDeploymentMetadata(t *testing.T) {
 	fileCatalog := catalog.NewFileCatalog(filepath.Join(tempDir, "catalog.json"))
 	deploymentID := "11111111-1111-4111-8111-111111111111"
 	message := "deployed through control plane"
+	createdBy := "deployer@example.test"
 	createdAt := time.Date(2026, 7, 10, 12, 0, 0, 0, time.UTC)
 	snapshot := catalog.Snapshot{
 		History: []catalog.DeploymentHistory{{
@@ -3247,6 +3312,7 @@ func TestCanonicalAppHistoryPreservesDeploymentMetadata(t *testing.T) {
 			Source:       "deploy",
 			DeploymentID: &deploymentID,
 			Message:      &message,
+			CreatedBy:    &createdBy,
 			CreatedAt:    createdAt,
 		}},
 	}
@@ -3276,6 +3342,7 @@ func TestCanonicalAppHistoryPreservesDeploymentMetadata(t *testing.T) {
 		Source       string    `json:"source"`
 		DeploymentID *string   `json:"deployment_id"`
 		Message      *string   `json:"message"`
+		CreatedBy    *string   `json:"created_by"`
 		CreatedAt    time.Time `json:"created_at"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&history); err != nil {
@@ -3285,6 +3352,7 @@ func TestCanonicalAppHistoryPreservesDeploymentMetadata(t *testing.T) {
 		history[0].Entrypoint != "main.ts" || history[0].Source != "deploy" ||
 		history[0].DeploymentID == nil || *history[0].DeploymentID != deploymentID ||
 		history[0].Message == nil || *history[0].Message != message ||
+		history[0].CreatedBy == nil || *history[0].CreatedBy != createdBy ||
 		!history[0].CreatedAt.Equal(createdAt) {
 		t.Fatalf("history = %#v", history)
 	}

@@ -4,5 +4,5 @@ import "embed"
 
 // FS contains the windforce-lite Web UI static assets.
 //
-//go:embed assets/*
+//go:embed all:assets
 var FS embed.FS
