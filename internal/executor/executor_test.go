@@ -140,6 +140,53 @@ async def main(ctx):
 	}
 }
 
+func TestRunPythonLoadsSrcLayoutFromPreparedSourceRoot(t *testing.T) {
+	requirePython(t)
+	sourceRoot := t.TempDir()
+	packageDir := filepath.Join(sourceRoot, "src", "demo_app")
+	if err := os.MkdirAll(packageDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(packageDir, "helper.py"), []byte(`VALUE = "src-layout-ok"`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	entrypoint := filepath.Join(packageDir, "app.py")
+	if err := os.WriteFile(entrypoint, []byte(`from demo_app.helper import VALUE
+
+def main(ctx):
+    return {"value": VALUE, "app": ctx.app}
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := Run(context.Background(), RunParams{
+		ScriptLang:        "python",
+		BaseDir:           t.TempDir(),
+		EntrypointAbsPath: entrypoint,
+		Env: []string{
+			"WF_PY_SOURCE_ROOT=" + sourceRoot,
+			"WF_WORKSPACE=ws-a",
+			"WF_BASE_URL=http://127.0.0.1",
+			"WF_TOKEN=job-token",
+			"WF_APP=demo",
+			"WF_ACTION=echo",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if !res.Success() {
+		t.Fatalf("Run failed: result=%s logs=%s", res.Result, res.Logs)
+	}
+	var got map[string]string
+	if err := json.Unmarshal(res.Result, &got); err != nil {
+		t.Fatalf("result is not JSON: %v", err)
+	}
+	if got["value"] != "src-layout-ok" || got["app"] != "demo" {
+		t.Fatalf("result = %#v", got)
+	}
+}
+
 func TestRunPythonInvalidInputFallsBackToEmptyObject(t *testing.T) {
 	requirePython(t)
 	entrypoint := filepath.Join(t.TempDir(), "main.py")
@@ -264,6 +311,10 @@ func TestGeneratedWrappersUseJobTokenForVariableReads(t *testing.T) {
 	if !strings.Contains(py, `class _Approval:`) || !strings.Contains(py, `async def get_resume_urls(self, approver=None):`) ||
 		!strings.Contains(py, `approval=_Approval(),`) || !strings.Contains(py, `flow=SimpleNamespace(resume_value=(_input if _KIND == "flow_resume" else None))`) {
 		t.Fatalf("python wrapper does not expose canonical approval/flow ctx shape:\n%s", py)
+	}
+	if !strings.Contains(py, `_source_root = _env("WF_PY_SOURCE_ROOT")`) ||
+		!strings.Contains(py, `os.path.join(_source_root, "src")`) {
+		t.Fatalf("python wrapper does not add source root/src layout import paths:\n%s", py)
 	}
 }
 

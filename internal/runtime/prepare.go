@@ -93,9 +93,14 @@ func (r *Runner) prepareTimeout() time.Duration {
 func (r *Runner) prepareSource(ctx context.Context, sourceDir string, scriptLang string, entrypoint string) error {
 	switch scriptLang {
 	case "python":
+		pythonPath := firstNonEmpty(r.PythonPath, defaultPythonPath())
 		if fileExists(filepath.Join(sourceDir, "requirements.txt")) {
-			if err := pythonInstall(ctx, firstNonEmpty(r.PythonPath, defaultPythonPath()), sourceDir); err != nil {
+			if err := pythonInstallRequirements(ctx, pythonPath, sourceDir); err != nil {
 				return fmt.Errorf("pip install: %w", err)
+			}
+		} else if fileExists(filepath.Join(sourceDir, "pyproject.toml")) {
+			if err := pythonInstallProject(ctx, pythonPath, sourceDir); err != nil {
+				return fmt.Errorf("pip install project: %w", err)
 			}
 		}
 		if err := injectPythonSDK(sourceDir); err != nil {
@@ -152,15 +157,24 @@ func injectTypeScriptSDK(dir string) error {
 	return nil
 }
 
-func pythonInstall(ctx context.Context, pythonPath string, dir string) error {
+func pythonInstallRequirements(ctx context.Context, pythonPath string, dir string) error {
+	return pythonInstall(ctx, pythonPath, dir, "-r", filepath.Join(dir, "requirements.txt"))
+}
+
+func pythonInstallProject(ctx context.Context, pythonPath string, dir string) error {
+	return pythonInstall(ctx, pythonPath, dir, ".")
+}
+
+func pythonInstall(ctx context.Context, pythonPath string, dir string, installSpec ...string) error {
 	cctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
-	cmd := exec.CommandContext(cctx, pythonPath, "-m", "pip", "install",
+	args := []string{"-m", "pip", "install",
 		"--target", filepath.Join(dir, pyVendorDir),
-		"--no-input", "--disable-pip-version-check",
-		"-r", filepath.Join(dir, "requirements.txt"))
+		"--no-input", "--disable-pip-version-check"}
+	args = append(args, installSpec...)
+	cmd := exec.CommandContext(cctx, pythonPath, args...)
 	cmd.Dir = dir
-	cmd.Env = curatedHostEnv()
+	cmd.Env = curatedPrepareEnv()
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("%w: %s", err, string(output))
@@ -266,7 +280,10 @@ func goBinaryRel() string {
 
 func appendPreparedSourceEnv(env []string, sourceDir string, scriptLang string) []string {
 	if scriptLang == "python" {
-		return append(env, "WF_PY_VENDOR="+filepath.Join(sourceDir, pyVendorDir))
+		return append(env,
+			"WF_PY_VENDOR="+filepath.Join(sourceDir, pyVendorDir),
+			"WF_PY_SOURCE_ROOT="+sourceDir,
+		)
 	}
 	return env
 }

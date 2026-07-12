@@ -531,6 +531,38 @@ func TestRunnerDoesNotMarkFailedPrepareReady(t *testing.T) {
 	}
 }
 
+func TestPreparePythonPyprojectInstallsProject(t *testing.T) {
+	tempDir := t.TempDir()
+	sourceDir := filepath.Join(tempDir, "source")
+	if err := os.MkdirAll(sourceDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sourceDir, "pyproject.toml"), []byte(`[project]
+name = "windforce-lite-pyproject-test"
+version = "0.0.0"
+dependencies = []
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	runner := Runner{PythonPath: filepath.Join(tempDir, "missing-python")}
+	err := runner.prepareSource(context.Background(), sourceDir, "python", "main.py")
+	if err == nil || !strings.Contains(err.Error(), "pip install project") {
+		t.Fatalf("prepareSource error = %v, want project install attempt", err)
+	}
+}
+
+func TestAppendPreparedSourceEnvIncludesPythonSourceRoot(t *testing.T) {
+	sourceDir := filepath.Join("cache", "src", "workspace", "source", "commit")
+	env := appendPreparedSourceEnv([]string{"PATH=/bin"}, sourceDir, "python")
+	if !containsEnv(env, "WF_PY_VENDOR="+filepath.Join(sourceDir, pyVendorDir)) {
+		t.Fatalf("prepared env missing WF_PY_VENDOR: %#v", env)
+	}
+	if !containsEnv(env, "WF_PY_SOURCE_ROOT="+sourceDir) {
+		t.Fatalf("prepared env missing WF_PY_SOURCE_ROOT: %#v", env)
+	}
+}
+
 func TestRunnerJobEnvIncludesSDKCallbackEndpoint(t *testing.T) {
 	runner := Runner{
 		BaseURL:        "http://127.0.0.1:18080",

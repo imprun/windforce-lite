@@ -387,8 +387,15 @@ _KIND = _env("WF_TRIGGER_KIND")
 _STATE_PATH = _env("WF_STATE_PATH")
 
 _vendor = _env("WF_PY_VENDOR")
-if _vendor and _vendor not in sys.path:
-    sys.path.insert(0, _vendor)
+_source_root = _env("WF_PY_SOURCE_ROOT")
+_source_paths = []
+if _source_root:
+    _source_paths.extend([os.path.join(_source_root, "src"), _source_root])
+if _vendor:
+    _source_paths.append(_vendor)
+for _path in reversed([p for p in _source_paths if p]):
+    if _path not in sys.path:
+        sys.path.insert(0, _path)
 
 try:
     with open("input.json", "r", encoding="utf-8") as _f:

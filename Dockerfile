@@ -17,10 +17,10 @@ RUN rm -rf internal/webui/assets
 COPY --from=web-build /src/web/dist ./internal/webui/assets
 RUN CGO_ENABLED=0 GOOS=linux go build -o /out/windforce-lite ./cmd/windforce-lite
 
-FROM debian:bookworm-slim
+FROM python:3.12-slim-bookworm
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates git python3 \
+    && apt-get install -y --no-install-recommends ca-certificates git \
     && rm -rf /var/lib/apt/lists/*
 
 RUN useradd --system --uid 10001 --create-home windforce \

@@ -438,6 +438,16 @@ var jobHostEnvAllow = map[string]bool{
 	"PLAYWRIGHT_BROWSERS_PATH": true, "PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD": true,
 }
 
+var prepareHostEnvAllow = map[string]bool{
+	"PIP_INDEX_URL":       true,
+	"PIP_EXTRA_INDEX_URL": true,
+	"PIP_TRUSTED_HOST":    true,
+	"PIP_FIND_LINKS":      true,
+	"PIP_NO_INDEX":        true,
+	"PIP_CERT":            true,
+	"PIP_CLIENT_CERT":     true,
+}
+
 func curatedHostEnv() []string {
 	values := os.Environ()
 	env := make([]string, 0, len(values))
@@ -447,6 +457,21 @@ func curatedHostEnv() []string {
 			key = value[:index]
 		}
 		if jobHostEnvAllow[key] {
+			env = append(env, value)
+		}
+	}
+	return env
+}
+
+func curatedPrepareEnv() []string {
+	values := os.Environ()
+	env := make([]string, 0, len(values))
+	for _, value := range values {
+		key := value
+		if index := strings.IndexByte(value, '='); index >= 0 {
+			key = value[:index]
+		}
+		if jobHostEnvAllow[key] || prepareHostEnvAllow[key] {
 			env = append(env, value)
 		}
 	}
