@@ -68,6 +68,27 @@ The Actions tab shows each action's materialized input and output JSON Schemas â
 2. Review the input and output JSON Schemas materialized from the release.
 3. Invoke actions through the control-plane API or the CLI; the UI documents the contract only.
 
+## Monitor one app
+
+The app detail Monitoring tab narrows the workspace job aggregates to a single app: queued and running now, plus completed, failed, canceled, and the failure rate in the selected window.
+
+![Monitor one app](../assets/ui/app-monitoring.png)
+
+1. Open an app and switch to the Monitoring tab.
+2. Read the tiles for this app's queued, running, and windowed completed/failed/canceled counts.
+3. Switch the window between 1h, 24h, and 7d.
+4. Watch the failure rate; the workspace-wide picture lives on the Monitoring page.
+
+## Audit configuration changes
+
+The Audit tab records who changed the app's configuration: repository settings edits, source deletion, and route tag overrides. Releases have their own history on the Releases tab.
+
+![Audit configuration changes](../assets/ui/audit.png)
+
+1. Open an app and switch to the Audit tab.
+2. Each record shows the actor, the kind of change, and the changed fields.
+3. Use it together with the Releases tab to answer who changed what, and when.
+
 ## Monitor job activity
 
 The Monitoring view aggregates job activity for the whole workspace: totals, per-app and per-route-tag breakdowns, and failure rates. Individual runs are an API/CLI concern.

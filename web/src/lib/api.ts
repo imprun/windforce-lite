@@ -135,6 +135,16 @@ export type JobsSummary = JobStatusCounts & {
 };
 
 
+export type AuditRecord = {
+  id: string;
+  git_source_id: number;
+  app_key?: string;
+  kind: string;
+  detail?: string;
+  actor: string;
+  created_at: string;
+};
+
 export type RegisterSourcePayload = {
   name: string;
   repo_url: string;
@@ -230,6 +240,10 @@ export class WindforceApi {
 
   jobsSummary(recentSeconds = 86400): Promise<JobsSummary> {
     return this.request(`/jobs/summary?recent_seconds=${recentSeconds}`);
+  }
+
+  auditTrail(sourceID: number): Promise<AuditRecord[]> {
+    return this.request(`/git_sources/${sourceID}/audit`);
   }
 
   private async request<T>(path: string, options: RequestOptions = {}): Promise<T> {

@@ -217,6 +217,10 @@ func (h *Handler) handleAPI(w http.ResponseWriter, r *http.Request) bool {
 		h.handleCanonicalGitSourceDeploy(w, r, parts[2], parts[4])
 		return true
 	}
+	if len(parts) == 6 && parts[0] == "api" && parts[1] == "w" && parts[3] == "git_sources" && parts[5] == "audit" && r.Method == http.MethodGet {
+		h.handleCanonicalGitSourceAudit(w, r, parts[2], parts[4])
+		return true
+	}
 	if len(parts) == 4 && parts[0] == "api" && parts[1] == "w" && parts[3] == "apps" && r.Method == http.MethodGet {
 		h.handleCanonicalApps(w, r, parts[2])
 		return true

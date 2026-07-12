@@ -575,6 +575,10 @@ textarea {
   background: var(--status-running);
 }
 
+.dot-neutral {
+  background: var(--text-muted);
+}
+
 .statValue {
   font-size: 22px;
   font-weight: 700;

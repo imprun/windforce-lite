@@ -1,16 +1,11 @@
 import { useState } from "react";
 import { Layout } from "../components/Layout";
+import { StatTile, WindowSelector, windowLabel } from "../components/stats";
 import { EmptyState, ErrorNotice, Loading, Panel } from "../components/ui";
 import type { JobStatusCounts } from "../lib/api";
 import { useApp, useAsync } from "../lib/app-context";
 import { formatRelative } from "../lib/format";
 import { Link } from "../lib/router";
-
-const windows = [
-  { label: "1h", seconds: 3600 },
-  { label: "24h", seconds: 86400 },
-  { label: "7d", seconds: 604800 },
-] as const;
 
 export function MonitoringPage() {
   const { api } = useApp();
@@ -24,7 +19,7 @@ export function MonitoringPage() {
     [api, windowSeconds],
   );
   const summary = state.data?.summary || null;
-  const windowLabel = windows.find((item) => item.seconds === windowSeconds)?.label || "24h";
+  const label = windowLabel(windowSeconds);
   const sourceByApp = new Map((state.data?.apps || []).map((app) => [app.app_key, app.git_source_id]));
 
   return (
@@ -33,18 +28,7 @@ export function MonitoringPage() {
       subtitle="Aggregate job activity across the workspace. Individual runs live in the control-plane API and CLI."
       actions={
         <>
-          <div className="segmented" role="group" aria-label="Recent window">
-            {windows.map((item) => (
-              <button
-                key={item.label}
-                type="button"
-                className={item.seconds === windowSeconds ? "segment active" : "segment"}
-                onClick={() => setWindowSeconds(item.seconds)}
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
+          <WindowSelector value={windowSeconds} onChange={setWindowSeconds} />
           <button className="button" type="button" onClick={() => state.reload()}>
             Refresh
           </button>
@@ -59,9 +43,9 @@ export function MonitoringPage() {
           <div className="statRow" id="jobSummary">
             <StatTile label="Queued" value={summary.queued_count} tone="waiting" />
             <StatTile label="Running" value={summary.running_count} tone="running" />
-            <StatTile label={`Completed · ${windowLabel}`} value={summary.completed_count_recent} tone="good" />
-            <StatTile label={`Failed · ${windowLabel}`} value={summary.failed_count_recent} tone="critical" />
-            <StatTile label={`Canceled · ${windowLabel}`} value={summary.canceled_count_recent} tone="serious" />
+            <StatTile label={`Completed · ${label}`} value={summary.completed_count_recent} tone="good" />
+            <StatTile label={`Failed · ${label}`} value={summary.failed_count_recent} tone="critical" />
+            <StatTile label={`Canceled · ${label}`} value={summary.canceled_count_recent} tone="serious" />
           </div>
 
           {summary.oldest_queued_at ? (
@@ -70,7 +54,7 @@ export function MonitoringPage() {
             </div>
           ) : null}
 
-          <Panel title="By app" subtitle={`Job activity per app over the last ${windowLabel}.`}>
+          <Panel title="By app" subtitle={`Job activity per app over the last ${label}.`}>
             <BreakdownTable
               id="jobsByApp"
               nameHeader="App"
@@ -83,7 +67,7 @@ export function MonitoringPage() {
             />
           </Panel>
 
-          <Panel title="By route tag" subtitle={`Job activity per worker route tag over the last ${windowLabel}.`}>
+          <Panel title="By route tag" subtitle={`Job activity per worker route tag over the last ${label}.`}>
             <BreakdownTable
               id="jobsByTag"
               nameHeader="Route tag"
@@ -159,24 +143,4 @@ function FailureRate({ counts }: { counts: JobStatusCounts }) {
   const rate = (counts.failed_count_recent / settled) * 100;
   const label = `${rate.toFixed(rate > 0 && rate < 1 ? 1 : 0)}%`;
   return <span className={rate > 0 ? "failureRate bad" : "failureRate"}>{label}</span>;
-}
-
-function StatTile({
-  label,
-  value,
-  tone,
-}: {
-  label: string;
-  value: number | undefined;
-  tone: "waiting" | "running" | "good" | "critical" | "serious";
-}) {
-  return (
-    <div className="statTile">
-      <span className={`statDot dot-${tone}`} aria-hidden="true" />
-      <div>
-        <p className="statValue">{value ?? "—"}</p>
-        <p className="statLabel">{label}</p>
-      </div>
-    </div>
-  );
 }

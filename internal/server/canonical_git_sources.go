@@ -174,6 +174,7 @@ func (h *Handler) createGitSource(w http.ResponseWriter, r *http.Request, source
 			writeError(w, http.StatusBadRequest, err.Error())
 			return gitsourcepkg.Source{}, false
 		}
+		h.recordAudit(r, created.Workspace, created.ID, "", "source_registered", gitSourceAuditDetail(created))
 		return created, true
 	}
 
@@ -193,6 +194,7 @@ func (h *Handler) createGitSource(w http.ResponseWriter, r *http.Request, source
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return gitsourcepkg.Source{}, false
 	}
+	h.recordAudit(r, source.Workspace, source.ID, "", "source_registered", gitSourceAuditDetail(source))
 	return source, true
 }
 
@@ -370,6 +372,9 @@ func (h *Handler) handleCanonicalPatchGitSource(w http.ResponseWriter, r *http.R
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	if detail := gitSourceChangeDetail(existing, source); detail != "" {
+		h.recordAudit(r, workspaceID, sourceID, "", "settings_changed", detail)
+	}
 	writeJSON(w, http.StatusOK, newCanonicalGitSourceView(source))
 }
 
@@ -415,6 +420,7 @@ func (h *Handler) handleCanonicalDeleteGitSource(w http.ResponseWriter, r *http.
 		writeError(w, http.StatusNotImplemented, "git source delete is not supported")
 		return
 	}
+	existing, getErr := h.gitSources.Get(r.Context(), workspaceID, sourceID)
 	deleted, err := deleter.Delete(r.Context(), workspaceID, sourceID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -424,6 +430,11 @@ func (h *Handler) handleCanonicalDeleteGitSource(w http.ResponseWriter, r *http.
 		writeError(w, http.StatusNotFound, "git source not found")
 		return
 	}
+	detail := ""
+	if getErr == nil {
+		detail = gitSourceAuditDetail(existing)
+	}
+	h.recordAudit(r, workspaceID, sourceID, "", "source_deleted", detail)
 	w.WriteHeader(http.StatusNoContent)
 }
 

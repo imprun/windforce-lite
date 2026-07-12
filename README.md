@@ -209,6 +209,7 @@ Implemented control-plane endpoints:
 - `DELETE /api/w/{workspace}/git_sources/{gitSourceId}`
 - `POST /api/w/{workspace}/git_sources/{gitSourceId}/sync`
 - `POST /api/w/{workspace}/git_sources/{gitSourceId}/deploy`
+- `GET /api/w/{workspace}/git_sources/{gitSourceId}/audit` (configuration change audit trail)
 - `GET /api/w/{workspace}/apps`
 - `GET /api/w/{workspace}/apps?view=summary`
 - `GET /api/w/{workspace}/apps/{app}`

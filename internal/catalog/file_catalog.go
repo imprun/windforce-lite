@@ -24,6 +24,21 @@ type FileCatalog struct {
 type Snapshot struct {
 	Deployments map[string]contract.Deployment `json:"deployments"`
 	History     []DeploymentHistory            `json:"history,omitempty"`
+	Audit       []AuditRecord                  `json:"audit,omitempty"`
+}
+
+// AuditRecord captures a non-release state change (repository settings,
+// deletions, route tag overrides) for the audit trail. Releases live in
+// DeploymentHistory.
+type AuditRecord struct {
+	ID          string    `json:"id"`
+	Workspace   string    `json:"workspace"`
+	GitSourceID string    `json:"gitSourceId"`
+	App         string    `json:"app,omitempty"`
+	Kind        string    `json:"kind"`
+	Detail      string    `json:"detail,omitempty"`
+	Actor       string    `json:"actor,omitempty"`
+	CreatedAt   time.Time `json:"createdAt"`
 }
 
 type DeploymentHistory struct {
@@ -63,6 +78,38 @@ func (c *FileCatalog) UpsertDeployment(ctx context.Context, deployment contract.
 	snapshot.Deployments[deploymentKey(deployment.SourceWorkspace(), deployment.App)] = deployment
 	snapshot.History = append(snapshot.History, newDeploymentHistory(deployment))
 	return c.write(snapshot)
+}
+
+func (c *FileCatalog) AppendAudit(ctx context.Context, record AuditRecord) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	snapshot, err := c.Load(ctx)
+	if err != nil {
+		return err
+	}
+	if record.CreatedAt.IsZero() {
+		record.CreatedAt = time.Now().UTC()
+	}
+	if record.ID == "" {
+		record.ID = newAppVersionID(record.CreatedAt)
+	}
+	snapshot.Audit = append(snapshot.Audit, record)
+	return c.write(snapshot)
+}
+
+func (c *FileCatalog) AuditTrail(ctx context.Context, workspace string, gitSourceID string) ([]AuditRecord, error) {
+	snapshot, err := c.Load(ctx)
+	if err != nil {
+		return nil, err
+	}
+	records := make([]AuditRecord, 0)
+	for _, record := range snapshot.Audit {
+		if record.Workspace == workspace && record.GitSourceID == gitSourceID {
+			records = append(records, record)
+		}
+	}
+	return records, nil
 }
 
 func (c *FileCatalog) GetDeployment(ctx context.Context, app string) (contract.Deployment, error) {

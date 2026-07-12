@@ -202,6 +202,7 @@ func (h *Handler) handleCanonicalPatchApp(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	h.recordAudit(r, workspaceID, deployment.SourceGitSourceID(), app, "route_tag_override", tagOverrideDetail("app", tagOverride))
 	writeJSON(w, http.StatusOK, newCanonicalAppModel(deployment))
 }
 
@@ -238,6 +239,7 @@ func (h *Handler) handleCanonicalPatchAction(w http.ResponseWriter, r *http.Requ
 	if !ok {
 		return
 	}
+	h.recordAudit(r, workspaceID, deployment.SourceGitSourceID(), app, "route_tag_override", tagOverrideDetail("action "+actionKey, tagOverride))
 	schemaReader := h.newCanonicalSchemaReader(r.Context(), deployment)
 	defer schemaReader.Close()
 	view, err := h.newCanonicalActionModel(schemaReader, deployment, actionKey, action)

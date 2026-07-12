@@ -11,6 +11,7 @@ import {
   ProbeNotice,
   ReleaseStateBadge,
 } from "../components/ui";
+import { StatTile, WindowSelector, windowLabel } from "../components/stats";
 import { PublishReleaseDialog } from "../features/PublishReleaseDialog";
 import {
   errorMessage,
@@ -27,8 +28,10 @@ import { Link, useRouter } from "../lib/router";
 
 const tabs = [
   { key: "overview", label: "Overview" },
+  { key: "monitoring", label: "Monitoring" },
   { key: "repository", label: "Repository" },
   { key: "releases", label: "Releases" },
+  { key: "audit", label: "Audit" },
   { key: "actions", label: "Actions" },
 ] as const;
 
@@ -124,10 +127,12 @@ export function AppDetailPage({ sourceID, tab }: { sourceID: number; tab: string
       </nav>
 
       {activeTab === "overview" ? <OverviewTab source={source} app={app} detail={detail} onPublish={() => setPublishing(true)} /> : null}
+      {activeTab === "monitoring" ? <MonitoringTab app={app} /> : null}
       {activeTab === "repository" && source ? <RepositoryTab source={source} onChanged={state.reload} /> : null}
       {activeTab === "releases" ? (
         <ReleasesTab appKey={app ? app.app_key : source!.name} released={Boolean(app)} repoURL={source?.repo_url || ""} />
       ) : null}
+      {activeTab === "audit" ? <AuditTab sourceID={sourceID} /> : null}
       {activeTab === "actions" ? <ActionsTab app={app} detail={detail} /> : null}
 
       {publishing && source ? (
@@ -522,5 +527,105 @@ function SourceCodeRef({
       {repoURL}
       {subpath ? ` · ${subpath}` : ""}
     </span>
+  );
+}
+
+// Per-app slice of the workspace job aggregates (ADR 0005): the same
+// summary endpoint, narrowed to this app's activity.
+function MonitoringTab({ app }: { app: AppSummary | null }) {
+  const { api } = useApp();
+  const [windowSeconds, setWindowSeconds] = useState<number>(86400);
+  const summary = useAsync(() => api.jobsSummary(windowSeconds), [api, windowSeconds]);
+
+  if (!app) {
+    return (
+      <Panel title="Monitoring" subtitle="Aggregate job activity for this app.">
+        <EmptyState title="No release published yet, so there is no job activity." />
+      </Panel>
+    );
+  }
+
+  const counts = summary.data?.by_app?.find((item) => item.app_key === app.app_key);
+  const label = windowLabel(windowSeconds);
+  const settled = counts ? counts.completed_count_recent + counts.failed_count_recent : 0;
+  const failurePercent = counts && settled > 0 ? (counts.failed_count_recent / settled) * 100 : null;
+  const failureRate =
+    failurePercent === null ? "—" : `${failurePercent.toFixed(failurePercent > 0 && failurePercent < 1 ? 1 : 0)}%`;
+
+  return (
+    <Panel
+      title="Monitoring"
+      subtitle={`Aggregate job activity for ${app.app_key}. Individual runs live in the control-plane API and CLI.`}
+      actions={<WindowSelector value={windowSeconds} onChange={setWindowSeconds} />}
+    >
+      {summary.error ? <ErrorNotice message={summary.error} onRetry={summary.reload} /> : null}
+      {summary.loading && !summary.data ? <Loading /> : null}
+      {summary.data ? (
+        <div className="statRow" id="appMonitoring">
+          <StatTile label="Queued" value={counts?.queued_count ?? 0} tone="waiting" />
+          <StatTile label="Running" value={counts?.running_count ?? 0} tone="running" />
+          <StatTile label={`Completed · ${label}`} value={counts?.completed_count_recent ?? 0} tone="good" />
+          <StatTile label={`Failed · ${label}`} value={counts?.failed_count_recent ?? 0} tone="critical" />
+          <StatTile label={`Canceled · ${label}`} value={counts?.canceled_count_recent ?? 0} tone="serious" />
+          <StatTile label={`Failure rate · ${label}`} value={failureRate} tone="neutral" />
+        </div>
+      ) : null}
+      {summary.data && !counts ? (
+        <p className="cellSub">No job activity for this app in the selected window.</p>
+      ) : null}
+    </Panel>
+  );
+}
+
+const auditKindLabels: Record<string, string> = {
+  source_registered: "Registered",
+  settings_changed: "Settings changed",
+  source_deleted: "Source deleted",
+  route_tag_override: "Route tag override",
+};
+
+// Change history for the repository source: settings edits, deletions, and
+// route tag overrides. Releases have their own tab.
+function AuditTab({ sourceID }: { sourceID: number }) {
+  const { api } = useApp();
+  const state = useAsync(() => api.auditTrail(sourceID), [api, sourceID]);
+
+  return (
+    <Panel title="Audit trail" subtitle="Who changed this app's configuration, and when. Releases are on the Releases tab.">
+      {state.error ? <ErrorNotice message={state.error} onRetry={state.reload} /> : null}
+      {state.loading && !state.data ? <Loading /> : null}
+      {state.data && state.data.length === 0 ? (
+        <EmptyState title="No configuration changes recorded yet.">
+          <p>Repository settings edits, source deletion, and route tag overrides are recorded here.</p>
+        </EmptyState>
+      ) : null}
+      {state.data && state.data.length > 0 ? (
+        <div className="tableWrap">
+          <table className="table" id="auditTrail">
+            <thead>
+              <tr>
+                <th>When</th>
+                <th>Actor</th>
+                <th>Change</th>
+                <th>Detail</th>
+              </tr>
+            </thead>
+            <tbody>
+              {state.data.map((record) => (
+                <tr key={record.id}>
+                  <td>
+                    <span className="cellTitle">{formatRelative(record.created_at)}</span>
+                    <span className="cellSub">{formatTime(record.created_at)}</span>
+                  </td>
+                  <td>{record.actor}</td>
+                  <td>{auditKindLabels[record.kind] || record.kind}</td>
+                  <td className="mono">{record.detail || "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+    </Panel>
   );
 }

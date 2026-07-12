@@ -63,6 +63,12 @@ export default {
     const sources = await api("/git_sources");
     const sample = sources.find((source) => source.name === "echo");
     if (sample) {
+      // A settings change so the Audit tab has a record to show.
+      await api(`/git_sources/${sample.id}`, {
+        method: "PATCH",
+        headers: { "x-windforce-actor": "ui-guide@example.test" },
+        body: { name: "echo-service" },
+      });
       await api(`/git_sources/${sample.id}/deploy`, {
         method: "POST",
         headers: { "x-windforce-actor": "ui-guide@example.test" },
