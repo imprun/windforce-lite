@@ -107,4 +107,5 @@ services:
 volumes:
   postgres-data:
   windforce-data:
+    name: ${WINDFORCE_LITE_DATA_VOLUME:-windforce-lite_windforce-data}
   web-node-modules:

@@ -72,9 +72,11 @@ docker compose --profile backend up -d control-plane
 docker compose --profile worker up -d worker
 ```
 
-`standalone` starts PostgreSQL, backend, and worker together. When another
-devstack provides PostgreSQL, set `WINDFORCE_LITE_DATABASE_URL` and start only
-the `backend` and `worker` profiles.
+`standalone` starts PostgreSQL, backend, and worker together. When the workspace
+devstack provides PostgreSQL and the HTTP trigger, set `WINDFORCE_LITE_DATABASE_URL`
+and `WINDFORCE_LITE_DATA_VOLUME`, then start only the `backend` and `worker`
+profiles. The data volume must be the same volume mounted by the HTTP trigger,
+because the trigger reads the active catalog that the control-plane writes.
 
 ## Run
 

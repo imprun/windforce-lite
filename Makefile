@@ -113,9 +113,9 @@ help:
 	@echo "  windforce-run-wait     run WF_APP/WF_ACTION and wait WF_TIMEOUT_MS"
 	@echo "  windforce-jobs         list jobs, optionally filtered by WF_JOB_STATUS"
 	@echo "  windforce-job/result/logs/cancel operate on WF_JOB_ID"
-	@echo "  compose-up             start Postgres, control-plane API, and Bun Web UI"
-	@echo "  compose-db             start only Postgres"
-	@echo "  compose-worker         start Postgres and runtime worker"
+	@echo "  compose-up             start control-plane API and Bun Web UI against configured PostgreSQL"
+	@echo "  compose-db             start repo-local PostgreSQL for standalone testing"
+	@echo "  compose-worker         start runtime worker against configured PostgreSQL"
 	@echo "  compose-build          build the Go Docker image; Dockerfile builds and embeds Web UI assets"
 	@echo "  compose-down/reset/logs/ps"
 	@echo "  ui-guide               regenerate Web UI guide screenshots and markdown (needs bun, go, and a Chromium browser)"
@@ -154,13 +154,13 @@ build:
 	$(GO) build -o "$(BIN)" $(CMD)
 
 compose-up:
-	$(COMPOSE) up -d postgres control-plane web
+	$(COMPOSE) --profile backend up -d control-plane web
 
 compose-db:
-	$(COMPOSE) up -d postgres
+	$(COMPOSE) --profile pg up -d postgres
 
 compose-worker:
-	$(COMPOSE) up -d postgres worker
+	$(COMPOSE) --profile worker up -d worker
 
 compose-build:
 	$(COMPOSE) build control-plane worker
