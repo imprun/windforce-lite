@@ -116,6 +116,14 @@ services:
       - /data/store
       - --cache
       - /data/cache
+    environment:
+      PIP_INDEX_URL: ${PIP_INDEX_URL:-}
+      PIP_EXTRA_INDEX_URL: ${PIP_EXTRA_INDEX_URL:-}
+      PIP_TRUSTED_HOST: ${PIP_TRUSTED_HOST:-}
+      PIP_FIND_LINKS: ${PIP_FIND_LINKS:-}
+      PIP_NO_INDEX: ${PIP_NO_INDEX:-}
+      PIP_CERT: ${PIP_CERT:-}
+      PIP_CLIENT_CERT: ${PIP_CLIENT_CERT:-}
     volumes:
       - windforce-data:/data
 
