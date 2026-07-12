@@ -151,10 +151,14 @@ export type RegisterSourcePayload = {
   branch?: string;
   subpath?: string;
   creds_ref?: string;
-  auth_method?: string;
-  access_token?: string;
-  username?: string;
-  password?: string;
+};
+
+export type SetVariablePayload = {
+  path: string;
+  value: string;
+  description?: string;
+  is_secret?: boolean;
+  app_key?: string;
 };
 
 export type PatchSourcePayload = {
@@ -228,6 +232,10 @@ export class WindforceApi {
 
   probeGitSource(payload: Record<string, unknown>): Promise<ProbeResult> {
     return this.request("/git_sources/probe", { method: "POST", body: payload });
+  }
+
+  setVariable(payload: SetVariablePayload): Promise<{ path: string; is_secret: boolean }> {
+    return this.request("/variables", { method: "POST", body: payload });
   }
 
   createSample(appKey: string): Promise<{ source: GitSource; sync_result: SyncResult }> {

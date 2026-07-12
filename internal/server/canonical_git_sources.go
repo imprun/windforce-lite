@@ -99,14 +99,8 @@ func (h *Handler) handleCanonicalRegisterGitSource(w http.ResponseWriter, r *htt
 	branch := strings.TrimSpace(firstNonEmpty(request.Branch, request.BranchCamel))
 	subpath := strings.TrimSpace(firstNonEmpty(request.Subpath, request.SubpathCamel))
 	credsRef := strings.TrimSpace(firstNonEmpty(request.CredsRef, request.CredsRefCamel))
-	credential, err := gitCredentialFromRequest(gitCredentialRequest{
-		AuthMethod:  request.AuthMethod,
-		AccessToken: request.AccessToken,
-		Username:    request.Username,
-		Password:    request.Password,
-	})
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+	if gitSourceRegisterHasInlineCredential(request.AuthMethod, request.AccessToken, request.Username, request.Password) {
+		writeError(w, http.StatusBadRequest, "git credentials must be stored as a secret variable and referenced by creds_ref")
 		return
 	}
 	if name == "" || repoURL == "" {
@@ -116,9 +110,6 @@ func (h *Handler) handleCanonicalRegisterGitSource(w http.ResponseWriter, r *htt
 	if branch == "" {
 		branch = "main"
 	}
-	if credential != "" && credsRef == "" {
-		credsRef = defaultGitCredentialPath(name)
-	}
 	source := gitsourcepkg.Source{
 		Workspace: workspaceID,
 		Name:      name,
@@ -127,32 +118,13 @@ func (h *Handler) handleCanonicalRegisterGitSource(w http.ResponseWriter, r *htt
 		Subpath:   subpath,
 		TokenEnv:  credsRef,
 	}
-	validationToken := credential
-	if validationToken == "" {
-		resolved, err := h.resolveGitSourceCreds(r.Context(), workspaceID, credsRef)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		validationToken = resolved
+	validationToken, err := h.resolveGitSourceCreds(r.Context(), workspaceID, credsRef)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
 	}
 	if _, ok := h.validateGitSourceContract(w, r, source, validationToken); !ok {
 		return
-	}
-	if credential != "" {
-		if h.store == nil {
-			writeError(w, http.StatusServiceUnavailable, "state store is not configured")
-			return
-		}
-		encrypted, err := h.encryptSecretVariable(r.Context(), workspaceID, credential)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		if err := h.store.SetVariable(r.Context(), workspaceID, "", credsRef, encrypted, true, fmt.Sprintf("Git credential for source %s", name)); err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
-			return
-		}
 	}
 	source, ok := h.createGitSource(w, r, source)
 	if !ok {
@@ -685,6 +657,15 @@ func gitCredentialFromRequest(request gitCredentialRequest) (string, error) {
 	}
 }
 
+func gitSourceRegisterHasInlineCredential(values ...string) bool {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return true
+		}
+	}
+	return false
+}
+
 func mustGitCredentialJSON(request gitCredentialRequest) (string, error) {
 	payload := map[string]string{"type": strings.ToLower(strings.TrimSpace(request.AuthMethod))}
 	if payload["type"] == "basic" {
@@ -698,26 +679,4 @@ func mustGitCredentialJSON(request gitCredentialRequest) (string, error) {
 		return "", err
 	}
 	return string(data), nil
-}
-
-func defaultGitCredentialPath(sourceName string) string {
-	var builder strings.Builder
-	lastWasDash := false
-	for _, r := range strings.ToLower(strings.TrimSpace(sourceName)) {
-		switch {
-		case r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == '.', r == '_', r == '-':
-			builder.WriteRune(r)
-			lastWasDash = r == '-'
-		default:
-			if builder.Len() > 0 && !lastWasDash {
-				builder.WriteByte('-')
-				lastWasDash = true
-			}
-		}
-	}
-	slug := strings.Trim(builder.String(), "-")
-	if slug == "" {
-		slug = "source"
-	}
-	return "git/" + slug + "/credential"
 }

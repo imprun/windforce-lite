@@ -1710,9 +1710,14 @@ func TestCanonicalControlPlaneOpenAPIExposesSchemaDiscovery(t *testing.T) {
 		t.Fatalf("git source schema must match canonical response without updated_at: %#v", gitSourceProperties)
 	}
 	registerRequest := schemas["RegisterGitSourceRequest"].(map[string]any)["properties"].(map[string]any)
-	for _, field := range []string{"auth_method", "access_token", "username", "password", "creds_ref"} {
+	for _, field := range []string{"name", "repo_url", "branch", "subpath", "creds_ref"} {
 		if registerRequest[field] == nil {
 			t.Fatalf("register request schema missing %s: %#v", field, registerRequest)
+		}
+	}
+	for _, field := range []string{"auth_method", "access_token", "username", "password"} {
+		if registerRequest[field] != nil {
+			t.Fatalf("register request schema must not accept inline credential field %s: %#v", field, registerRequest)
 		}
 	}
 	probeRequest := schemas["ProbeGitSourceRequest"].(map[string]any)["properties"].(map[string]any)
@@ -2468,14 +2473,15 @@ func TestCanonicalRegisterGitSourceValidatesManifestBeforePersisting(t *testing.
 	}
 }
 
-func TestCanonicalRegisterGitSourceStoresCredentialFromRequest(t *testing.T) {
+func TestCanonicalRegisterGitSourceRejectsCredentialFromRequest(t *testing.T) {
 	tempDir := t.TempDir()
 	repoDir := createTestGitSourceRepo(t, tempDir, "repo", "")
 	store := state.NewLocalStore(filepath.Join(tempDir, "state.json"))
+	registry := gitsource.NewFileRegistry(filepath.Join(tempDir, "git-sources.json"))
 	handler := New(Config{
 		Store:      store,
 		Syncer:     &syncer.Syncer{CloneRoot: tempDir},
-		GitSources: gitsource.NewFileRegistry(filepath.Join(tempDir, "git-sources.json")),
+		GitSources: registry,
 		EnableAPI:  true,
 		SecretKey:  "git-source-register-secret",
 	})
@@ -2494,33 +2500,23 @@ func TestCanonicalRegisterGitSourceStoresCredentialFromRequest(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer registerResp.Body.Close()
-	if registerResp.StatusCode != http.StatusCreated {
+	if registerResp.StatusCode != http.StatusBadRequest {
 		body, _ := io.ReadAll(registerResp.Body)
-		t.Fatalf("register status = %d, want %d: %s", registerResp.StatusCode, http.StatusCreated, body)
+		t.Fatalf("register status = %d, want %d: %s", registerResp.StatusCode, http.StatusBadRequest, body)
 	}
-	var registered struct {
-		CredsRef string `json:"creds_ref"`
-	}
-	if err := json.NewDecoder(registerResp.Body).Decode(&registered); err != nil {
-		t.Fatal(err)
-	}
-	if registered.CredsRef != "git/coupang-eats/credential" {
-		t.Fatalf("creds_ref = %q, want generated source credential path", registered.CredsRef)
-	}
-	resolved, err := handler.(*Handler).resolveGitSourceCreds(context.Background(), "ws-a", registered.CredsRef)
+	snapshot, err := registry.Load(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	var credential struct {
-		Type     string `json:"type"`
-		Username string `json:"username"`
-		Password string `json:"password"`
+	if len(snapshot.Sources) != 0 {
+		t.Fatalf("registered sources = %#v, want none", snapshot.Sources)
 	}
-	if err := json.Unmarshal([]byte(resolved), &credential); err != nil {
-		t.Fatalf("stored credential is not JSON: %q: %v", resolved, err)
+	variables, err := store.ListVariables(context.Background(), "ws-a")
+	if err != nil {
+		t.Fatal(err)
 	}
-	if credential.Type != "basic" || credential.Username != "deploy-user" || credential.Password != "deploy-token" {
-		t.Fatalf("stored credential = %#v", credential)
+	if len(variables) != 0 {
+		t.Fatalf("stored variables = %#v, want none", variables)
 	}
 }
 
@@ -2674,8 +2670,9 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 	runTestGit(t, repoDir, "commit", "-m", "initial")
 
 	fileCatalog := catalog.NewFileCatalog(filepath.Join(tempDir, "catalog.json"))
+	stateStore := state.NewLocalStore(filepath.Join(tempDir, "state.json"))
 	handler := New(Config{
-		Store:      state.NewLocalStore(filepath.Join(tempDir, "state.json")),
+		Store:      stateStore,
 		Catalog:    fileCatalog,
 		Syncer:     &syncer.Syncer{Store: bundle.NewLocalStore(filepath.Join(tempDir, "store")), Catalog: fileCatalog, CloneRoot: tempDir},
 		GitSources: gitsource.NewFileRegistry(filepath.Join(tempDir, "git-sources.json")),
@@ -2708,6 +2705,24 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 	defer legacyRegisterResp.Body.Close()
 	if legacyRegisterResp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("legacy canonical register status = %d, want %d", legacyRegisterResp.StatusCode, http.StatusBadRequest)
+	}
+
+	inlineCredRegisterResp, err := http.Post(server.URL+"/api/w/ws-a/git_sources", "application/json", bytes.NewBufferString(`{
+		"name": "source-inline-credential",
+		"repo_url": "`+filepath.ToSlash(repoDir)+`",
+		"branch": "main",
+		"auth_method": "token",
+		"access_token": "secret-token"
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer inlineCredRegisterResp.Body.Close()
+	if inlineCredRegisterResp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("inline credential register status = %d, want %d", inlineCredRegisterResp.StatusCode, http.StatusBadRequest)
+	}
+	if _, found, err := stateStore.GetVariableExact(context.Background(), "ws-a", "", "git/source-inline-credential/credential"); err != nil || found {
+		t.Fatalf("inline credential register stored variable found=%v err=%v", found, err)
 	}
 
 	registerBody, err := json.Marshal(map[string]string{

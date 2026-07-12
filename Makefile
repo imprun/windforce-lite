@@ -207,7 +207,7 @@ windforce-variable-set:
 	python tools/windforce_control.py --api-url "$(WF_API_URL)" --workspace "$(WF_WORKSPACE)" --pretty variable-set --path "$(WF_VARIABLE_PATH)" --value-env "$(WF_VARIABLE_VALUE_ENV)" --app "$(WF_VARIABLE_APP)" --secret --description "$(WF_VARIABLE_DESCRIPTION)"
 
 windforce-git-token:
-	python tools/windforce_control.py --api-url "$(WF_API_URL)" --workspace "$(WF_WORKSPACE)" --pretty variable-set --path "$(WF_GIT_CREDS_REF)" --value-env "$(WF_GIT_TOKEN_ENV)" --secret --description "git access token"
+	python tools/windforce_control.py --api-url "$(WF_API_URL)" --workspace "$(WF_WORKSPACE)" --pretty variable-set --path "$(WF_VARIABLE_PATH)" --value-env "$(WF_GIT_TOKEN_ENV)" --secret --description "git access token"
 
 windforce-register:
 	python tools/windforce_control.py --api-url "$(WF_API_URL)" --workspace "$(WF_WORKSPACE)" --pretty register --name "$(WF_GIT_SOURCE_NAME)" --repo-url "$(WF_REPO_URL)" --branch "$(WF_BRANCH)" --subpath "$(WF_SUBPATH)" --creds-ref "$(WF_GIT_CREDS_REF)" --git-auth-method "$(WF_GIT_AUTH_METHOD)" --git-access-token-env "$(WF_GIT_TOKEN_ENV)" --git-username "$(WF_GIT_USERNAME)" --git-password-env "$(WF_GIT_PASSWORD_ENV)"

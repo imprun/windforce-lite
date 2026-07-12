@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 import urllib.error
 import urllib.parse
@@ -294,7 +295,58 @@ def git_auth_payload(args: argparse.Namespace) -> dict[str, str]:
     return compact(payload)
 
 
+def default_git_credential_path(source_name: str) -> str:
+    segment = re.sub(r"[/\\\s\x00-\x1f\x7f]+", "-", source_name.strip())
+    segment = re.sub(r"-+", "-", segment).strip("-")
+    if not segment or segment in (".", ".."):
+        segment = "source"
+    return f"git/{segment}/credential"
+
+
+def git_credential_secret_value(auth_payload: dict[str, str]) -> str:
+    method = auth_payload.get("auth_method", "")
+    if method in ("pat", "token", "access_token"):
+        token = auth_payload.get("access_token", "").strip()
+        if not token:
+            return ""
+        return json.dumps({"type": "pat", "token": token}, ensure_ascii=False, separators=(",", ":"))
+    if method == "basic":
+        username = auth_payload.get("username", "").strip()
+        password = auth_payload.get("password", "")
+        if not username or not password:
+            return ""
+        return json.dumps(
+            {"type": "basic", "username": username, "password": password},
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+    return ""
+
+
 def cmd_register(args: argparse.Namespace) -> Any:
+    auth_payload = git_auth_payload(args)
+    credential_value = git_credential_secret_value(auth_payload)
+    creds_ref = args.creds_ref.strip()
+    if credential_value:
+        if not creds_ref:
+            creds_ref = default_git_credential_path(args.name)
+        request(
+            args,
+            "POST",
+            f"/api/w/{quote_path(args.workspace)}/variables",
+            compact(
+                {
+                    "path": creds_ref,
+                    "value": credential_value,
+                    "is_secret": True,
+                    "description": f"Git credential for source {args.name}",
+                }
+            ),
+        )
+    elif not creds_ref and auth_payload.get("auth_method") in ("pat", "token", "access_token"):
+        raise APIError({"error": "git access token is required, or pass --creds-ref for an existing credential"})
+    elif not creds_ref and auth_payload.get("auth_method") == "basic":
+        raise APIError({"error": "git username and password are required, or pass --creds-ref for an existing credential"})
     return request(
         args,
         "POST",
@@ -305,8 +357,7 @@ def cmd_register(args: argparse.Namespace) -> Any:
                 "repo_url": args.repo_url,
                 "branch": args.branch,
                 "subpath": args.subpath,
-                "creds_ref": args.creds_ref,
-                **git_auth_payload(args),
+                "creds_ref": creds_ref,
             }
         ),
     )

@@ -1,9 +1,8 @@
 import { useState } from "react";
 import { errorMessage, type GitSource, type ProbeResult, type RegisterSourcePayload } from "../lib/api";
 import { useApp } from "../lib/app-context";
+import { defaultGitCredentialPath, gitCredentialSecretValue, type GitAuthMethod } from "../lib/git-credential";
 import { Field, Modal, ProbeNotice } from "../components/ui";
-
-type AuthMethod = "none" | "token" | "basic";
 
 export function RegisterAppDialog({
   onClose,
@@ -17,7 +16,7 @@ export function RegisterAppDialog({
   const [repoURL, setRepoURL] = useState("");
   const [branch, setBranch] = useState("main");
   const [subpath, setSubpath] = useState("");
-  const [authMethod, setAuthMethod] = useState<AuthMethod>("none");
+  const [authMethod, setAuthMethod] = useState<GitAuthMethod>("none");
   const [accessToken, setAccessToken] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -31,8 +30,14 @@ export function RegisterAppDialog({
     if (branch.trim()) payload.branch = branch.trim();
     if (subpath.trim()) payload.subpath = subpath.trim();
     if (credsRef.trim()) payload.creds_ref = credsRef.trim();
-    if (authMethod === "token") {
-      payload.auth_method = "token";
+    return payload;
+  }
+
+  function buildProbePayload(): Record<string, unknown> {
+    const payload: Record<string, unknown> = buildPayload();
+    delete payload.name;
+    if (authMethod === "pat") {
+      payload.auth_method = "pat";
       payload.access_token = accessToken;
     } else if (authMethod === "basic") {
       payload.auth_method = "basic";
@@ -47,8 +52,7 @@ export function RegisterAppDialog({
     setError("");
     setProbe(null);
     try {
-      const payload = buildPayload();
-      const result = await api.probeGitSource({ ...payload, name: undefined });
+      const result = await api.probeGitSource(buildProbePayload());
       setProbe(result);
     } catch (cause) {
       setError(errorMessage(cause));
@@ -65,7 +69,27 @@ export function RegisterAppDialog({
     setBusy(true);
     setError("");
     try {
-      const created = await api.registerGitSource(buildPayload());
+      const credentialValue = gitCredentialSecretValue(authMethod, accessToken, username, password);
+      const credentialPath = credsRef.trim() || (credentialValue ? defaultGitCredentialPath(name) : "");
+      if (authMethod === "pat" && !credentialValue && !credentialPath) {
+        setError("Access token is required, or provide an existing credential path.");
+        return;
+      }
+      if (authMethod === "basic" && !credentialValue && !credentialPath) {
+        setError("Username and password are required, or provide an existing credential path.");
+        return;
+      }
+      if (credentialValue) {
+        await api.setVariable({
+          path: credentialPath,
+          value: credentialValue,
+          is_secret: true,
+          description: `Git credential for source ${name.trim()}`,
+        });
+      }
+      const payload = buildPayload();
+      if (credentialPath) payload.creds_ref = credentialPath;
+      const created = await api.registerGitSource(payload);
       notify("ok", `Registered ${created.name}.`);
       onRegistered(created);
     } catch (cause) {
@@ -115,13 +139,13 @@ export function RegisterAppDialog({
           <input value={subpath} onChange={(event) => setSubpath(event.target.value)} placeholder="apps/echo" />
         </Field>
         <Field label="Git auth">
-          <select value={authMethod} onChange={(event) => setAuthMethod(event.target.value as AuthMethod)}>
+          <select value={authMethod} onChange={(event) => setAuthMethod(event.target.value as GitAuthMethod)}>
             <option value="none">Public (no credential)</option>
-            <option value="token">Access token</option>
+            <option value="pat">Access token</option>
             <option value="basic">Username + password</option>
           </select>
         </Field>
-        {authMethod === "token" ? (
+        {authMethod === "pat" ? (
           <Field label="Access token" hint="Stored as a workspace secret variable; creds ref below is optional.">
             <input
               type="password"
@@ -146,8 +170,15 @@ export function RegisterAppDialog({
             </Field>
           </>
         ) : null}
-        <Field label="Creds ref" hint="Existing workspace variable path holding the git credential (optional).">
-          <input value={credsRef} onChange={(event) => setCredsRef(event.target.value)} placeholder="secrets/git/token" />
+        <Field
+          label="Credential path"
+          hint="Workspace secret variable path. Leave empty to store a new credential under this source name."
+        >
+          <input
+            value={credsRef}
+            onChange={(event) => setCredsRef(event.target.value)}
+            placeholder={name.trim() ? defaultGitCredentialPath(name) : "git/source/credential"}
+          />
         </Field>
       </div>
 
