@@ -431,24 +431,12 @@ textarea {
   margin-top: 1px;
 }
 
-.errorSnippet {
-  max-width: 320px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .rowActions {
   white-space: nowrap;
 }
 
 .rowActions .button + .button {
   margin-left: 6px;
-}
-
-.loadMoreRow {
-  display: flex;
-  justify-content: center;
 }
 
 /* ---------- badges ---------- */
@@ -476,51 +464,6 @@ textarea {
 
 .badge-good .badgeIcon {
   color: var(--status-good);
-}
-
-.badge-critical {
-  background: var(--status-critical-bg);
-}
-
-.badge-critical .badgeIcon {
-  color: var(--status-critical);
-}
-
-.badge-serious {
-  background: var(--status-serious-bg);
-}
-
-.badge-serious .badgeIcon {
-  color: var(--status-serious);
-}
-
-.badge-waiting {
-  background: var(--status-warning-bg);
-}
-
-.badge-waiting .badgeIcon {
-  color: var(--status-warning);
-}
-
-.badge-running {
-  background: var(--status-running-bg);
-}
-
-.badge-running .badgeIcon {
-  color: var(--status-running);
-  animation: pulse 1.6s ease-in-out infinite;
-}
-
-@keyframes pulse {
-  50% {
-    opacity: 0.35;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .badge-running .badgeIcon {
-    animation: none;
-  }
 }
 
 /* ---------- stat tiles ---------- */
@@ -578,6 +521,19 @@ textarea {
 .statLabel {
   font-size: 12px;
   color: var(--text-muted);
+}
+
+.numCell {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.table th:not(:first-child) {
+  text-align: right;
+}
+
+.failureRate.bad {
+  font-weight: 640;
 }
 
 /* ---------- filters ---------- */
@@ -765,33 +721,10 @@ textarea {
   max-height: 480px;
 }
 
-.logBlock {
-  white-space: pre;
-  overflow-wrap: normal;
-}
-
 .schemaGrid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 14px;
-}
-
-.testRun {
-  border-top: 1px solid var(--border);
-  padding-top: 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.testRunActions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.resultStatus {
-  margin-bottom: 8px;
 }
 
 /* ---------- file browser ---------- */

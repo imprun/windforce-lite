@@ -10,7 +10,6 @@ import {
   Panel,
   ProbeNotice,
   ReleaseStateBadge,
-  StatusBadge,
 } from "../components/ui";
 import { PublishReleaseDialog } from "../features/PublishReleaseDialog";
 import {
@@ -20,7 +19,6 @@ import {
   type AppSummary,
   type GitSource,
   type ProbeResult,
-  type RunWaitResult,
 } from "../lib/api";
 import { useApp, useAsync } from "../lib/app-context";
 import { formatJSON, formatRelative, formatTime, shortSHA } from "../lib/format";
@@ -454,35 +452,11 @@ function ActionsTab({ app, detail }: { app: AppSummary | null; detail: AppDetail
 function ActionPanel({ appKey, action }: { appKey: string; action: ActionView }) {
   const { api } = useApp();
   const schemas = useAsync(() => api.actionSchemas(appKey, action.action_key), [api, appKey, action.action_key]);
-  const [input, setInput] = useState("{}");
-  const [running, setRunning] = useState(false);
-  const [runResult, setRunResult] = useState<RunWaitResult | null>(null);
-  const [runError, setRunError] = useState("");
-
-  async function handleRun() {
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(input || "{}");
-    } catch {
-      setRunError("Input must be valid JSON.");
-      return;
-    }
-    setRunning(true);
-    setRunError("");
-    setRunResult(null);
-    try {
-      setRunResult(await api.runAndWait(appKey, action.action_key, parsed, 30000));
-    } catch (cause) {
-      setRunError(errorMessage(cause));
-    } finally {
-      setRunning(false);
-    }
-  }
 
   return (
     <Panel
       title={`Action · ${action.action_key}`}
-      subtitle="Materialized JSON Schemas and a test run against the active contract."
+      subtitle="Materialized JSON Schemas from the active contract. Invoke actions through the control-plane API or CLI."
     >
       {schemas.error ? <ErrorNotice message={schemas.error} onRetry={schemas.reload} /> : null}
       <div className="schemaGrid">
@@ -494,37 +468,6 @@ function ActionPanel({ appKey, action }: { appKey: string; action: ActionView })
           <h3 className="subHeading">Output schema</h3>
           <JsonBlock value={schemas.data ? formatJSON(schemas.data.output_schema) : "loading…"} maxHeight={280} />
         </div>
-      </div>
-      <div className="testRun">
-        <h3 className="subHeading">Test run</h3>
-        <Field label="Input JSON">
-          <textarea
-            value={input}
-            rows={4}
-            onChange={(event) => setInput(event.target.value)}
-            spellCheck={false}
-          />
-        </Field>
-        <div className="testRunActions">
-          <button className="button primary" type="button" disabled={running} onClick={handleRun}>
-            {running ? "Running…" : "Run action"}
-          </button>
-          {runResult ? (
-            <>
-              <StatusBadge status={runResult.status} />
-              <Link className="button small" to={`/jobs/${runResult.job_id}`}>
-                Open job
-              </Link>
-            </>
-          ) : null}
-        </div>
-        {runError ? <div className="inlineNotice error">{runError}</div> : null}
-        {runResult && runResult.status !== "pending" ? <JsonBlock value={runResult.result} maxHeight={280} /> : null}
-        {runResult && runResult.status === "pending" ? (
-          <div className="inlineNotice">
-            The run is still executing. Follow it on the job page.
-          </div>
-        ) : null}
       </div>
     </Panel>
   );

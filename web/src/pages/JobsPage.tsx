@@ -1,176 +1,164 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Layout } from "../components/Layout";
-import { EmptyState, ErrorNotice, Loading, StatusBadge } from "../components/ui";
-import { errorMessage, type JobListItem } from "../lib/api";
+import { EmptyState, ErrorNotice, Loading, Panel } from "../components/ui";
+import type { JobStatusCounts } from "../lib/api";
 import { useApp, useAsync } from "../lib/app-context";
-import { formatDuration, formatRelative, formatTime } from "../lib/format";
-import { Link, useRouter } from "../lib/router";
+import { formatRelative } from "../lib/format";
+import { Link } from "../lib/router";
 
-const statusFilters = ["all", "queued", "running", "success", "failure", "canceled"] as const;
-
-type ExtraPages = {
-  // Which base query the accumulated pages belong to; extra pages from a
-  // previous filter are ignored at render time instead of flashing through.
-  key: string;
-  items: JobListItem[];
-  nextCursor?: string;
-};
+const windows = [
+  { label: "1h", seconds: 3600 },
+  { label: "24h", seconds: 86400 },
+  { label: "7d", seconds: 604800 },
+] as const;
 
 export function JobsPage() {
-  const { api, notify } = useApp();
-  const { navigate } = useRouter();
-  const [status, setStatus] = useState<(typeof statusFilters)[number]>("all");
-  const [appFilter, setAppFilter] = useState("");
-  const [extra, setExtra] = useState<ExtraPages | null>(null);
-  const [loadingMore, setLoadingMore] = useState(false);
+  const { api } = useApp();
+  const [windowSeconds, setWindowSeconds] = useState<number>(86400);
 
-  const filterKey = `${status}|${appFilter.trim()}`;
-  const summary = useAsync(() => api.jobsSummary(), [api]);
-  const list = useAsync(
-    () => api.jobs({ status, app: appFilter.trim() || undefined, limit: 50 }),
-    [api, status, appFilter],
+  const state = useAsync(
+    async () => {
+      const [summary, apps] = await Promise.all([api.jobsSummary(windowSeconds), api.apps()]);
+      return { summary, apps: apps.apps || [] };
+    },
+    [api, windowSeconds],
   );
-
-  const extraForFilter = extra && extra.key === filterKey ? extra : null;
-  const items = useMemo(() => {
-    const merged = [...(list.data?.items || []), ...(extraForFilter?.items || [])];
-    const seen = new Set<string>();
-    return merged.filter((job) => {
-      if (seen.has(job.id)) return false;
-      seen.add(job.id);
-      return true;
-    });
-  }, [list.data, extraForFilter]);
-
-  const nextCursor = extraForFilter ? extraForFilter.nextCursor : list.data?.pagination.next_cursor;
-  const hasMore = extraForFilter
-    ? Boolean(extraForFilter.nextCursor)
-    : Boolean(list.data?.pagination.has_more && nextCursor);
-
-  async function loadMore() {
-    if (!nextCursor || loadingMore) return;
-    setLoadingMore(true);
-    const key = filterKey;
-    try {
-      const response = await api.jobs({ status, app: appFilter.trim() || undefined, limit: 50, cursor: nextCursor });
-      setExtra((current) => {
-        const base = current && current.key === key ? current.items : [];
-        return {
-          key,
-          items: [...base, ...response.items],
-          nextCursor: response.pagination.has_more ? response.pagination.next_cursor : undefined,
-        };
-      });
-    } catch (cause) {
-      notify("error", errorMessage(cause));
-    } finally {
-      setLoadingMore(false);
-    }
-  }
-
-  function refresh() {
-    setExtra(null);
-    summary.reload();
-    list.reload();
-  }
+  const summary = state.data?.summary || null;
+  const windowLabel = windows.find((item) => item.seconds === windowSeconds)?.label || "24h";
+  const sourceByApp = new Map((state.data?.apps || []).map((app) => [app.app_key, app.git_source_id]));
 
   return (
     <Layout
       title="Jobs"
-      subtitle="Run status across the workspace. Open a job to inspect its input, result, and logs."
+      subtitle="Aggregate run activity across the workspace. Individual runs live in the control-plane API and CLI."
       actions={
-        <button className="button" type="button" onClick={refresh}>
-          Refresh
-        </button>
+        <>
+          <div className="segmented" role="group" aria-label="Recent window">
+            {windows.map((item) => (
+              <button
+                key={item.label}
+                type="button"
+                className={item.seconds === windowSeconds ? "segment active" : "segment"}
+                onClick={() => setWindowSeconds(item.seconds)}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+          <button className="button" type="button" onClick={() => state.reload()}>
+            Refresh
+          </button>
+        </>
       }
     >
-      <div className="statRow" id="jobSummary">
-        <StatTile label="Queued" value={summary.data?.queued_count} tone="waiting" />
-        <StatTile label="Running" value={summary.data?.running_count} tone="running" />
-        <StatTile label="Completed · 24h" value={summary.data?.completed_count_recent} tone="good" />
-        <StatTile label="Failed · 24h" value={summary.data?.failed_count_recent} tone="critical" />
-        <StatTile label="Canceled · 24h" value={summary.data?.canceled_count_recent} tone="serious" />
-      </div>
+      {state.error ? <ErrorNotice message={state.error} onRetry={state.reload} /> : null}
+      {state.loading && !summary ? <Loading /> : null}
 
-      <div className="filterRow">
-        <div className="segmented" role="group" aria-label="Status filter">
-          {statusFilters.map((item) => (
-            <button
-              key={item}
-              type="button"
-              className={item === status ? "segment active" : "segment"}
-              onClick={() => setStatus(item)}
-            >
-              {item}
-            </button>
-          ))}
-        </div>
-        <input
-          className="searchInput"
-          placeholder="Filter by app key…"
-          value={appFilter}
-          onChange={(event) => setAppFilter(event.target.value)}
-          aria-label="Filter by app key"
-        />
-      </div>
+      {summary ? (
+        <>
+          <div className="statRow" id="jobSummary">
+            <StatTile label="Queued" value={summary.queued_count} tone="waiting" />
+            <StatTile label="Running" value={summary.running_count} tone="running" />
+            <StatTile label={`Completed · ${windowLabel}`} value={summary.completed_count_recent} tone="good" />
+            <StatTile label={`Failed · ${windowLabel}`} value={summary.failed_count_recent} tone="critical" />
+            <StatTile label={`Canceled · ${windowLabel}`} value={summary.canceled_count_recent} tone="serious" />
+          </div>
 
-      {list.error ? <ErrorNotice message={list.error} onRetry={list.reload} /> : null}
-      {list.loading && !list.data ? <Loading /> : null}
-      {list.data && items.length === 0 ? <EmptyState title="No jobs match the current filter." /> : null}
+          {summary.oldest_queued_at ? (
+            <div className="inlineNotice">
+              Oldest queued job has been waiting since {formatRelative(summary.oldest_queued_at)}.
+            </div>
+          ) : null}
 
-      {items.length > 0 ? (
-        <div className="tableWrap">
-          <table className="table" id="jobList">
-            <thead>
-              <tr>
-                <th>Job</th>
-                <th>Status</th>
-                <th>Trigger</th>
-                <th>Created</th>
-                <th>Duration</th>
-                <th>Actor</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((job) => (
-                <tr key={job.id} className="tableRow clickable" onClick={() => navigate(`/jobs/${job.id}`)}>
-                  <td>
-                    <Link
-                      to={`/jobs/${job.id}`}
-                      className="cellTitle mono"
-                      onClick={(event) => event.stopPropagation()}
-                    >
-                      {job.app_key}/{job.action_key}
-                    </Link>
-                    <span className="cellSub mono">{job.id}</span>
-                  </td>
-                  <td>
-                    <StatusBadge status={job.status} />
-                    {job.error_snippet ? <span className="cellSub errorSnippet">{job.error_snippet}</span> : null}
-                  </td>
-                  <td>{job.trigger_kind}</td>
-                  <td>
-                    <span className="cellTitle">{formatRelative(job.created_at)}</span>
-                    <span className="cellSub">{formatTime(job.created_at)}</span>
-                  </td>
-                  <td>{job.completed ? formatDuration(job.duration_ms) : "—"}</td>
-                  <td>{job.created_by || "system"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : null}
+          <Panel title="By app" subtitle={`Job activity per app over the last ${windowLabel}.`}>
+            <BreakdownTable
+              id="jobsByApp"
+              nameHeader="App"
+              rows={(summary.by_app || []).map((item) => ({
+                key: item.app_key,
+                name: item.app_key,
+                sourceID: sourceByApp.get(item.app_key),
+                counts: item,
+              }))}
+            />
+          </Panel>
 
-      {hasMore ? (
-        <div className="loadMoreRow">
-          <button className="button" type="button" disabled={loadingMore} onClick={() => void loadMore()}>
-            {loadingMore ? "Loading…" : "Load more"}
-          </button>
-        </div>
+          <Panel title="By route tag" subtitle={`Job activity per worker route tag over the last ${windowLabel}.`}>
+            <BreakdownTable
+              id="jobsByTag"
+              nameHeader="Route tag"
+              rows={(summary.by_tag || []).map((item) => ({
+                key: item.tag,
+                name: item.tag,
+                counts: item,
+              }))}
+            />
+          </Panel>
+        </>
       ) : null}
     </Layout>
   );
+}
+
+type BreakdownRow = {
+  key: string;
+  name: string;
+  sourceID?: number;
+  counts: JobStatusCounts;
+};
+
+function BreakdownTable({ id, nameHeader, rows }: { id: string; nameHeader: string; rows: BreakdownRow[] }) {
+  if (rows.length === 0) {
+    return <EmptyState title="No job activity in this window." />;
+  }
+  return (
+    <div className="tableWrap">
+      <table className="table" id={id}>
+        <thead>
+          <tr>
+            <th>{nameHeader}</th>
+            <th>Queued</th>
+            <th>Running</th>
+            <th>Completed</th>
+            <th>Failed</th>
+            <th>Canceled</th>
+            <th>Failure rate</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.key} className="tableRow">
+              <td>
+                {row.sourceID ? (
+                  <Link to={`/apps/${row.sourceID}`} className="cellTitle mono">
+                    {row.name}
+                  </Link>
+                ) : (
+                  <span className="cellTitle mono">{row.name}</span>
+                )}
+              </td>
+              <td className="numCell">{row.counts.queued_count}</td>
+              <td className="numCell">{row.counts.running_count}</td>
+              <td className="numCell">{row.counts.completed_count_recent}</td>
+              <td className="numCell">{row.counts.failed_count_recent}</td>
+              <td className="numCell">{row.counts.canceled_count_recent}</td>
+              <td className="numCell">
+                <FailureRate counts={row.counts} />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function FailureRate({ counts }: { counts: JobStatusCounts }) {
+  const settled = counts.completed_count_recent + counts.failed_count_recent;
+  if (settled === 0) return <span>—</span>;
+  const rate = (counts.failed_count_recent / settled) * 100;
+  const label = `${rate.toFixed(rate > 0 && rate < 1 ? 1 : 0)}%`;
+  return <span className={rate > 0 ? "failureRate bad" : "failureRate"}>{label}</span>;
 }
 
 function StatTile({

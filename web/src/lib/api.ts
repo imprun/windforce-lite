@@ -128,42 +128,6 @@ export type AppSource = {
   skipped?: string[];
 };
 
-export type JobListItem = {
-  id: string;
-  workspace_id: string;
-  app_key: string;
-  action_key: string;
-  trigger_kind: string;
-  status: string;
-  queued: boolean;
-  running: boolean;
-  completed: boolean;
-  created_at: string;
-  started_at?: string | null;
-  completed_at?: string | null;
-  duration_ms: number;
-  worker?: string | null;
-  git_source_id?: number | null;
-  commit_sha?: string | null;
-  entrypoint: string;
-  tag: string;
-  created_by: string;
-  permissioned_as: string;
-  canceled_by?: string | null;
-  canceled_reason?: string | null;
-  error_snippet?: string;
-};
-
-export type JobsResponse = {
-  items: JobListItem[];
-  pagination: {
-    limit: number;
-    count: number;
-    has_more: boolean;
-    next_cursor?: string;
-  };
-};
-
 export type JobStatusCounts = {
   queued_count: number;
   running_count: number;
@@ -178,48 +142,6 @@ export type JobsSummary = JobStatusCounts & {
   by_app?: Array<JobStatusCounts & { app_key: string }>;
 };
 
-export type JobDetail = {
-  id: string;
-  workspace_id: string;
-  state: "queued" | "running" | "completed";
-  status?: "success" | "failure" | "canceled";
-  worker?: string;
-  app_key?: string;
-  action_key?: string;
-  trigger_kind?: string;
-  kind?: string;
-  git_source_id?: number;
-  commit_sha?: string;
-  entrypoint?: string;
-  tag?: string;
-  timeout_s?: number;
-  created_by?: string;
-  permissioned_as?: string;
-  input?: unknown;
-  created_at?: string;
-  started_at?: string;
-  completed_at?: string;
-  duration_ms?: number;
-  canceled_by?: string;
-  canceled_reason?: string;
-};
-
-export type JobResult =
-  | { status: "pending" }
-  | { status: "success" | "failure" | "canceled"; result: unknown };
-
-export type RunWaitResult = {
-  job_id: string;
-  status: "pending" | "success" | "failure" | "canceled";
-  result?: unknown;
-};
-
-export type CancelResult = {
-  found: boolean;
-  completed_now: boolean;
-  soft_canceled: boolean;
-  already_completed: boolean;
-};
 
 export type RegisterSourcePayload = {
   name: string;
@@ -261,7 +183,6 @@ export function errorMessage(cause: unknown): string {
 type RequestOptions = {
   method?: string;
   body?: unknown;
-  text?: boolean;
 };
 
 export class WindforceApi {
@@ -319,48 +240,13 @@ export class WindforceApi {
     );
   }
 
-  runAndWait(appKey: string, actionKey: string, input: unknown, timeoutMs: number): Promise<RunWaitResult> {
-    return this.request(
-      `/jobs/run/${encodeURIComponent(appKey)}/${encodeURIComponent(actionKey)}/wait?timeout_ms=${timeoutMs}`,
-      { method: "POST", body: input },
-    );
-  }
-
-  jobs(params: { status?: string; app?: string; limit?: number; cursor?: string }): Promise<JobsResponse> {
-    const query = new URLSearchParams();
-    if (params.status && params.status !== "all") query.set("status", params.status);
-    if (params.app) query.set("app", params.app);
-    query.set("limit", String(params.limit ?? 50));
-    if (params.cursor) query.set("cursor", params.cursor);
-    return this.request(`/jobs?${query.toString()}`);
-  }
-
-  jobsSummary(): Promise<JobsSummary> {
-    return this.request("/jobs/summary");
-  }
-
-  job(jobID: string): Promise<JobDetail> {
-    return this.request(`/jobs/${encodeURIComponent(jobID)}`);
-  }
-
-  jobResult(jobID: string): Promise<JobResult> {
-    return this.request(`/jobs/${encodeURIComponent(jobID)}/result`);
-  }
-
-  jobLogs(jobID: string, tailBytes = 65536): Promise<string> {
-    return this.request(`/jobs/${encodeURIComponent(jobID)}/logs?tail_bytes=${tailBytes}`, { text: true });
-  }
-
-  cancelJob(jobID: string, reason: string): Promise<CancelResult> {
-    return this.request(`/jobs/${encodeURIComponent(jobID)}/cancel`, {
-      method: "POST",
-      body: reason ? { reason } : {},
-    });
+  jobsSummary(recentSeconds = 86400): Promise<JobsSummary> {
+    return this.request(`/jobs/summary?recent_seconds=${recentSeconds}`);
   }
 
   private async request<T>(path: string, options: RequestOptions = {}): Promise<T> {
     const headers = new Headers();
-    headers.set("accept", options.text ? "text/plain" : "application/json");
+    headers.set("accept", "application/json");
     if (this.settings.token) headers.set("authorization", `Bearer ${this.settings.token}`);
     if (this.settings.actor) headers.set("x-windforce-actor", this.settings.actor);
     let body: BodyInit | undefined;
@@ -385,7 +271,6 @@ export class WindforceApi {
       }
       throw new ApiError(message, response.status);
     }
-    if (options.text) return text as T;
     if (!text) return undefined as T;
     try {
       return JSON.parse(text) as T;

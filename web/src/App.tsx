@@ -1,7 +1,6 @@
 import { matchRoute, useRouter } from "./lib/router";
 import { AppDetailPage } from "./pages/AppDetailPage";
 import { AppsPage } from "./pages/AppsPage";
-import { JobDetailPage } from "./pages/JobDetailPage";
 import { JobsPage } from "./pages/JobsPage";
 import { SettingsPage } from "./pages/SettingsPage";
 
@@ -15,9 +14,6 @@ export function App() {
       return <AppDetailPage sourceID={sourceID} tab={appDetail.tab || "overview"} />;
     }
   }
-
-  const jobDetail = matchRoute("/jobs/:id", path);
-  if (jobDetail) return <JobDetailPage jobID={jobDetail.id} />;
 
   if (matchRoute("/jobs", path)) return <JobsPage />;
   if (matchRoute("/settings", path)) return <SettingsPage />;

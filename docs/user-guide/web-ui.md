@@ -58,38 +58,26 @@ The Releases tab is the audit trail: every record shows who published which comm
 2. Each record shows the actor, commit, source, release id, and note.
 3. Use the record to answer who changed the worker-visible contract, and when.
 
-## Test run an action
+## Review action schemas
 
-The Actions tab shows each action's materialized JSON Schemas and lets you run the action against the active contract.
+The Actions tab shows each action's materialized input and output JSON Schemas — the contract workers and callers rely on.
 
-![Test run an action](../assets/ui/test-run.png)
+![Review action schemas](../assets/ui/action-schemas.png)
 
 1. Open an app and switch to the Actions tab.
 2. Review the input and output JSON Schemas materialized from the release.
-3. Edit the input JSON and click Run action.
-4. The run result appears inline with a link to the full job record.
+3. Invoke actions through the control-plane API or the CLI; the UI documents the contract only.
 
-## Monitor jobs
+## Monitor job activity
 
-The Jobs view summarizes run activity across the workspace and lists every job with its status, trigger, and actor.
+The Jobs view aggregates run activity for the whole workspace: totals, per-app and per-route-tag breakdowns, and failure rates. Individual runs are an API/CLI concern.
 
-![Monitor jobs](../assets/ui/jobs-overview.png)
+![Monitor job activity](../assets/ui/jobs-overview.png)
 
 1. Open Jobs from the sidebar.
-2. Read the summary tiles: queued, running, and the last 24 hours of completed, failed, and canceled runs.
-3. Filter the list by status or app key.
-4. Open a job to inspect its input, result, and logs.
-
-## Inspect a job
-
-The job detail view shows one run end to end: identity and timing, the recorded input, the result envelope, and the log tail.
-
-![Inspect a job](../assets/ui/job-detail.png)
-
-1. Open a job from the Jobs view.
-2. Check status, timing, worker, release commit, and audit actor.
-3. Inspect the recorded input and the action result, or the failure envelope on errors.
-4. Read the stdout/stderr tail; unsettled jobs refresh automatically and can be canceled.
+2. Read the tiles: queued and running now, plus completed, failed, and canceled runs in the selected window.
+3. Switch the window between 1h, 24h, and 7d.
+4. Use the by-app and by-route-tag tables to find where the failure rate is moving; app names link to the app detail.
 
 ## Set the control-plane context
 

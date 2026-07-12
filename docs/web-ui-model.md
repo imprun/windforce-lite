@@ -10,7 +10,12 @@ Web UI는 운영자가 다음 질문에 브라우저에서 답할 수 있게 한
 
 1. 어떤 App이 등록되어 있고, worker가 지금 실행할 수 있는 contract는 무엇인가?
 2. 누가 언제 어떤 commit을 release했는가?
-3. 지금 job이 어떻게 흐르고 있고, 실패한 run의 원인은 무엇인가?
+3. workload가 지금 어떤 모양인가 — 어느 App/route tag에서 얼마나 쌓이고,
+   돌고, 실패하고 있는가?
+
+수백만 건 규모에서 개별 job 레코드를 열람하는 것은 운영 질문에 답하지
+못한다. UI는 집계만 보여주고, 개별 run의 payload/로그/취소는 control-plane
+API와 CLI의 몫이다 ([ADR 0005](adr/0005-aggregate-job-observability.md)).
 
 전체 Windforce 콘솔 재구현이 아니다. SaaS 테넌트 관리, billing, quota,
 scheduler UI, workflow designer는 범위 밖이다 ([ADR 0003](adr/0003-lightweight-admin-ui.md)).
@@ -23,8 +28,8 @@ scheduler UI, workflow designer는 범위 밖이다 ([ADR 0003](adr/0003-lightwe
 | Repository source | App 코드를 가져올 Git repository, branch, subpath, credential 설정 | App 상세의 Repository 탭 |
 | Release | 특정 repository source commit을 검증하고 worker-visible contract로 게시한 결과 | App 상세의 Releases 탭과 active contract |
 | Contract | worker가 job 실행 시 읽는 app/action 실행 계약 | App 상세의 Overview 탭 |
-| Run (Job) | contract의 action 하나를 실행한 기록 | Jobs 목록, Job 상세 |
-| Actor | release, 설정 변경, cancel 같은 상태 변경을 수행한 주체 (audit subject) | release history와 job record |
+| Job activity | App/route tag 단위로 집계된 run 통계 (queued, running, 최근 완료/실패/취소) | Jobs 대시보드, App 상세 readiness |
+| Actor | release, 설정 변경 같은 상태 변경을 수행한 주체 (audit subject) | release history |
 
 ## 관계
 
@@ -34,7 +39,7 @@ flowchart TD
     B --> C["Validated commit"]
     C --> D["Release"]
     D --> E["Worker-visible contract"]
-    E --> R["Run (Job)"]
+    E --> R["Job activity (집계)"]
     D --> F["Audit record"]
     F --> G["Actor"]
 ```
@@ -49,8 +54,7 @@ Settings 세 항목만 노출한다.
 | `/ui/` | Apps 목록 |
 | `/ui/apps/{sourceId}` | App 상세 (Overview 탭) |
 | `/ui/apps/{sourceId}/{tab}` | App 상세 탭: `overview`, `repository`, `releases`, `actions`, `source` |
-| `/ui/jobs` | Jobs 목록과 요약 |
-| `/ui/jobs/{jobId}` | Job 상세 |
+| `/ui/jobs` | Jobs 집계 대시보드 |
 | `/ui/settings` | 컨트롤 플레인 설정 |
 
 App 상세는 repository source id를 URL 키로 쓴다. 아직 release되지 않은
@@ -84,9 +88,8 @@ credential을 받고, 등록 전에 `probe`로 도달성과 branch 존재를 확
 - **Releases**: release history. 각 record는 actor, commit, release id
   (deployment id), note, source, 시각을 보여준다. 상단에 `Publish Release`
   버튼을 둔다.
-- **Actions**: action별 input/output JSON Schema
-  (`actions/{action}/schema`)와 test run 폼. test run은
-  `jobs/run/{app}/{action}/wait`로 실행하고 결과와 job 링크를 보여준다.
+- **Actions**: action별 input/output JSON Schema (`actions/{action}/schema`).
+  action 호출은 API/CLI의 몫이고 UI는 계약(스키마)만 보여준다.
 - **Source**: 현재 release commit의 materialized repository snapshot 파일
   뷰어 (`apps/{app}/source`).
 
@@ -94,13 +97,17 @@ credential을 받고, 등록 전에 `probe`로 도달성과 branch 존재를 확
 
 ### Jobs
 
-run 상태 점검 화면. 상단에 `jobs/summary` 기반 요약 타일(queued, running,
-recent completed/failed/canceled)을 두고, 아래에 job 목록을 둔다. status
-필터(all/queued/running/success/failure/canceled)와 app 필터를 제공한다.
+workload 집계 대시보드. 개별 job 레코드는 다루지 않는다.
 
-Job 상세는 한 run의 전부를 보여준다: 상태와 타이밍, app/action, trigger,
-actor, 실행 commit, input, result(성공/실패/취소), 로그 tail. 미종료 job은
-cancel 동작을 제공하고 상세 화면은 종료까지 주기적으로 갱신한다.
+- 상단: `jobs/summary` 기반 요약 타일 — queued, running(현재), 선택한
+  시간 창의 completed/failed/canceled.
+- 시간 창 선택: 1h / 24h / 7d (`recent_seconds`).
+- App별 집계 테이블: queued, running, 시간 창 내 completed/failed/canceled,
+  실패율. App 이름은 App 상세로 연결된다.
+- Route tag별 집계 테이블: 같은 지표를 tag 단위로.
+
+개별 run의 payload, 로그, cancel은 control-plane API와 CLI
+(`tools/windforce_control.py`)로 처리한다.
 
 ### Settings
 
@@ -118,8 +125,9 @@ UI는 `local-dev`를 기본 actor로 사용한다.
   source snapshot처럼 범위를 붙인다.
 - `Deployment`는 사용자 작업 이름으로 남발하지 않는다. 상태 변경 record나
   audit 맥락에서는 `release` 또는 `release record`로 쓴다.
-- Run 조회 화면과 API 대상은 `Job`으로 부르고, 문장 안에서 실행 사건을
-  가리킬 때는 run을 쓴다.
+- 집계 화면과 API 대상은 `Job`으로 부르고, 문장 안에서 실행 사건을
+  가리킬 때는 run을 쓴다. UI 문구는 개별 record가 아니라 집계를 가리키게
+  쓴다: `job activity`, `failure rate`.
 - `FCode`는 windforce-lite UI 용어로 쓰지 않는다.
 - `Actor`는 audit subject로 설명한다. Git credential이나 API token과 섞어
   설명하지 않는다.

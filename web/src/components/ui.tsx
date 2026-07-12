@@ -2,34 +2,6 @@ import { useEffect, type ReactNode } from "react";
 import type { ProbeResult } from "../lib/api";
 import { formatJSON } from "../lib/format";
 
-// status covers both job lifecycle states (queued|running|completed) and
-// terminal result statuses (pending|success|failure|canceled).
-export function StatusBadge({ status }: { status: string }) {
-  const normalized = status.toLowerCase();
-  const tone =
-    normalized === "success" || normalized === "completed"
-      ? "good"
-      : normalized === "failure"
-        ? "critical"
-        : normalized === "canceled"
-          ? "serious"
-          : normalized === "running"
-            ? "running"
-            : normalized === "queued" || normalized === "pending"
-              ? "waiting"
-              : "neutral";
-  const icon =
-    tone === "good" ? "✓" : tone === "critical" ? "✕" : tone === "serious" ? "⊘" : tone === "running" ? "●" : "○";
-  return (
-    <span className={`badge badge-${tone}`}>
-      <span aria-hidden="true" className="badgeIcon">
-        {icon}
-      </span>
-      {status}
-    </span>
-  );
-}
-
 export function ReleaseStateBadge({ released }: { released: boolean }) {
   return released ? (
     <span className="badge badge-good">

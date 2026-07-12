@@ -390,8 +390,14 @@ The Web UI is intentionally narrow:
 - register apps backed by git repository sources
 - publish releases (validate a source at HEAD and expose the worker contract)
 - show release history and the currently active contract per app
-- inspect job status, results, and logs, and cancel unsettled jobs
-- test-run released actions against their materialized schemas
+- monitor aggregate job activity per app and route tag (queued, running,
+  recent completed/failed/canceled, failure rate)
+- review released action schemas (the materialized invocation contract)
+
+The UI deliberately shows aggregates, not individual job records: at
+production volume nobody reads millions of rows. Per-run payloads, logs, and
+cancel stay on the control-plane API and `tools/windforce_control.py`
+([ADR 0005](docs/adr/0005-aggregate-job-observability.md)).
 
 It is not the full Windforce console: no SaaS tenant management, billing, quota,
 scheduler UI, workflow designer, or marketplace. The screen model is documented
