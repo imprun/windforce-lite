@@ -444,7 +444,7 @@ function ReleasesTab({ appKey, released, repoURL }: { appKey: string; released: 
 function ActionsTab({ app, detail }: { app: AppSummary | null; detail: AppDetail | null }) {
   if (!app || !detail || detail.actions.length === 0) {
     return (
-      <Panel title="Actions" subtitle="Action schemas and test runs.">
+      <Panel title="Actions" subtitle="Materialized action schemas from the active contract.">
         <EmptyState title="No released actions." >
           <p>Publish a release first; action schemas come from the materialized contract.</p>
         </EmptyState>
