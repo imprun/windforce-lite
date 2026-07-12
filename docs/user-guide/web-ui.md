@@ -70,11 +70,11 @@ The Actions tab shows each action's materialized input and output JSON Schemas â
 
 ## Monitor job activity
 
-The Jobs view aggregates run activity for the whole workspace: totals, per-app and per-route-tag breakdowns, and failure rates. Individual runs are an API/CLI concern.
+The Monitoring view aggregates job activity for the whole workspace: totals, per-app and per-route-tag breakdowns, and failure rates. Individual runs are an API/CLI concern.
 
-![Monitor job activity](../assets/ui/jobs-overview.png)
+![Monitor job activity](../assets/ui/monitoring.png)
 
-1. Open Jobs from the sidebar.
+1. Open Monitoring from the sidebar.
 2. Read the tiles: queued and running now, plus completed, failed, and canceled runs in the selected window.
 3. Switch the window between 1h, 24h, and 7d.
 4. Use the by-app and by-route-tag tables to find where the failure rate is moving; app names link to the app detail.

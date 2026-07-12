@@ -12,7 +12,7 @@ const windows = [
   { label: "7d", seconds: 604800 },
 ] as const;
 
-export function JobsPage() {
+export function MonitoringPage() {
   const { api } = useApp();
   const [windowSeconds, setWindowSeconds] = useState<number>(86400);
 
@@ -29,8 +29,8 @@ export function JobsPage() {
 
   return (
     <Layout
-      title="Jobs"
-      subtitle="Aggregate run activity across the workspace. Individual runs live in the control-plane API and CLI."
+      title="Monitoring"
+      subtitle="Aggregate job activity across the workspace. Individual runs live in the control-plane API and CLI."
       actions={
         <>
           <div className="segmented" role="group" aria-label="Recent window">

@@ -1,7 +1,7 @@
 import { matchRoute, useRouter } from "./lib/router";
 import { AppDetailPage } from "./pages/AppDetailPage";
 import { AppsPage } from "./pages/AppsPage";
-import { JobsPage } from "./pages/JobsPage";
+import { MonitoringPage } from "./pages/MonitoringPage";
 import { SettingsPage } from "./pages/SettingsPage";
 
 export function App() {
@@ -15,7 +15,9 @@ export function App() {
     }
   }
 
-  if (matchRoute("/jobs", path)) return <JobsPage />;
+  if (matchRoute("/monitoring", path)) return <MonitoringPage />;
+  // Back-compat for the pre-rename bookmark.
+  if (matchRoute("/jobs", path)) return <MonitoringPage />;
   if (matchRoute("/settings", path)) return <SettingsPage />;
   return <AppsPage />;
 }

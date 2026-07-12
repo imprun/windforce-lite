@@ -4,7 +4,7 @@ import { Link, useRouter } from "../lib/router";
 
 const navItems = [
   { to: "/", label: "Apps", icon: "▤", match: (path: string) => path === "/" || path.startsWith("/apps") },
-  { to: "/jobs", label: "Jobs", icon: "◔", match: (path: string) => path.startsWith("/jobs") },
+  { to: "/monitoring", label: "Monitoring", icon: "◔", match: (path: string) => path.startsWith("/monitoring") || path.startsWith("/jobs") },
   { to: "/settings", label: "Settings", icon: "⚙", match: (path: string) => path.startsWith("/settings") },
 ];
 
