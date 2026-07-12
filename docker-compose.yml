@@ -108,4 +108,5 @@ volumes:
   postgres-data:
   windforce-data:
     name: ${WINDFORCE_LITE_DATA_VOLUME:-windforce-lite_windforce-data}
+    external: ${WINDFORCE_LITE_DATA_VOLUME_EXTERNAL:-false}
   web-node-modules:
