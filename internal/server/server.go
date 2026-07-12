@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
@@ -12,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/imprun/windforce-lite/internal/contract"
 	gitsourcepkg "github.com/imprun/windforce-lite/internal/gitsource"
@@ -79,7 +81,22 @@ func requestActorSubject(r *http.Request) string {
 			return subject
 		}
 	}
+	if subject := requestActorSubjectUTF8(r); subject != "" {
+		return subject
+	}
 	return strings.TrimSpace(r.Header.Get("X-Windforce-Actor"))
+}
+
+func requestActorSubjectUTF8(r *http.Request) string {
+	encoded := strings.TrimSpace(r.Header.Get("X-Windforce-Actor-Utf8"))
+	if encoded == "" {
+		return ""
+	}
+	decoded, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil || !utf8.Valid(decoded) {
+		return ""
+	}
+	return strings.TrimSpace(string(decoded))
 }
 
 func New(config Config) http.Handler {

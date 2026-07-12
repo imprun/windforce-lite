@@ -182,6 +182,34 @@ export function errorMessage(cause: unknown): string {
   return String(cause);
 }
 
+function isLegacyHeaderValueSafe(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code === 0x09) continue;
+    if (code < 0x20 || code > 0x7e) return false;
+  }
+  return true;
+}
+
+function utf8Base64(value: string): string {
+  const bytes = new TextEncoder().encode(value);
+  let binary = "";
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  return btoa(binary);
+}
+
+export function setActorHeaders(headers: Headers, actor: string) {
+  const subject = actor.trim();
+  if (!subject) return;
+  if (isLegacyHeaderValueSafe(subject)) {
+    headers.set("x-windforce-actor", subject);
+    return;
+  }
+  headers.set("x-windforce-actor-utf8", utf8Base64(subject));
+}
+
 type RequestOptions = {
   method?: string;
   body?: unknown;
@@ -250,7 +278,7 @@ export class WindforceApi {
     const headers = new Headers();
     headers.set("accept", "application/json");
     if (this.settings.token) headers.set("authorization", `Bearer ${this.settings.token}`);
-    if (this.settings.actor) headers.set("x-windforce-actor", this.settings.actor);
+    setActorHeaders(headers, this.settings.actor);
     let body: BodyInit | undefined;
     if (options.body !== undefined) {
       headers.set("content-type", "application/json");
