@@ -523,11 +523,13 @@ func TestRunnerRepreparesSourceWhenReadyMarkerChanges(t *testing.T) {
 
 func TestSourceReadyValueIncludesPythonABI(t *testing.T) {
 	requirePythonRuntime(t)
-	value, err := sourceReadyValue(context.Background(), "python", defaultPythonPath())
+	value, err := sourceReadyValue(context.Background(), "python", defaultPythonPath(), "bun", "go")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(value, "prepare-v2:python:cpython-") {
+	if !strings.Contains(value, `"version":"prepare-v3"`) ||
+		!strings.Contains(value, `"language":"python"`) ||
+		!strings.Contains(value, `"runtime":"cpython-`) {
 		t.Fatalf("sourceReadyValue() = %q, want CPython ABI tag", value)
 	}
 }

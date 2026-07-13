@@ -25,7 +25,6 @@ const goSDKDir = ".windforce/sdk-go"
 const goBinRel = ".windforce/bin/app"
 
 var sourcePrepareGroup singleflight.Group
-var pythonABITags sync.Map
 var defaultPythonOnce sync.Once
 var resolvedDefaultPython string
 
@@ -40,7 +39,13 @@ func (r *Runner) ensureSource(ctx context.Context, workspace string, gitSourceID
 	ch := sourcePrepareGroup.DoChan(key, func() (any, error) {
 		pctx, cancel := context.WithTimeout(context.Background(), r.prepareTimeout())
 		defer cancel()
-		readyValue, err := sourceReadyValue(pctx, scriptLang, firstNonEmpty(r.PythonPath, defaultPythonPath()))
+		readyValue, err := sourceReadyValue(
+			pctx,
+			scriptLang,
+			firstNonEmpty(r.PythonPath, defaultPythonPath()),
+			firstNonEmpty(r.BunPath, "bun"),
+			firstNonEmpty(r.GoPath, "go"),
+		)
 		if err != nil {
 			return "", prepareErr(pctx, err)
 		}
@@ -87,28 +92,6 @@ func (r *Runner) ensureSource(ctx context.Context, workspace string, gitSourceID
 		}
 		return sourceDir, nil
 	}
-}
-
-func sourceReadyValue(ctx context.Context, scriptLang string, pythonPath string) (string, error) {
-	const version = "prepare-v2"
-	if scriptLang != "python" {
-		return version + ":" + scriptLang, nil
-	}
-	if cached, ok := pythonABITags.Load(pythonPath); ok {
-		return version + ":python:" + cached.(string), nil
-	}
-	cmd := exec.CommandContext(ctx, pythonPath, "-S", "-c", "import sys; print(sys.implementation.cache_tag)")
-	cmd.Env = curatedPrepareEnv()
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return "", fmt.Errorf("inspect python ABI: %w: %s", err, strings.TrimSpace(string(output)))
-	}
-	tag := lastOutputLine(output)
-	if tag == "" {
-		return "", fmt.Errorf("inspect python ABI: empty cache tag")
-	}
-	pythonABITags.Store(pythonPath, tag)
-	return version + ":python:" + tag, nil
 }
 
 func prepareErr(ctx context.Context, err error) error {
