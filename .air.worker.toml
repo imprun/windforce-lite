@@ -18,6 +18,8 @@ delay = 1000
 poll = true
 poll_interval = 500
 stop_on_error = true
+rerun = true
+rerun_delay = 1000
 send_interrupt = true
 kill_delay = "2s"
 
