@@ -41,6 +41,7 @@ export function AppDetailPage({ sourceID, tab }: { sourceID: number; tab: string
   const { api } = useApp();
   const { navigate } = useRouter();
   const [publishing, setPublishing] = useState(false);
+  const [releaseHistoryRevision, setReleaseHistoryRevision] = useState(0);
 
   const activeTab: TabKey = (tabs.find((item) => item.key === tab)?.key || "overview") as TabKey;
 
@@ -131,7 +132,12 @@ export function AppDetailPage({ sourceID, tab }: { sourceID: number; tab: string
       {activeTab === "monitoring" ? <MonitoringTab app={app} /> : null}
       {activeTab === "repository" && source ? <RepositoryTab source={source} onChanged={state.reload} /> : null}
       {activeTab === "releases" ? (
-        <ReleasesTab appKey={app ? app.app_key : source!.name} released={Boolean(app)} repoURL={source?.repo_url || ""} />
+        <ReleasesTab
+          appKey={app ? app.app_key : source!.name}
+          released={Boolean(app)}
+          repoURL={source?.repo_url || ""}
+          refreshRevision={releaseHistoryRevision}
+        />
       ) : null}
       {activeTab === "audit" ? <AuditTab sourceID={sourceID} /> : null}
       {activeTab === "actions" ? <ActionsTab app={app} detail={detail} /> : null}
@@ -143,6 +149,7 @@ export function AppDetailPage({ sourceID, tab }: { sourceID: number; tab: string
           onClose={() => setPublishing(false)}
           onPublished={() => {
             setPublishing(false);
+            setReleaseHistoryRevision((current) => current + 1);
             state.reload();
             navigate(`/apps/${source.id}/releases`);
           }}
@@ -400,9 +407,24 @@ function RepositoryTab({ source, onChanged }: { source: GitSource; onChanged: ()
   );
 }
 
-function ReleasesTab({ appKey, released, repoURL }: { appKey: string; released: boolean; repoURL: string }) {
+function ReleasesTab({
+  appKey,
+  released,
+  repoURL,
+  refreshRevision,
+}: {
+  appKey: string;
+  released: boolean;
+  repoURL: string;
+  refreshRevision: number;
+}) {
   const { api } = useApp();
-  const state = useAsync(async () => (released ? api.appHistory(appKey) : Promise.resolve([])), [api, appKey, released]);
+  const state = useAsync(async () => (released ? api.appHistory(appKey) : Promise.resolve([])), [
+    api,
+    appKey,
+    released,
+    refreshRevision,
+  ]);
 
   return (
     <Panel title="Release history" subtitle="Who published which worker-visible contract, and why. Configuration changes are on the Audit tab.">
