@@ -231,6 +231,7 @@ func (c GitClient) run(ctx context.Context, dir string, args ...string) (string,
 
 func (GitCommandRunner) Run(ctx context.Context, dir string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, "git", args...)
+	hideGitCommandWindow(cmd)
 	if dir != "" {
 		cmd.Dir = dir
 	}
