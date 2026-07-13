@@ -1,9 +1,11 @@
 package worker
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -16,6 +18,46 @@ import (
 	actionruntime "github.com/imprun/windforce-lite/internal/runtime"
 	"github.com/imprun/windforce-lite/internal/state"
 )
+
+func TestDevelopmentPayloadLogsIncludeCompleteValues(t *testing.T) {
+	var output bytes.Buffer
+	previous := log.Writer()
+	log.SetOutput(&output)
+	defer log.SetOutput(previous)
+
+	logJobInput(true, "job-a", "app-a", "action-a", []byte(`{"account":"visible-local-value"}`))
+	logJobExecution(true, "job-a", "app-a", "action-a", contract.JobResult{
+		ExitCode: 7,
+		Stdout:   "complete stdout",
+		Stderr:   "complete stderr",
+		Output:   json.RawMessage(`{"result":"complete output"}`),
+	})
+
+	logged := output.String()
+	for _, expected := range []string{
+		`{"account":"visible-local-value"}`,
+		`complete stdout`,
+		`complete stderr`,
+		`{"result":"complete output"}`,
+	} {
+		if !strings.Contains(logged, expected) {
+			t.Fatalf("payload log missing %q: %s", expected, logged)
+		}
+	}
+}
+
+func TestPayloadLogsAreDisabledByDefault(t *testing.T) {
+	var output bytes.Buffer
+	previous := log.Writer()
+	log.SetOutput(&output)
+	defer log.SetOutput(previous)
+
+	logJobInput(false, "job-a", "app-a", "action-a", []byte(`{"secret":"hidden"}`))
+	logJobExecution(false, "job-a", "app-a", "action-a", contract.JobResult{Output: json.RawMessage(`{"secret":"hidden"}`)})
+	if output.Len() != 0 {
+		t.Fatalf("disabled payload logging wrote: %s", output.String())
+	}
+}
 
 func TestProcessorCompletesQueuedRun(t *testing.T) {
 	processor, stateStore, run := newProcessorTestHarness(t, "echo")

@@ -6,7 +6,7 @@ cmd = '''
 go build -buildvcs=false -o /tmp/windforce-lite-air-worker/windforce-lite ./cmd/windforce-lite
 cat > /tmp/windforce-lite-air-worker/run <<'EOF'
 #!/bin/sh
-exec /tmp/windforce-lite-air-worker/windforce-lite worker --state-backend postgres --database-url "$WINDFORCE_LITE_DATABASE_URL" --migrate --store /data/store --cache /data/cache
+exec /tmp/windforce-lite-air-worker/windforce-lite worker --state-backend postgres --database-url "$WINDFORCE_LITE_DATABASE_URL" --migrate --store /data/store --cache /data/cache --log-job-payloads
 EOF
 chmod +x /tmp/windforce-lite-air-worker/run
 '''

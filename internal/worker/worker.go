@@ -24,6 +24,7 @@ type Processor struct {
 	HeartbeatInterval time.Duration
 	LogFlushInterval  time.Duration
 	LogCapBytes       int
+	LogJobPayloads    bool
 }
 
 func (p *Processor) ProcessOne(ctx context.Context) (bool, error) {
@@ -73,6 +74,7 @@ func (p *Processor) ProcessOne(ctx context.Context) (bool, error) {
 		}
 		return completeProcessed(p.Store.CompleteJobFailed(ctx, lease, result))
 	}
+	logJobInput(p.LogJobPayloads, job.ID, job.Payload.App, job.Payload.Action, input)
 	result, runErr := p.Runner.Run(runCtx, actionruntime.RunRequest{
 		JobID:           job.ID,
 		WorkspaceID:     workspaceID,
@@ -92,6 +94,7 @@ func (p *Processor) ProcessOne(ctx context.Context) (bool, error) {
 		LogFlushInterval: p.LogFlushInterval,
 		LogCapBytes:      p.LogCapBytes,
 	})
+	logJobExecution(p.LogJobPayloads, job.ID, job.Payload.App, job.Payload.Action, result)
 	result.JobID = job.ID
 	result.Stdout = ""
 	result.Stderr = ""
@@ -131,6 +134,19 @@ func (p *Processor) ProcessOne(ctx context.Context) (bool, error) {
 	}
 	outcome = "succeeded"
 	return completeProcessed(p.Store.CompleteJobSucceeded(ctx, lease, result))
+}
+
+func logJobInput(enabled bool, jobID string, app string, action string, input []byte) {
+	if enabled {
+		log.Printf("worker job input job=%s app=%s action=%s payload=%s", jobID, app, action, input)
+	}
+}
+
+func logJobExecution(enabled bool, jobID string, app string, action string, result contract.JobResult) {
+	if enabled {
+		log.Printf("worker job execution job=%s app=%s action=%s exit_code=%d stdout=%q stderr=%q output=%s",
+			jobID, app, action, result.ExitCode, result.Stdout, result.Stderr, result.Output)
+	}
 }
 
 func (p *Processor) startHeartbeat(lease state.Lease, cancel context.CancelFunc) func() {

@@ -85,6 +85,7 @@ func runServer(args []string, mode string) int {
 	leaseTTL := flags.Duration("lease", 30*time.Second, "worker job lease TTL")
 	logFlushInterval := flags.Duration("log-flush-interval", defaultLogFlushInterval, "worker log flush interval")
 	logCapBytes := flags.Int("log-cap-bytes", defaultLogCapBytes, "per-job log size cap in bytes; 0 disables the cap")
+	logJobPayloads := flags.Bool("log-job-payloads", false, "log complete decrypted job input and execution output")
 	workerID := flags.String("worker-id", "", "worker identity for standalone processing")
 	workerGroup := flags.String("worker-group", "default", "worker group name exposed to action ctx")
 	egressProxy := flags.String("egress-proxy", "", "host:port of a co-located egress proxy sidecar")
@@ -156,6 +157,7 @@ func runServer(args []string, mode string) int {
 			LeaseTTL:         *leaseTTL,
 			LogFlushInterval: *logFlushInterval,
 			LogCapBytes:      *logCapBytes,
+			LogJobPayloads:   *logJobPayloads,
 		}
 		go func() {
 			if err := processor.RunLoop(context.Background(), *poll); err != nil {
@@ -194,6 +196,7 @@ func runWorker(args []string) int {
 	leaseTTL := flags.Duration("lease", 30*time.Second, "job lease TTL")
 	logFlushInterval := flags.Duration("log-flush-interval", defaultLogFlushInterval, "worker log flush interval")
 	logCapBytes := flags.Int("log-cap-bytes", defaultLogCapBytes, "per-job log size cap in bytes; 0 disables the cap")
+	logJobPayloads := flags.Bool("log-job-payloads", false, "log complete decrypted job input and execution output")
 	workerID := flags.String("worker-id", "", "worker identity")
 	workerGroup := flags.String("worker-group", "default", "worker group name exposed to action ctx")
 	egressProxy := flags.String("egress-proxy", "", "host:port of a co-located egress proxy sidecar")
@@ -232,6 +235,7 @@ func runWorker(args []string) int {
 		LeaseTTL:         *leaseTTL,
 		LogFlushInterval: *logFlushInterval,
 		LogCapBytes:      *logCapBytes,
+		LogJobPayloads:   *logJobPayloads,
 	}
 	if *once {
 		processed, err := processor.ProcessOne(context.Background())
