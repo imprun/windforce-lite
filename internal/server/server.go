@@ -202,6 +202,30 @@ func (h *Handler) handleAPI(w http.ResponseWriter, r *http.Request) bool {
 		h.handleCanonicalControlPlaneOpenAPI(w, r, parts[2])
 		return true
 	}
+	if len(parts) == 4 && parts[0] == "api" && parts[1] == "w" && parts[3] == "api_clients" && r.Method == http.MethodGet {
+		h.handleCanonicalAPIClients(w, r, parts[2])
+		return true
+	}
+	if len(parts) == 4 && parts[0] == "api" && parts[1] == "w" && parts[3] == "api_clients" && r.Method == http.MethodPost {
+		h.handleCanonicalCreateAPIClient(w, r, parts[2])
+		return true
+	}
+	if len(parts) == 5 && parts[0] == "api" && parts[1] == "w" && parts[3] == "api_clients" && r.Method == http.MethodGet {
+		h.handleCanonicalAPIClient(w, r, parts[2], parts[4])
+		return true
+	}
+	if len(parts) == 5 && parts[0] == "api" && parts[1] == "w" && parts[3] == "api_clients" && r.Method == http.MethodPatch {
+		h.handleCanonicalUpdateAPIClient(w, r, parts[2], parts[4])
+		return true
+	}
+	if len(parts) == 5 && parts[0] == "api" && parts[1] == "w" && parts[3] == "api_clients" && r.Method == http.MethodDelete {
+		h.handleCanonicalDeleteAPIClient(w, r, parts[2], parts[4])
+		return true
+	}
+	if len(parts) == 6 && parts[0] == "api" && parts[1] == "w" && parts[3] == "api_clients" && parts[5] == "audit" && r.Method == http.MethodGet {
+		h.handleCanonicalAPIClientAudit(w, r, parts[2], parts[4])
+		return true
+	}
 	if len(parts) == 4 && parts[0] == "api" && parts[1] == "w" && parts[3] == "git_sources" && r.Method == http.MethodGet {
 		h.handleCanonicalGitSources(w, r, parts[2])
 		return true
@@ -483,7 +507,7 @@ func writeStateError(w http.ResponseWriter, err error) {
 	status := http.StatusInternalServerError
 	if errors.Is(err, state.ErrNotFound) {
 		status = http.StatusNotFound
-	} else if errors.Is(err, state.ErrInvalidState) {
+	} else if errors.Is(err, state.ErrInvalidState) || errors.Is(err, state.ErrConflict) {
 		status = http.StatusConflict
 	}
 	writeError(w, status, err.Error())

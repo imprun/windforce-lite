@@ -104,6 +104,29 @@ CREATE TABLE IF NOT EXISTS workspace_key (
     kek_version INTEGER NOT NULL DEFAULT 0
 );
 
+CREATE TABLE IF NOT EXISTS api_client (
+    workspace_id TEXT NOT NULL,
+    id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    client_key TEXT NOT NULL,
+    created_by TEXT NOT NULL,
+    updated_by TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (workspace_id, id),
+    UNIQUE (workspace_id, client_key)
+);
+
+CREATE TABLE IF NOT EXISTS api_client_audit (
+    id BIGSERIAL PRIMARY KEY,
+    workspace_id TEXT NOT NULL,
+    api_client_id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    detail TEXT NOT NULL DEFAULT '',
+    actor TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 ALTER TABLE runs ADD COLUMN IF NOT EXISTS result JSONB;
 ALTER TABLE runs ADD COLUMN IF NOT EXISTS correlation_id TEXT;
 ALTER TABLE runs ADD COLUMN IF NOT EXISTS env JSONB;
@@ -128,6 +151,9 @@ CREATE INDEX IF NOT EXISTS human_tasks_pending_idx
 CREATE INDEX IF NOT EXISTS runs_correlation_id_idx
     ON runs (correlation_id)
     WHERE correlation_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS api_client_audit_client_idx
+    ON api_client_audit (workspace_id, api_client_id, created_at DESC);
 `)
 	return err
 }

@@ -44,6 +44,22 @@ export type GitSource = {
   created_at: string;
 };
 
+export type APIClient = {
+  id: string;
+  workspace_id: string;
+  name: string;
+  client_key: string;
+  created_by: string;
+  updated_by: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type APIClientPayload = {
+  name: string;
+  client_key: string;
+};
+
 export type ProbeResult = {
   reachable: boolean;
   branch?: string;
@@ -221,6 +237,22 @@ type RequestOptions = {
 
 export class WindforceApi {
   constructor(private readonly settings: Settings) {}
+
+  apiClients(): Promise<APIClient[]> {
+    return this.request("/api_clients");
+  }
+
+  createAPIClient(payload: APIClientPayload): Promise<APIClient> {
+    return this.request("/api_clients", { method: "POST", body: payload });
+  }
+
+  updateAPIClient(id: string, payload: APIClientPayload): Promise<APIClient> {
+    return this.request(`/api_clients/${encodeURIComponent(id)}`, { method: "PATCH", body: payload });
+  }
+
+  async deleteAPIClient(id: string): Promise<void> {
+    await this.request(`/api_clients/${encodeURIComponent(id)}`, { method: "DELETE" });
+  }
 
   gitSources(): Promise<GitSource[]> {
     return this.request("/git_sources");

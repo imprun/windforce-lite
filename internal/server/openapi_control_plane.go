@@ -12,6 +12,66 @@ func buildControlPlaneOpenAPI(baseURL string, workspaceID string) map[string]any
 				},
 			},
 		},
+		"/api/w/{workspace}/api_clients": map[string]any{
+			"get": map[string]any{
+				"operationId": "listAPIClients",
+				"summary":     "List API clients",
+				"parameters":  []any{oapiWorkspaceParam(workspaceID)},
+				"responses": withErrors(map[string]any{
+					"200": oapiResponse("Workspace API clients.", map[string]any{
+						"type": "array", "items": oapiSchemaRef("APIClient"),
+					}),
+				}, "401", "403"),
+			},
+			"post": map[string]any{
+				"operationId": "createAPIClient",
+				"summary":     "Create an API client",
+				"parameters":  []any{oapiWorkspaceParam(workspaceID)},
+				"requestBody": oapiJSONBody(oapiSchemaRef("CreateAPIClientRequest"), true),
+				"responses": withErrors(map[string]any{
+					"201": oapiResponse("Created API client.", oapiSchemaRef("APIClient")),
+				}, "400", "401", "403", "409"),
+			},
+		},
+		"/api/w/{workspace}/api_clients/{api_client_id}": map[string]any{
+			"get": map[string]any{
+				"operationId": "getAPIClient",
+				"summary":     "Get an API client",
+				"parameters":  []any{oapiWorkspaceParam(workspaceID), oapiPathParam("api_client_id", "API client id.")},
+				"responses": withErrors(map[string]any{
+					"200": oapiResponse("API client.", oapiSchemaRef("APIClient")),
+				}, "401", "403", "404"),
+			},
+			"patch": map[string]any{
+				"operationId": "updateAPIClient",
+				"summary":     "Update an API client",
+				"parameters":  []any{oapiWorkspaceParam(workspaceID), oapiPathParam("api_client_id", "API client id.")},
+				"requestBody": oapiJSONBody(oapiSchemaRef("UpdateAPIClientRequest"), true),
+				"responses": withErrors(map[string]any{
+					"200": oapiResponse("Updated API client.", oapiSchemaRef("APIClient")),
+				}, "400", "401", "403", "404", "409"),
+			},
+			"delete": map[string]any{
+				"operationId": "deleteAPIClient",
+				"summary":     "Delete an API client",
+				"parameters":  []any{oapiWorkspaceParam(workspaceID), oapiPathParam("api_client_id", "API client id.")},
+				"responses": withErrors(map[string]any{
+					"204": oapiResponse("API client deleted.", nil),
+				}, "401", "403", "404"),
+			},
+		},
+		"/api/w/{workspace}/api_clients/{api_client_id}/audit": map[string]any{
+			"get": map[string]any{
+				"operationId": "listAPIClientAudit",
+				"summary":     "List API client audit records",
+				"parameters":  []any{oapiWorkspaceParam(workspaceID), oapiPathParam("api_client_id", "API client id.")},
+				"responses": withErrors(map[string]any{
+					"200": oapiResponse("API client audit trail.", map[string]any{
+						"type": "array", "items": oapiSchemaRef("APIClientAudit"),
+					}),
+				}, "401", "403"),
+			},
+		},
 		"/api/w/{workspace}/git_sources": map[string]any{
 			"get": map[string]any{
 				"operationId": "listGitSources",
@@ -514,6 +574,48 @@ func controlPlaneSchemas() map[string]any {
 			"description": "windforce's uniform error envelope.",
 			"properties":  map[string]any{"error": oapiStringSchema()},
 			"required":    []any{"error"},
+		},
+		"APIClient": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"id":           oapiStringSchema(),
+				"workspace_id": oapiStringSchema(),
+				"name":         oapiStringSchema(),
+				"client_key":   oapiStringSchema(),
+				"created_by":   oapiStringSchema(),
+				"updated_by":   oapiStringSchema(),
+				"created_at":   oapiDateTimeSchema(),
+				"updated_at":   oapiDateTimeSchema(),
+			},
+			"required": []any{"id", "workspace_id", "name", "client_key", "created_by", "updated_by", "created_at", "updated_at"},
+		},
+		"CreateAPIClientRequest": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"name":       oapiStringSchema(),
+				"client_key": oapiStringSchema(),
+			},
+			"required": []any{"name", "client_key"},
+		},
+		"UpdateAPIClientRequest": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"name":       oapiStringSchema(),
+				"client_key": oapiStringSchema(),
+			},
+		},
+		"APIClientAudit": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"id":            oapiStringSchema(),
+				"workspace_id":  oapiStringSchema(),
+				"api_client_id": oapiStringSchema(),
+				"kind":          oapiStringSchema(),
+				"detail":        oapiStringSchema(),
+				"actor":         oapiStringSchema(),
+				"created_at":    oapiDateTimeSchema(),
+			},
+			"required": []any{"id", "workspace_id", "api_client_id", "kind", "actor", "created_at"},
 		},
 		"GitSource": map[string]any{
 			"type": "object",

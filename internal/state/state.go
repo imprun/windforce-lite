@@ -259,6 +259,27 @@ type Resource struct {
 	Description  string          `json:"description"`
 }
 
+type APIClient struct {
+	ID          string    `json:"id"`
+	WorkspaceID string    `json:"workspace_id"`
+	Name        string    `json:"name"`
+	ClientKey   string    `json:"client_key"`
+	CreatedBy   string    `json:"created_by"`
+	UpdatedBy   string    `json:"updated_by"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+type APIClientAudit struct {
+	ID          string    `json:"id"`
+	WorkspaceID string    `json:"workspace_id"`
+	APIClientID string    `json:"api_client_id"`
+	Kind        string    `json:"kind"`
+	Detail      string    `json:"detail,omitempty"`
+	Actor       string    `json:"actor"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
 type RunEvent struct {
 	ID        int64           `json:"id"`
 	RunID     string          `json:"runId,omitempty"`
@@ -275,15 +296,17 @@ type JobLog struct {
 }
 
 type Snapshot struct {
-	Sequence   int64                                 `json:"sequence"`
-	Runs       map[string]Run                        `json:"runs"`
-	Jobs       map[string]Job                        `json:"jobs"`
-	HumanTasks map[string]HumanTask                  `json:"humanTasks"`
-	Events     []RunEvent                            `json:"events"`
-	JobLogs    map[string]JobLog                     `json:"jobLogs"`
-	JobState   map[string]map[string]json.RawMessage `json:"jobState"`
-	Variables  map[string]map[string]Variable        `json:"variables"`
-	Resources  map[string]map[string]Resource        `json:"resources"`
+	Sequence        int64                                 `json:"sequence"`
+	Runs            map[string]Run                        `json:"runs"`
+	Jobs            map[string]Job                        `json:"jobs"`
+	HumanTasks      map[string]HumanTask                  `json:"humanTasks"`
+	Events          []RunEvent                            `json:"events"`
+	JobLogs         map[string]JobLog                     `json:"jobLogs"`
+	JobState        map[string]map[string]json.RawMessage `json:"jobState"`
+	Variables       map[string]map[string]Variable        `json:"variables"`
+	Resources       map[string]map[string]Resource        `json:"resources"`
+	APIClients      map[string]map[string]APIClient       `json:"apiClients"`
+	APIClientAudits map[string][]APIClientAudit           `json:"apiClientAudits"`
 }
 
 type Store interface {
@@ -305,6 +328,12 @@ type Store interface {
 	DeleteVariable(ctx context.Context, workspaceID string, appKey string, path string) error
 	SetResource(ctx context.Context, workspaceID string, path string, value json.RawMessage, resourceType string, description string) error
 	GetResource(ctx context.Context, workspaceID string, path string) (Resource, bool, error)
+	ListAPIClients(ctx context.Context, workspaceID string) ([]APIClient, error)
+	GetAPIClient(ctx context.Context, workspaceID string, id string) (APIClient, error)
+	CreateAPIClient(ctx context.Context, workspaceID string, name string, clientKey string, actor string) (APIClient, error)
+	UpdateAPIClient(ctx context.Context, workspaceID string, id string, name string, clientKey string, actor string) (APIClient, error)
+	DeleteAPIClient(ctx context.Context, workspaceID string, id string, actor string) error
+	ListAPIClientAudit(ctx context.Context, workspaceID string, id string) ([]APIClientAudit, error)
 	DecryptInput(ctx context.Context, workspaceID string, input json.RawMessage) (json.RawMessage, error)
 	ClaimJob(ctx context.Context, workerID string, leaseTTL time.Duration) (Job, Lease, error)
 	ClaimJobForTags(ctx context.Context, workerID string, tags []string, leaseTTL time.Duration) (Job, Lease, error)
