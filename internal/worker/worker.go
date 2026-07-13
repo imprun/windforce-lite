@@ -41,6 +41,14 @@ func (p *Processor) ProcessOne(ctx context.Context) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	startedAt := time.Now()
+	outcome := "running"
+	jobError := ""
+	log.Printf("worker job started job=%s app=%s action=%s", job.ID, job.Payload.App, job.Payload.Action)
+	defer func() {
+		log.Printf("worker job finished job=%s app=%s action=%s outcome=%s duration=%s error=%q",
+			job.ID, job.Payload.App, job.Payload.Action, outcome, time.Since(startedAt).Round(time.Millisecond), jobError)
+	}()
 
 	workspaceID := job.Payload.Workspace
 	if workspaceID == "" {
@@ -53,6 +61,8 @@ func (p *Processor) ProcessOne(ctx context.Context) (bool, error) {
 	defer stopHeartbeat()
 	input, err := p.Store.DecryptInput(runCtx, workspaceID, job.Payload.Input)
 	if err != nil {
+		outcome = "failed"
+		jobError = "could not decrypt job input"
 		result := contract.JobResult{
 			JobID:    job.ID,
 			App:      job.Payload.App,
@@ -92,6 +102,8 @@ func (p *Processor) ProcessOne(ctx context.Context) (bool, error) {
 		if len(result.Output) == 0 {
 			result.Output = namedErrorResult(runErr, result.Error)
 		}
+		outcome = "failed"
+		jobError = result.Error
 		return completeProcessed(p.Store.CompleteJobFailed(ctx, lease, result))
 	}
 	if result.ExitCode != 0 {
@@ -101,17 +113,23 @@ func (p *Processor) ProcessOne(ctx context.Context) (bool, error) {
 		if len(result.Output) == 0 {
 			result.Output = actionruntime.ErrorResult("ExecutionError", result.Error)
 		}
+		outcome = "failed"
+		jobError = result.Error
 		return completeProcessed(p.Store.CompleteJobFailed(ctx, lease, result))
 	}
 
 	task, ok, err := HumanTaskFromOutput(job.RunID, result.Output)
 	if err != nil {
 		result.Error = err.Error()
+		outcome = "failed"
+		jobError = result.Error
 		return completeProcessed(p.Store.CompleteJobFailed(ctx, lease, result))
 	}
 	if ok {
+		outcome = "waiting_human"
 		return completeProcessed(p.Store.CompleteJobWaitingHuman(ctx, lease, result, task))
 	}
+	outcome = "succeeded"
 	return completeProcessed(p.Store.CompleteJobSucceeded(ctx, lease, result))
 }
 

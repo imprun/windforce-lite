@@ -9,6 +9,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	goruntime "runtime"
+	"strings"
+	"sync"
 	"time"
 
 	windforcegoclient "github.com/imprun/windforce-lite/internal/sdk/go"
@@ -23,6 +25,9 @@ const goSDKDir = ".windforce/sdk-go"
 const goBinRel = ".windforce/bin/app"
 
 var sourcePrepareGroup singleflight.Group
+var pythonABITags sync.Map
+var defaultPythonOnce sync.Once
+var resolvedDefaultPython string
 
 func (r *Runner) ensureSource(ctx context.Context, workspace string, gitSourceID string, commit string, scriptLang string, entrypoint string) (string, error) {
 	cacheRoot := r.CacheRoot
@@ -33,11 +38,16 @@ func (r *Runner) ensureSource(ctx context.Context, workspace string, gitSourceID
 	key := sourceDir
 
 	ch := sourcePrepareGroup.DoChan(key, func() (any, error) {
-		if fileExists(filepath.Join(sourceDir, sourceReadyFile)) {
-			return sourceDir, nil
-		}
 		pctx, cancel := context.WithTimeout(context.Background(), r.prepareTimeout())
 		defer cancel()
+		readyValue, err := sourceReadyValue(pctx, scriptLang, firstNonEmpty(r.PythonPath, defaultPythonPath()))
+		if err != nil {
+			return "", prepareErr(pctx, err)
+		}
+		readyPath := filepath.Join(sourceDir, sourceReadyFile)
+		if current, readErr := os.ReadFile(readyPath); readErr == nil && string(current) == readyValue {
+			return sourceDir, nil
+		}
 		exists, err := r.Store.Exists(pctx, workspace, gitSourceID, commit)
 		if err != nil {
 			return "", prepareErr(pctx, err)
@@ -45,13 +55,16 @@ func (r *Runner) ensureSource(ctx context.Context, workspace string, gitSourceID
 		if !exists {
 			return "", fmt.Errorf("commit %s not materialized in object cache", commit)
 		}
+		if err := os.RemoveAll(sourceDir); err != nil {
+			return "", prepareErr(pctx, err)
+		}
 		if err := r.Store.FetchTo(pctx, sourceDir, workspace, gitSourceID, commit); err != nil {
 			return "", prepareErr(pctx, err)
 		}
 		if err := r.prepareSource(pctx, sourceDir, scriptLang, entrypoint); err != nil {
 			return "", prepareErr(pctx, err)
 		}
-		if err := os.WriteFile(filepath.Join(sourceDir, sourceReadyFile), []byte("ok"), 0o644); err != nil {
+		if err := os.WriteFile(readyPath, []byte(readyValue), 0o644); err != nil {
 			return "", prepareErr(pctx, err)
 		}
 		return sourceDir, nil
@@ -74,6 +87,28 @@ func (r *Runner) ensureSource(ctx context.Context, workspace string, gitSourceID
 		}
 		return sourceDir, nil
 	}
+}
+
+func sourceReadyValue(ctx context.Context, scriptLang string, pythonPath string) (string, error) {
+	const version = "prepare-v2"
+	if scriptLang != "python" {
+		return version + ":" + scriptLang, nil
+	}
+	if cached, ok := pythonABITags.Load(pythonPath); ok {
+		return version + ":python:" + cached.(string), nil
+	}
+	cmd := exec.CommandContext(ctx, pythonPath, "-S", "-c", "import sys; print(sys.implementation.cache_tag)")
+	cmd.Env = curatedPrepareEnv()
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("inspect python ABI: %w: %s", err, strings.TrimSpace(string(output)))
+	}
+	tag := lastOutputLine(output)
+	if tag == "" {
+		return "", fmt.Errorf("inspect python ABI: empty cache tag")
+	}
+	pythonABITags.Store(pythonPath, tag)
+	return version + ":python:" + tag, nil
 }
 
 func prepareErr(ctx context.Context, err error) error {
@@ -289,10 +324,30 @@ func appendPreparedSourceEnv(env []string, sourceDir string, scriptLang string) 
 }
 
 func defaultPythonPath() string {
-	if goruntime.GOOS == "windows" {
-		return "python"
+	if goruntime.GOOS != "windows" {
+		return "python3"
 	}
-	return "python3"
+	defaultPythonOnce.Do(func() {
+		cmd := exec.Command("py", "-3", "-c", "import sys; print(sys.executable)")
+		cmd.Env = os.Environ()
+		if output, err := cmd.CombinedOutput(); err == nil {
+			resolvedDefaultPython = lastOutputLine(output)
+		}
+		if resolvedDefaultPython == "" {
+			resolvedDefaultPython = "python"
+		}
+	})
+	return resolvedDefaultPython
+}
+
+func lastOutputLine(output []byte) string {
+	lines := strings.Split(strings.ReplaceAll(string(output), "\r\n", "\n"), "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		if candidate := strings.TrimSpace(lines[i]); candidate != "" {
+			return candidate
+		}
+	}
+	return ""
 }
 
 func fileExists(path string) bool {

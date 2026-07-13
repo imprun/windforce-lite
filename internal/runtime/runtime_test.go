@@ -481,6 +481,57 @@ func TestRunnerReusesReadyPreparedSource(t *testing.T) {
 	}
 }
 
+func TestRunnerRepreparesSourceWhenReadyMarkerChanges(t *testing.T) {
+	tempDir := t.TempDir()
+	sourceDir := filepath.Join(tempDir, "source")
+	if err := os.MkdirAll(sourceDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sourceDir, "windforce.json"), []byte(`{"app":"echo","entrypoint":"main.ts","scriptLang":"typescript","actions":{"echo":{}}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sourceDir, "main.ts"), []byte(`export async function main(ctx) { return ctx.input }`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	store := bundle.NewLocalStore(filepath.Join(tempDir, "store"))
+	if err := store.Materialize(context.Background(), "workspace-a", "source-a", "commit-stale", sourceDir); err != nil {
+		t.Fatal(err)
+	}
+
+	cacheRoot := filepath.Join(tempDir, "cache")
+	runner := Runner{Store: store, CacheRoot: cacheRoot}
+	preparedDir, err := runner.ensureSource(context.Background(), "workspace-a", "source-a", "commit-stale", "typescript", "main.ts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	readyPath := filepath.Join(preparedDir, sourceReadyFile)
+	if err := os.WriteFile(readyPath, []byte("ok"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sentinel := filepath.Join(preparedDir, "stale-runtime-artifact")
+	if err := os.WriteFile(sentinel, []byte("stale"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := runner.ensureSource(context.Background(), "workspace-a", "source-a", "commit-stale", "typescript", "main.ts"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(sentinel); !os.IsNotExist(err) {
+		t.Fatalf("stale prepared source artifact stat error = %v, want not exist", err)
+	}
+}
+
+func TestSourceReadyValueIncludesPythonABI(t *testing.T) {
+	requirePythonRuntime(t)
+	value, err := sourceReadyValue(context.Background(), "python", defaultPythonPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(value, "prepare-v2:python:cpython-") {
+		t.Fatalf("sourceReadyValue() = %q, want CPython ABI tag", value)
+	}
+}
+
 func TestRunnerDoesNotMarkFailedPrepareReady(t *testing.T) {
 	tempDir := t.TempDir()
 	sourceDir := filepath.Join(tempDir, "source")
