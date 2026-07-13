@@ -107,12 +107,12 @@ function BreakdownTable({ id, nameHeader, rows }: { id: string; nameHeader: stri
         <thead>
           <tr>
             <th>{nameHeader}</th>
-            <th>Queued</th>
-            <th>Running</th>
-            <th>Completed</th>
-            <th>Failed</th>
-            <th>Canceled</th>
-            <th>Failure rate</th>
+            <th className="numCell">Queued</th>
+            <th className="numCell">Running</th>
+            <th className="numCell">Completed</th>
+            <th className="numCell">Failed</th>
+            <th className="numCell">Canceled</th>
+            <th className="numCell">Failure rate</th>
           </tr>
         </thead>
         <tbody>

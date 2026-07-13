@@ -596,7 +596,7 @@ textarea {
   text-align: right;
 }
 
-.table th:not(:first-child) {
+.table th.numCell {
   text-align: right;
 }
 
