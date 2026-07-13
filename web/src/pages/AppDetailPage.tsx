@@ -1,25 +1,22 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Layout } from "../components/Layout";
 import {
   DefinitionList,
   EmptyState,
   ErrorNotice,
-  Field,
   JsonBlock,
   Loading,
   Panel,
-  ProbeNotice,
   ReleaseStateBadge,
 } from "../components/ui";
 import { StatTile, WindowSelector, windowLabel } from "../components/stats";
 import { PublishReleaseDialog } from "../features/PublishReleaseDialog";
+import { RepositorySettings } from "../features/RepositorySettings";
 import {
-  errorMessage,
   type ActionView,
   type AppDetail,
   type AppSummary,
   type GitSource,
-  type ProbeResult,
 } from "../lib/api";
 import { useApp, useAsync } from "../lib/app-context";
 import { formatJSON, formatRelative, formatTime, shortSHA } from "../lib/format";
@@ -130,7 +127,7 @@ export function AppDetailPage({ sourceID, tab }: { sourceID: number; tab: string
 
       {activeTab === "overview" ? <OverviewTab source={source} app={app} detail={detail} onPublish={() => setPublishing(true)} /> : null}
       {activeTab === "monitoring" ? <MonitoringTab app={app} /> : null}
-      {activeTab === "repository" && source ? <RepositoryTab source={source} onChanged={state.reload} /> : null}
+      {activeTab === "repository" && source ? <RepositorySettings source={source} onChanged={state.reload} /> : null}
       {activeTab === "releases" ? (
         <ReleasesTab
           appKey={app ? app.app_key : source!.name}
@@ -264,144 +261,6 @@ function OverviewTab({
             [`Jobs on route tag ${routeTag}`, tagActivity],
           ]}
         />
-      </Panel>
-    </>
-  );
-}
-
-function RepositoryTab({ source, onChanged }: { source: GitSource; onChanged: () => void }) {
-  const { api, notify } = useApp();
-  const { navigate } = useRouter();
-  const [name, setName] = useState(source.name);
-  const [repoURL, setRepoURL] = useState(source.repo_url);
-  const [branch, setBranch] = useState(source.branch || "main");
-  const [subpath, setSubpath] = useState(source.subpath);
-  const [credsRef, setCredsRef] = useState(source.creds_ref);
-  const [busy, setBusy] = useState(false);
-  const [probe, setProbe] = useState<ProbeResult | null>(null);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    setName(source.name);
-    setRepoURL(source.repo_url);
-    setBranch(source.branch || "main");
-    setSubpath(source.subpath);
-    setCredsRef(source.creds_ref);
-  }, [source]);
-
-  const dirty =
-    name !== source.name ||
-    repoURL !== source.repo_url ||
-    branch !== (source.branch || "main") ||
-    subpath !== source.subpath ||
-    credsRef !== source.creds_ref;
-
-  async function handleSave() {
-    setBusy(true);
-    setError("");
-    try {
-      await api.patchGitSource(source.id, {
-        ...(name !== source.name ? { name } : {}),
-        ...(repoURL !== source.repo_url ? { repo_url: repoURL } : {}),
-        ...(branch !== (source.branch || "main") ? { branch } : {}),
-        ...(subpath !== source.subpath ? { subpath } : {}),
-        ...(credsRef !== source.creds_ref ? { creds_ref: credsRef } : {}),
-      });
-      notify("ok", "Repository settings saved.");
-      onChanged();
-    } catch (cause) {
-      setError(errorMessage(cause));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function handleProbe() {
-    setBusy(true);
-    setError("");
-    setProbe(null);
-    try {
-      setProbe(await api.probeGitSource({ repo_url: repoURL, branch, creds_ref: credsRef || undefined }));
-    } catch (cause) {
-      setError(errorMessage(cause));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function handleDelete() {
-    const confirmed = window.confirm(
-      `Remove app ${source.name}? The repository source registration is deleted; release history remains available, and this deletion is recorded in audit.`,
-    );
-    if (!confirmed) return;
-    setBusy(true);
-    try {
-      await api.deleteGitSource(source.id);
-      notify("ok", `Removed ${source.name}.`);
-      navigate("/");
-    } catch (cause) {
-      notify("error", errorMessage(cause));
-      setBusy(false);
-    }
-  }
-
-  return (
-    <>
-      <Panel
-        title="Repository settings"
-        subtitle="Where releases for this app come from. Changes are re-validated against the remote."
-        actions={
-          <>
-            <button className="button" type="button" disabled={busy} onClick={handleProbe}>
-              Probe repository
-            </button>
-            <button className="button primary" type="button" disabled={busy || !dirty} onClick={handleSave}>
-              Save changes
-            </button>
-          </>
-        }
-      >
-        <div className="formGrid">
-          <Field label="Source name" hint="Repository source alias. The app key comes from windforce.json at release.">
-            <input value={name} onChange={(event) => setName(event.target.value)} />
-          </Field>
-          <Field label="Repository URL">
-            <input value={repoURL} onChange={(event) => setRepoURL(event.target.value)} />
-          </Field>
-          <Field label="Branch">
-            <input value={branch} onChange={(event) => setBranch(event.target.value)} />
-          </Field>
-          <Field label="Subpath">
-            <input value={subpath} onChange={(event) => setSubpath(event.target.value)} placeholder="(repo root)" />
-          </Field>
-          <Field label="Creds ref" hint="Workspace variable path holding the git credential.">
-            <input value={credsRef} onChange={(event) => setCredsRef(event.target.value)} placeholder="(public repository)" />
-          </Field>
-        </div>
-        {probe ? <ProbeNotice probe={probe} branch={branch} /> : null}
-        {error ? <div className="inlineNotice error">{error}</div> : null}
-        <DefinitionList
-          items={[
-            ["Kind", source.kind],
-            ["Registered", formatTime(source.created_at)],
-            ["Last release commit", <span className="mono">{shortSHA(source.last_synced_commit, 16)}</span>],
-          ]}
-        />
-      </Panel>
-
-      <Panel title="Danger zone" subtitle="Destructive operations for this app.">
-        <div className="dangerRow">
-          <div>
-            <p className="cellTitle">Remove app</p>
-            <p className="cellSub">
-              Deletes the repository source registration. Release history stays in the audit trail; the active contract
-              is removed from the catalog.
-            </p>
-          </div>
-          <button className="button danger" type="button" disabled={busy} onClick={handleDelete}>
-            Remove app
-          </button>
-        </div>
       </Panel>
     </>
   );

@@ -795,6 +795,45 @@ textarea {
   gap: 14px;
 }
 
+/* ---------- repository settings ---------- */
+
+.repositoryActions {
+  margin-top: 20px;
+  border-top: 1px solid var(--border);
+}
+
+.repositoryActionRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 64px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.repositoryActionRow > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.repositoryActionRow strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.repositoryActionRow span {
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.repositoryActionRow .status.muted {
+  flex: 0 0 auto;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
 /* ---------- danger zone ---------- */
 
 .dangerRow {
@@ -806,6 +845,21 @@ textarea {
   border: 1px solid var(--status-critical);
   border-radius: var(--radius-small);
   padding: 12px 16px;
+}
+
+.dangerZone.compact {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid var(--status-critical);
+}
+
+.dangerZone.compact p {
+  margin: 3px 0 0;
+  color: var(--text-secondary);
 }
 
 /* ---------- dialogs ---------- */
@@ -953,5 +1007,11 @@ textarea {
   .content {
     padding-left: 16px;
     padding-right: 16px;
+  }
+
+  .repositoryActionRow,
+  .dangerZone.compact {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }

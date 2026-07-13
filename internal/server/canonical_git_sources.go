@@ -321,6 +321,11 @@ func (h *Handler) handleCanonicalPatchGitSource(w http.ResponseWriter, r *http.R
 		return
 	}
 	candidate := applyGitSourcePatch(existing, patch)
+	if existing.LastSyncedCommit != nil &&
+		(candidate.RepoURL != existing.RepoURL || candidate.Subpath != existing.Subpath) {
+		writeError(w, http.StatusConflict, "repository URL and subpath are locked after the first release")
+		return
+	}
 	if gitSourcePatchRequiresValidation(existing, candidate) {
 		token, err := h.resolveGitSourceCreds(r.Context(), workspaceID, candidate.TokenEnv)
 		if err != nil {

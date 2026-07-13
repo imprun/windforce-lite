@@ -3616,6 +3616,24 @@ func TestCanonicalGitSourceProbePatchAndDelete(t *testing.T) {
 		t.Fatalf("mark synced: %v", err)
 	}
 
+	lockedLocationReq, err := http.NewRequest(
+		http.MethodPatch,
+		server.URL+"/api/w/ws-a/git_sources/"+registeredID,
+		bytes.NewBufferString(`{"repo_url":"`+filepath.ToSlash(filepath.Join(tempDir, "other-repo"))+`"}`),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lockedLocationReq.Header.Set("Content-Type", "application/json")
+	lockedLocationResp, err := http.DefaultClient.Do(lockedLocationReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lockedLocationResp.Body.Close()
+	if lockedLocationResp.StatusCode != http.StatusConflict {
+		t.Fatalf("locked location patch status = %d, want %d", lockedLocationResp.StatusCode, http.StatusConflict)
+	}
+
 	emptyPatchReq, err := http.NewRequest(http.MethodPatch, server.URL+"/api/w/ws-a/git_sources/"+registeredID, nil)
 	if err != nil {
 		t.Fatal(err)
