@@ -1052,10 +1052,101 @@ textarea {
   max-height: 480px;
 }
 
-.schemaGrid {
+.apiInvocationFacts {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.schemaStack {
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+}
+
+.schemaSection {
+  border-top: 1px solid var(--border);
+  padding-top: 22px;
+}
+
+.schemaSectionHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.schemaSectionHeader h3 {
+  font-size: 16px;
+  font-weight: 650;
+}
+
+.schemaSectionHeader p,
+.schemaDescription,
+.schemaEmpty {
+  margin-top: 4px;
+  color: var(--text-secondary);
+}
+
+.schemaType {
+  flex: 0 0 auto;
+  padding: 2px 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.schemaTableWrap {
+  margin-top: 16px;
+}
+
+.schemaTable {
+  min-width: 780px;
+}
+
+.schemaFieldValues {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 14px;
+  gap: 3px;
+}
+
+.schemaValueLabel {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.schemaExample {
+  margin-top: 20px;
+}
+
+.schemaExampleHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 7px;
+}
+
+.schemaExampleHeader h4 {
+  font-size: 13px;
+  font-weight: 640;
+}
+
+.schemaSource {
+  margin-top: 16px;
+}
+
+.schemaSource summary {
+  width: fit-content;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.schemaSource summary:hover {
+  color: var(--text-primary);
+}
+
+.schemaSource .codeBlock {
+  margin-top: 10px;
 }
 
 /* ---------- repository settings ---------- */
@@ -1316,7 +1407,8 @@ textarea {
   }
 
   .overviewFacts,
-  .readinessFacts {
+  .readinessFacts,
+  .apiInvocationFacts {
     grid-template-columns: 1fr;
     gap: 14px;
   }

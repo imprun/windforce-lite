@@ -319,6 +319,14 @@ export class WindforceApi {
     return this.request(`/apps/${encodeURIComponent(appKey)}/documentation`);
   }
 
+  appOpenAPIURL(appKey: string): string {
+    return this.workspaceURL(`/apps/${encodeURIComponent(appKey)}/openapi.json`);
+  }
+
+  actionRunURL(appKey: string, actionKey: string): string {
+    return this.workspaceURL(`/jobs/run/${encodeURIComponent(appKey)}/${encodeURIComponent(actionKey)}`);
+  }
+
   jobsSummary(recentSeconds = 86400): Promise<JobsSummary> {
     return this.request(`/jobs/summary?recent_seconds=${recentSeconds}`);
   }
@@ -337,8 +345,7 @@ export class WindforceApi {
       headers.set("content-type", "application/json");
       body = JSON.stringify(options.body);
     }
-    const workspace = encodeURIComponent(this.settings.workspace || "default");
-    const response = await fetch(`/api/w/${workspace}${path}`, {
+    const response = await fetch(this.workspaceURL(path), {
       method: options.method || "GET",
       headers,
       body,
@@ -360,5 +367,10 @@ export class WindforceApi {
     } catch {
       return text as T;
     }
+  }
+
+  private workspaceURL(path: string): string {
+    const workspace = encodeURIComponent(this.settings.workspace || "default");
+    return `/api/w/${workspace}${path}`;
   }
 }

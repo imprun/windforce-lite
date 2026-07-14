@@ -25,6 +25,7 @@ import { useApp, useAsync } from "../lib/app-context";
 import { formatJSON, formatRelative, formatTime, shortSHA } from "../lib/format";
 import { forgeCommitURL, forgeName, forgeTreeURL } from "../lib/repo";
 import { Link, useRouter } from "../lib/router";
+import { describeSchema, formatSchemaValue, type SchemaField } from "../lib/schema-document";
 
 const tabs = [
   { key: "overview", label: "Overview" },
@@ -498,6 +499,7 @@ function ActionReferenceList({ sourceID, app, actions }: { sourceID: number; app
 function ActionReferenceDetail({ app, action }: { app: AppSummary; action: ActionView }) {
   const { api } = useApp();
   const schemas = useAsync(() => api.actionSchemas(app.app_key, action.action_key), [api, app.app_key, action.action_key]);
+  const runURL = api.actionRunURL(app.app_key, action.action_key);
   return (
     <article className="docsArticle">
       <header className="docsHeader">
@@ -508,8 +510,22 @@ function ActionReferenceDetail({ app, action }: { app: AppSummary; action: Actio
         <p>Input and output JSON Schemas from release {shortSHA(app.commit_sha, 12)}.</p>
       </header>
       <DefinitionList
+        className="apiInvocationFacts"
         items={[
           ["Action key", <span className="mono">{action.action_key}</span>],
+          [
+            "Request endpoint",
+            <span className="mono">
+              POST {runURL}
+            </span>,
+          ],
+          ["Immediate response", "201 Created with a job_id; action execution is asynchronous."],
+          [
+            "OpenAPI",
+            <a href={api.appOpenAPIURL(app.app_key)} target="_blank" rel="noreferrer">
+              OpenAPI JSON
+            </a>,
+          ],
           ["Route tag", <span className="mono">{action.effective_route_tag}</span>],
           ["Timeout", action.timeout_s ? `${action.timeout_s}s` : `${app.timeout_s}s (app default)`],
           ["Capabilities", action.effective_capabilities?.length ? action.effective_capabilities.join(", ") : "none"],
@@ -559,15 +575,109 @@ function SchemaReference({ schemas, loading }: { schemas: ActionSchemas | null; 
   if (loading && !schemas) return <Loading />;
   if (!schemas) return null;
   return (
-    <div className="schemaGrid">
-      <div>
-        <h3 className="subHeading">Input schema</h3>
-        <JsonBlock value={formatJSON(schemas.input_schema)} maxHeight={480} />
+    <div className="schemaStack">
+      <SchemaSection
+        title="Request body"
+        emptyMessage="This request schema has no named fields. The action accepts an unconstrained JSON value."
+        exampleLabel="Example request"
+        schema={schemas.input_schema}
+      />
+      <SchemaSection
+        title="Result payload"
+        emptyMessage="This result schema has no named fields. The action returns an unconstrained JSON value."
+        exampleLabel="Example result"
+        schema={schemas.output_schema}
+      />
+    </div>
+  );
+}
+
+function SchemaSection({
+  title,
+  emptyMessage,
+  exampleLabel,
+  schema,
+}: {
+  title: string;
+  emptyMessage: string;
+  exampleLabel: string;
+  schema: unknown;
+}) {
+  const document = describeSchema(schema);
+  return (
+    <section className="schemaSection">
+      <header className="schemaSectionHeader">
+        <div>
+          <h3>{title}</h3>
+          <p>{document.title || `${document.type} JSON value`}</p>
+        </div>
+        <span className="schemaType mono">{document.type}</span>
+      </header>
+      {document.description ? <p className="schemaDescription">{document.description}</p> : null}
+      {document.fields.length > 0 ? <SchemaFieldTable fields={document.fields} /> : <p className="schemaEmpty">{emptyMessage}</p>}
+      <div className="schemaExample">
+        <div className="schemaExampleHeader">
+          <h4>{exampleLabel}</h4>
+          <span className="cellSub">{document.example.source === "declared" ? "Declared in schema" : "Generated from schema"}</span>
+        </div>
+        <JsonBlock value={formatJSON(document.example.value)} maxHeight={360} />
       </div>
-      <div>
-        <h3 className="subHeading">Output schema</h3>
-        <JsonBlock value={formatJSON(schemas.output_schema)} maxHeight={480} />
-      </div>
+      <details className="schemaSource">
+        <summary>Raw JSON Schema</summary>
+        <JsonBlock value={formatJSON(schema)} maxHeight={480} />
+      </details>
+    </section>
+  );
+}
+
+function SchemaFieldTable({ fields }: { fields: SchemaField[] }) {
+  return (
+    <div className="tableWrap schemaTableWrap">
+      <table className="table schemaTable">
+        <thead>
+          <tr>
+            <th>Field</th>
+            <th>Type</th>
+            <th>Required</th>
+            <th>Description</th>
+            <th>Values</th>
+          </tr>
+        </thead>
+        <tbody>
+          {fields.map((field) => (
+            <tr key={field.name}>
+              <td>
+                {field.title ? <span className="cellTitle">{field.title}</span> : null}
+                <span className="mono">{field.name}</span>
+              </td>
+              <td>
+                <span className="mono">{field.type}</span>
+                {field.format ? <span className="cellSub">{field.format}</span> : null}
+              </td>
+              <td>{field.required ? <span className="badge badge-good">Required</span> : "Optional"}</td>
+              <td>{field.description || "—"}</td>
+              <td><SchemaFieldValues field={field} /></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function SchemaFieldValues({ field }: { field: SchemaField }) {
+  const values: Array<[string, unknown]> = [];
+  if (field.constValue !== undefined) values.push(["Fixed", field.constValue]);
+  if (field.enumValues?.length) values.push(["Allowed", field.enumValues]);
+  if (field.hasDefault) values.push(["Default", field.defaultValue]);
+  if (values.length === 0) return <span>—</span>;
+  return (
+    <div className="schemaFieldValues">
+      {values.map(([label, value]) => (
+        <span key={label}>
+          <span className="schemaValueLabel">{label}</span> <span className="mono">{formatSchemaValue(value)}</span>
+        </span>
+      ))}
     </div>
   );
 }
