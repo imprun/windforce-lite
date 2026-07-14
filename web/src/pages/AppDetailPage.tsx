@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { Layout } from "../components/Layout";
-import { ReleaseMarkdown } from "../components/ReleaseMarkdown";
 import {
   DefinitionList,
   EmptyState,
@@ -17,10 +16,10 @@ import {
   type ActionView,
   type ActionSchemas,
   type AppDetail,
-  type AppDocumentation,
   type AppSummary,
   type GitSource,
 } from "../lib/api";
+import { actionDisplayName } from "../lib/action-label";
 import { useApp, useAsync } from "../lib/app-context";
 import { formatJSON, formatRelative, formatTime, shortSHA } from "../lib/format";
 import { forgeCommitURL, forgeName, forgeTreeURL } from "../lib/repo";
@@ -29,7 +28,7 @@ import { describeSchema, formatSchemaValue, type SchemaField } from "../lib/sche
 
 const tabs = [
   { key: "overview", label: "Overview" },
-  { key: "docs", label: "Docs" },
+  { key: "docs", label: "Actions" },
   { key: "monitoring", label: "Monitoring" },
   { key: "repository", label: "Repository" },
   { key: "releases", label: "Releases" },
@@ -145,7 +144,6 @@ export function AppDetailPage({
       {activeTab === "docs" ? (
         <DocsTab
           sourceID={sourceID}
-          source={source}
           app={app}
           detail={detail}
           section={section}
@@ -349,14 +347,12 @@ function ReleasesTab({
 
 function DocsTab({
   sourceID,
-  source,
   app,
   detail,
   section,
   actionKey,
 }: {
   sourceID: number;
-  source: GitSource | null;
   app: AppSummary | null;
   detail: AppDetail | null;
   section?: string;
@@ -364,7 +360,7 @@ function DocsTab({
 }) {
   if (!app || !detail) {
     return (
-      <Panel title="Docs" subtitle="Release-pinned documentation and API reference.">
+      <Panel title="Actions" subtitle="Request and result schemas from the active release.">
         <EmptyState title="No release published yet.">
           <p>Publish a release first. Docs are generated from that immutable source snapshot.</p>
         </EmptyState>
@@ -372,24 +368,17 @@ function DocsTab({
     );
   }
 
-  const activeSection = section === "reference" || section === "actions" ? section : "guide";
+  const activeSection = section === "actions" ? section : "reference";
   const actions = sortActions(detail.actions);
   const selectedAction = activeSection === "actions" ? actions.find((item) => item.action_key === actionKey) || null : null;
   return (
-    <Panel title="Documentation" subtitle="Release-pinned guide and API reference for this app.">
+    <Panel title="Actions" subtitle="Request and result schemas from the active release.">
       <div className="docsLayout">
         <aside className="docsNav" aria-label="Documentation navigation">
-          <p className="docsNavTitle">Docs</p>
-          <Link
-            className={activeSection === "guide" ? "docsNavLink active" : "docsNavLink"}
-            to={`/apps/${sourceID}/docs`}
-          >
-            Guide
-          </Link>
-          <p className="docsNavGroup">API Reference</p>
+          <p className="docsNavTitle">Actions</p>
           <Link
             className={activeSection === "reference" ? "docsNavLink active" : "docsNavLink"}
-            to={`/apps/${sourceID}/docs/reference`}
+            to={`/apps/${sourceID}/docs`}
           >
             All actions
           </Link>
@@ -406,9 +395,8 @@ function DocsTab({
           ))}
         </aside>
         <section className="docsMain">
-          {activeSection === "guide" ? <GuideDocument app={app} source={source} /> : null}
           {activeSection === "reference" ? (
-            <ActionReferenceList sourceID={sourceID} app={app} actions={actions} />
+            <ActionReferenceList sourceID={sourceID} actions={actions} />
           ) : null}
           {activeSection === "actions" && selectedAction ? (
             <ActionReferenceDetail app={app} action={selectedAction} />
@@ -420,76 +408,22 @@ function DocsTab({
   );
 }
 
-function GuideDocument({ app, source }: { app: AppSummary; source: GitSource | null }) {
-  const { api } = useApp();
-  const documentation = useAsync(() => api.appDocumentation(app.app_key), [api, app.app_key]);
-  return (
-    <article className="docsArticle">
-      <header className="docsHeader">
-        <p className="eyebrow">Guide</p>
-        <h2>Release documentation</h2>
-        <p>README.md pinned to release {shortSHA(app.commit_sha, 12)}.</p>
-      </header>
-      {documentation.error ? <ErrorNotice message={documentation.error} onRetry={documentation.reload} /> : null}
-      {documentation.loading && !documentation.data ? <Loading /> : null}
-      {documentation.data && !documentation.data.available ? (
-        <EmptyState title="This release does not include README.md." />
-      ) : null}
-      {documentation.data?.available ? <RenderedGuide source={source} documentation={documentation.data} /> : null}
-    </article>
-  );
-}
-
-function RenderedGuide({ source, documentation }: { source: GitSource | null; documentation: AppDocumentation }) {
-  return (
-    <ReleaseMarkdown
-      markdown={documentation.markdown || ""}
-      repoURL={source?.repo_url || ""}
-      commit={documentation.commit_sha}
-      subpath={source?.subpath || ""}
-    />
-  );
-}
-
-function ActionReferenceList({ sourceID, app, actions }: { sourceID: number; app: AppSummary; actions: ActionView[] }) {
+function ActionReferenceList({ sourceID, actions }: { sourceID: number; actions: ActionView[] }) {
   return (
     <section className="docsArticle">
       <header className="docsHeader">
-        <p className="eyebrow">API Reference</p>
         <h2>Actions</h2>
-        <p>
-          {actions.length} action(s) exposed by release {shortSHA(app.commit_sha, 12)}. Display names use a declared
-          JSON Schema title, preferring the input schema.
-        </p>
+        <p>Select an action to review its request and result schemas.</p>
       </header>
       {actions.length === 0 ? (
         <EmptyState title="No actions in the active release." />
       ) : (
-        <div className="tableWrap">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Action</th>
-                <th>Route tag</th>
-                <th>Timeout</th>
-                <th>Capabilities</th>
-              </tr>
-            </thead>
-            <tbody>
-              {actions.map((action) => (
-                <tr key={action.action_key}>
-                  <td>
-                    <Link to={`/apps/${sourceID}/docs/actions/${encodeURIComponent(action.action_key)}`}>
-                      <ActionLabel action={action} />
-                    </Link>
-                  </td>
-                  <td className="mono">{action.effective_route_tag}</td>
-                  <td>{action.timeout_s ? `${action.timeout_s}s` : `${app.timeout_s}s (app default)`}</td>
-                  <td>{action.effective_capabilities?.length ? action.effective_capabilities.join(", ") : "none"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="docsActionList">
+          {actions.map((action) => (
+            <Link key={action.action_key} className="docsActionRow" to={`/apps/${sourceID}/docs/actions/${encodeURIComponent(action.action_key)}`}>
+              <ActionLabel action={action} />
+            </Link>
+          ))}
         </div>
       )}
     </section>
@@ -499,38 +433,15 @@ function ActionReferenceList({ sourceID, app, actions }: { sourceID: number; app
 function ActionReferenceDetail({ app, action }: { app: AppSummary; action: ActionView }) {
   const { api } = useApp();
   const schemas = useAsync(() => api.actionSchemas(app.app_key, action.action_key), [api, app.app_key, action.action_key]);
-  const runURL = api.actionRunURL(app.app_key, action.action_key);
+  const name = actionDisplayName(action.display_name);
   return (
     <article className="docsArticle">
       <header className="docsHeader">
-        <p className="eyebrow">API Reference</p>
-        <h2>
-          {actionDisplayName(action) || "Action"} <span className="mono">{action.action_key}</span>
-        </h2>
-        <p>Input and output JSON Schemas from release {shortSHA(app.commit_sha, 12)}.</p>
+        <h2>{name || `Action ${action.action_key}`}</h2>
+        <p>
+          Action key <span className="mono">{action.action_key}</span>
+        </p>
       </header>
-      <DefinitionList
-        className="apiInvocationFacts"
-        items={[
-          ["Action key", <span className="mono">{action.action_key}</span>],
-          [
-            "Request endpoint",
-            <span className="mono">
-              POST {runURL}
-            </span>,
-          ],
-          ["Immediate response", "201 Created with a job_id; action execution is asynchronous."],
-          [
-            "OpenAPI",
-            <a href={api.appOpenAPIURL(app.app_key)} target="_blank" rel="noreferrer">
-              OpenAPI JSON
-            </a>,
-          ],
-          ["Route tag", <span className="mono">{action.effective_route_tag}</span>],
-          ["Timeout", action.timeout_s ? `${action.timeout_s}s` : `${app.timeout_s}s (app default)`],
-          ["Capabilities", action.effective_capabilities?.length ? action.effective_capabilities.join(", ") : "none"],
-        ]}
-      />
       {schemas.error ? <ErrorNotice message={schemas.error} onRetry={schemas.reload} /> : null}
       <SchemaReference schemas={schemas.data} loading={schemas.loading} />
     </article>
@@ -538,19 +449,13 @@ function ActionReferenceDetail({ app, action }: { app: AppSummary; action: Actio
 }
 
 function ActionLabel({ action }: { action: ActionView }) {
-  const displayName = actionDisplayName(action);
-  if (!displayName) return <span className="mono">{action.action_key}</span>;
+  const displayName = actionDisplayName(action.display_name);
   return (
     <span className="actionLabel">
-      <span className="actionLabelName">{displayName}</span>
-      <span className="actionLabelKey mono">{action.action_key}</span>
+      <span className="actionLabelName">{displayName || `Action ${action.action_key}`}</span>
+      <span className="actionLabelKey mono">Action key {action.action_key}</span>
     </span>
   );
-}
-
-function actionDisplayName(action: ActionView): string | null {
-  const title = action.display_name?.trim();
-  return title || null;
 }
 
 function sortActions(actions: ActionView[]): ActionView[] {
@@ -609,11 +514,9 @@ function SchemaSection({
       <header className="schemaSectionHeader">
         <div>
           <h3>{title}</h3>
-          <p>{document.title || `${document.type} JSON value`}</p>
         </div>
         <span className="schemaType mono">{document.type}</span>
       </header>
-      {document.description ? <p className="schemaDescription">{document.description}</p> : null}
       {document.fields.length > 0 ? <SchemaFieldTable fields={document.fields} /> : <p className="schemaEmpty">{emptyMessage}</p>}
       <div className="schemaExample">
         <div className="schemaExampleHeader">
@@ -637,10 +540,8 @@ function SchemaFieldTable({ fields }: { fields: SchemaField[] }) {
         <thead>
           <tr>
             <th>Field</th>
-            <th>Type</th>
-            <th>Required</th>
             <th>Description</th>
-            <th>Values</th>
+            <th>Constraints</th>
           </tr>
         </thead>
         <tbody>
@@ -648,13 +549,12 @@ function SchemaFieldTable({ fields }: { fields: SchemaField[] }) {
             <tr key={field.name}>
               <td>
                 {field.title ? <span className="cellTitle">{field.title}</span> : null}
-                <span className="mono">{field.name}</span>
+                <div className="schemaFieldIdentity">
+                  <span className="mono">{field.name}</span>
+                  <span className="schemaFieldType mono">{field.format ? `${field.type} (${field.format})` : field.type}</span>
+                  {field.required ? <span className="badge badge-good">Required</span> : <span className="cellSub">Optional</span>}
+                </div>
               </td>
-              <td>
-                <span className="mono">{field.type}</span>
-                {field.format ? <span className="cellSub">{field.format}</span> : null}
-              </td>
-              <td>{field.required ? <span className="badge badge-good">Required</span> : "Optional"}</td>
               <td>{field.description || "—"}</td>
               <td><SchemaFieldValues field={field} /></td>
             </tr>

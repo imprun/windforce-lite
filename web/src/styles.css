@@ -689,8 +689,7 @@ textarea {
   padding: 4px 0;
 }
 
-.docsNavTitle,
-.docsNavGroup {
+.docsNavTitle {
   margin: 0;
   padding: 7px 10px 4px;
   color: var(--text-muted);
@@ -698,10 +697,6 @@ textarea {
   font-weight: 640;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-}
-
-.docsNavGroup {
-  margin-top: 12px;
 }
 
 .docsNavLink {
@@ -726,6 +721,23 @@ textarea {
 
 .docsNavAction {
   padding-left: 18px;
+}
+
+.docsActionList {
+  display: grid;
+  border-top: 1px solid var(--border);
+}
+
+.docsActionRow {
+  display: block;
+  padding: 13px 0;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-primary);
+}
+
+.docsActionRow:hover {
+  color: var(--accent-strong);
+  text-decoration: none;
 }
 
 .actionLabel {
@@ -1052,10 +1064,6 @@ textarea {
   max-height: 480px;
 }
 
-.apiInvocationFacts {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
 .schemaStack {
   display: flex;
   flex-direction: column;
@@ -1079,8 +1087,6 @@ textarea {
   font-weight: 650;
 }
 
-.schemaSectionHeader p,
-.schemaDescription,
 .schemaEmpty {
   margin-top: 4px;
   color: var(--text-secondary);
@@ -1100,7 +1106,26 @@ textarea {
 }
 
 .schemaTable {
-  min-width: 780px;
+  min-width: 640px;
+}
+
+.schemaTable th,
+.schemaTable td {
+  padding-top: 13px;
+  padding-bottom: 13px;
+}
+
+.schemaFieldIdentity {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  margin-top: 3px;
+}
+
+.schemaFieldType {
+  color: var(--text-secondary);
+  font-size: 12px;
 }
 
 .schemaFieldValues {
@@ -1382,13 +1407,8 @@ textarea {
     padding-bottom: 12px;
   }
 
-  .docsNavTitle,
-  .docsNavGroup {
+  .docsNavTitle {
     grid-column: 1 / -1;
-  }
-
-  .docsNavGroup {
-    margin-top: 4px;
   }
 
   .docsNavAction {
@@ -1407,8 +1427,7 @@ textarea {
   }
 
   .overviewFacts,
-  .readinessFacts,
-  .apiInvocationFacts {
+  .readinessFacts {
     grid-template-columns: 1fr;
     gap: 14px;
   }

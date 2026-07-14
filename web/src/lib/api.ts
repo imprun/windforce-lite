@@ -319,14 +319,6 @@ export class WindforceApi {
     return this.request(`/apps/${encodeURIComponent(appKey)}/documentation`);
   }
 
-  appOpenAPIURL(appKey: string): string {
-    return this.workspaceURL(`/apps/${encodeURIComponent(appKey)}/openapi.json`);
-  }
-
-  actionRunURL(appKey: string, actionKey: string): string {
-    return this.workspaceURL(`/jobs/run/${encodeURIComponent(appKey)}/${encodeURIComponent(actionKey)}`);
-  }
-
   jobsSummary(recentSeconds = 86400): Promise<JobsSummary> {
     return this.request(`/jobs/summary?recent_seconds=${recentSeconds}`);
   }
