@@ -557,6 +557,7 @@ func controlPlaneSchemas() map[string]any {
 		"workspace_id":          oapiStringSchema(),
 		"app_key":               oapiStringSchema(),
 		"action_key":            oapiStringSchema(),
+		"display_name":          map[string]any{"type": "string", "description": "Human-readable label derived from a materialized JSON Schema title, preferring the input schema."},
 		"input_schema":          catalogSchema,
 		"output_schema":         catalogSchema,
 		"tag":                   nullableString,

@@ -216,6 +216,7 @@ type canonicalActionModel struct {
 	WorkspaceID          string    `json:"workspace_id"`
 	AppKey               string    `json:"app_key"`
 	ActionKey            string    `json:"action_key"`
+	DisplayName          string    `json:"display_name,omitempty"`
 	InputSchema          []byte    `json:"input_schema"`
 	OutputSchema         []byte    `json:"output_schema"`
 	Tag                  *string   `json:"tag,omitempty"`
@@ -338,6 +339,7 @@ func (h *Handler) newCanonicalActionModel(schemaReader *canonicalSchemaReader, d
 		WorkspaceID:          contract.NormalizeWorkspace(deployment.SourceWorkspace()),
 		AppKey:               deployment.App,
 		ActionKey:            actionKey,
+		DisplayName:          canonicalActionDisplayName(schemaView.InputSchema, schemaView.OutputSchema),
 		InputSchema:          canonicalCatalogSchemaBytes(schemaView.InputSchema),
 		OutputSchema:         canonicalCatalogSchemaBytes(schemaView.OutputSchema),
 		Tag:                  cloneStringPtr(action.Tag),
@@ -346,6 +348,22 @@ func (h *Handler) newCanonicalActionModel(schemaReader *canonicalSchemaReader, d
 		RequiredCapabilities: cloneStringSlicePtr(action.Capabilities),
 		UpdatedAt:            canonicalActionUpdatedAt(deployment, action),
 	}, nil
+}
+
+// canonicalActionDisplayName projects JSON Schema's standard top-level title
+// into the control-plane list view. The key remains the executable identity.
+func canonicalActionDisplayName(inputSchema, outputSchema json.RawMessage) string {
+	return firstNonEmpty(canonicalSchemaTitle(inputSchema), canonicalSchemaTitle(outputSchema))
+}
+
+func canonicalSchemaTitle(schema json.RawMessage) string {
+	var document struct {
+		Title string `json:"title"`
+	}
+	if err := json.Unmarshal(schema, &document); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(document.Title)
 }
 
 func canonicalCatalogSchemaBytes(schema json.RawMessage) []byte {

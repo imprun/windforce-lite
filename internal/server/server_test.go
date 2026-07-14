@@ -2654,7 +2654,7 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 	}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(repoDir, "input.schema.json"), []byte(`{"type":"object","properties":{"message":{"type":"string"}}}`), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(repoDir, "input.schema.json"), []byte(`{"title":"Echo message","type":"object","properties":{"message":{"type":"string"}}}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(repoDir, "output.schema.json"), []byte(`{"type":"object","properties":{"ok":{"type":"boolean"}}}`), 0o644); err != nil {
@@ -2972,6 +2972,7 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 	var actionBody struct {
 		AppKey       string          `json:"app_key"`
 		ActionKey    string          `json:"action_key"`
+		DisplayName  string          `json:"display_name"`
 		InputSchema  json.RawMessage `json:"input_schema"`
 		OutputSchema json.RawMessage `json:"output_schema"`
 		TimeoutS     *int32          `json:"timeout_s"`
@@ -2982,7 +2983,7 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 	}
 	actionInputSchema := decodeCatalogSchema(t, actionBody.InputSchema)
 	actionOutputSchema := decodeCatalogSchema(t, actionBody.OutputSchema)
-	if actionBody.AppKey != "echo" || actionBody.ActionKey != "echo" ||
+	if actionBody.AppKey != "echo" || actionBody.ActionKey != "echo" || actionBody.DisplayName != "Echo message" ||
 		actionBody.TimeoutS != nil || actionBody.UpdatedAt.IsZero() ||
 		!bytes.Contains(actionInputSchema, []byte(`"message"`)) || !bytes.Contains(actionOutputSchema, []byte(`"ok"`)) {
 		t.Fatalf("action body = %#v input=%s decoded=%s output=%s decoded=%s", actionBody, actionBody.InputSchema, actionInputSchema, actionBody.OutputSchema, actionOutputSchema)
@@ -3019,6 +3020,7 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 		} `json:"app"`
 		Actions []struct {
 			ActionKey             string          `json:"action_key"`
+			DisplayName           string          `json:"display_name"`
 			InputSchema           json.RawMessage `json:"input_schema"`
 			EffectiveCapabilities []string        `json:"effective_capabilities"`
 			EffectiveRouteTag     string          `json:"effective_route_tag"`
@@ -3032,7 +3034,7 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 		appBody.App.TimeoutS != 120 || appBody.App.MaxConcurrent == nil || *appBody.App.MaxConcurrent != 2 ||
 		!reflect.DeepEqual(appBody.App.RequiredCapabilities, []string{"browser"}) || appBody.App.EffectiveRouteTag != "browser" ||
 		appBody.App.UpdatedAt.IsZero() ||
-		len(appBody.Actions) != 1 || appBody.Actions[0].ActionKey != "echo" ||
+		len(appBody.Actions) != 1 || appBody.Actions[0].ActionKey != "echo" || appBody.Actions[0].DisplayName != "Echo message" ||
 		!reflect.DeepEqual(appBody.Actions[0].EffectiveCapabilities, []string{"browser"}) || appBody.Actions[0].EffectiveRouteTag != "browser" {
 		t.Fatalf("app body = %#v", appBody)
 	}

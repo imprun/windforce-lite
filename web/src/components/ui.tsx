@@ -45,9 +45,15 @@ export function Panel({
   );
 }
 
-export function DefinitionList({ items }: { items: Array<[string, ReactNode]> }) {
+export function DefinitionList({
+  items,
+  className,
+}: {
+  items: Array<[string, ReactNode]>;
+  className?: string;
+}) {
   return (
-    <dl className="defList">
+    <dl className={className ? `defList ${className}` : "defList"}>
       {items.map(([label, value]) => (
         <div className="defItem" key={label}>
           <dt>{label}</dt>

@@ -101,6 +101,7 @@ export type ActionView = {
   workspace_id: string;
   app_key: string;
   action_key: string;
+  display_name?: string;
   input_schema?: string;
   output_schema?: string;
   tag?: string;

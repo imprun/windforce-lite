@@ -223,32 +223,42 @@ function OverviewTab({
 
   return (
     <>
-      <Panel title="Active release" subtitle="The release currently selected for workers.">
-        <DefinitionList
-          items={[
-            ["App key", <span className="mono">{app.app_key}</span>],
-            ["Release commit", <CommitRef repoURL={source?.repo_url || ""} commit={app.commit_sha} />],
-            [
-              "Source code",
-              <SourceCodeRef
-                repoURL={source?.repo_url || ""}
-                commit={app.commit_sha}
-                subpath={source?.subpath || ""}
-              />,
-            ],
-            ["Entrypoint", <span className="mono">{app.entrypoint}</span>],
-            ["Script language", app.script_lang],
-            ["Route tag", <span className="mono">{routeTag}</span>],
-            ["Timeout", `${app.timeout_s}s`],
-            ["Required capabilities", app.required_capabilities?.length ? app.required_capabilities.join(", ") : "none"],
-            ["API reference", <Link to={`/apps/${sourceID}/docs/reference`}>{detail.actions.length} action(s)</Link>],
-            ["Updated", `${formatTime(app.updated_at)} (${formatRelative(app.updated_at)})`],
-          ]}
-        />
+      <Panel title="Active release" subtitle="The source, routing, and execution settings selected for workers.">
+        <div className="releaseSummary">
+          <div className="releaseIdentity">
+            <p className="eyebrow">Release commit</p>
+            <p className="releaseCommit">
+              <CommitRef repoURL={source?.repo_url || ""} commit={app.commit_sha} />
+            </p>
+            <p className="cellSub">Updated {formatRelative(app.updated_at)}</p>
+          </div>
+          <DefinitionList
+            className="overviewFacts"
+            items={[
+              [
+                "Source code",
+                <SourceCodeRef
+                  repoURL={source?.repo_url || ""}
+                  commit={app.commit_sha}
+                  subpath={source?.subpath || ""}
+                />,
+              ],
+              ["Entrypoint", <span className="mono">{app.entrypoint}</span>],
+              ["Script language", app.script_lang],
+              ["Route tag", <span className="mono">{routeTag}</span>],
+              [
+                "Execution",
+                `${app.timeout_s}s${app.required_capabilities?.length ? ` · ${app.required_capabilities.join(", ")}` : ""}`,
+              ],
+              ["API reference", <Link to={`/apps/${sourceID}/docs/reference`}>{detail.actions.length} action(s)</Link>],
+            ]}
+          />
+        </div>
       </Panel>
 
-      <Panel title="Readiness" subtitle="Signals to check before relying on this contract.">
+      <Panel title="Readiness" subtitle="Current source and route signals for this release.">
         <DefinitionList
+          className="readinessFacts"
           items={[
             ["Registered", source ? formatTime(source.created_at) : "repository source removed"],
             [
@@ -362,8 +372,8 @@ function DocsTab({
   }
 
   const activeSection = section === "reference" || section === "actions" ? section : "guide";
-  const selectedAction =
-    activeSection === "actions" ? detail.actions.find((item) => item.action_key === actionKey) || null : null;
+  const actions = sortActions(detail.actions);
+  const selectedAction = activeSection === "actions" ? actions.find((item) => item.action_key === actionKey) || null : null;
   return (
     <div className="docsLayout">
       <aside className="docsNav" aria-label="Documentation navigation">
@@ -381,7 +391,7 @@ function DocsTab({
         >
           All actions
         </Link>
-        {detail.actions.map((action) => (
+        {actions.map((action) => (
           <Link
             key={action.action_key}
             className={
@@ -389,14 +399,14 @@ function DocsTab({
             }
             to={`/apps/${sourceID}/docs/actions/${encodeURIComponent(action.action_key)}`}
           >
-            <span className="mono">{action.action_key}</span>
+            <ActionLabel action={action} />
           </Link>
         ))}
       </aside>
       <section className="docsMain">
         {activeSection === "guide" ? <GuideDocument app={app} source={source} /> : null}
         {activeSection === "reference" ? (
-          <ActionReferenceList sourceID={sourceID} app={app} actions={detail.actions} />
+          <ActionReferenceList sourceID={sourceID} app={app} actions={actions} />
         ) : null}
         {activeSection === "actions" && selectedAction ? (
           <ActionReferenceDetail app={app} action={selectedAction} />
@@ -444,7 +454,10 @@ function ActionReferenceList({ sourceID, app, actions }: { sourceID: number; app
       <header className="docsHeader">
         <p className="eyebrow">API Reference</p>
         <h2>Actions</h2>
-        <p>{actions.length} action(s) exposed by release {shortSHA(app.commit_sha, 12)}.</p>
+        <p>
+          {actions.length} action(s) exposed by release {shortSHA(app.commit_sha, 12)}. Display names use a declared
+          JSON Schema title, preferring the input schema.
+        </p>
       </header>
       {actions.length === 0 ? (
         <EmptyState title="No actions in the active release." />
@@ -463,8 +476,8 @@ function ActionReferenceList({ sourceID, app, actions }: { sourceID: number; app
               {actions.map((action) => (
                 <tr key={action.action_key}>
                   <td>
-                    <Link className="mono" to={`/apps/${sourceID}/docs/actions/${encodeURIComponent(action.action_key)}`}>
-                      {action.action_key}
+                    <Link to={`/apps/${sourceID}/docs/actions/${encodeURIComponent(action.action_key)}`}>
+                      <ActionLabel action={action} />
                     </Link>
                   </td>
                   <td className="mono">{action.effective_route_tag}</td>
@@ -488,12 +501,13 @@ function ActionReferenceDetail({ app, action }: { app: AppSummary; action: Actio
       <header className="docsHeader">
         <p className="eyebrow">API Reference</p>
         <h2>
-          Action <span className="mono">{action.action_key}</span>
+          {actionDisplayName(action) || "Action"} <span className="mono">{action.action_key}</span>
         </h2>
         <p>Input and output JSON Schemas from release {shortSHA(app.commit_sha, 12)}.</p>
       </header>
       <DefinitionList
         items={[
+          ["Action key", <span className="mono">{action.action_key}</span>],
           ["Route tag", <span className="mono">{action.effective_route_tag}</span>],
           ["Timeout", action.timeout_s ? `${action.timeout_s}s` : `${app.timeout_s}s (app default)`],
           ["Capabilities", action.effective_capabilities?.length ? action.effective_capabilities.join(", ") : "none"],
@@ -503,6 +517,40 @@ function ActionReferenceDetail({ app, action }: { app: AppSummary; action: Actio
       <SchemaReference schemas={schemas.data} loading={schemas.loading} />
     </article>
   );
+}
+
+function ActionLabel({ action }: { action: ActionView }) {
+  const displayName = actionDisplayName(action);
+  if (!displayName) return <span className="mono">{action.action_key}</span>;
+  return (
+    <span className="actionLabel">
+      <span className="actionLabelName">{displayName}</span>
+      <span className="actionLabelKey mono">{action.action_key}</span>
+    </span>
+  );
+}
+
+function actionDisplayName(action: ActionView): string | null {
+  const title = action.display_name?.trim();
+  return title || null;
+}
+
+function sortActions(actions: ActionView[]): ActionView[] {
+  return [...actions].sort((left, right) => compareActionKeys(left.action_key, right.action_key));
+}
+
+function compareActionKeys(left: string, right: string): number {
+  const numeric = /^\d+$/;
+  const leftNumeric = numeric.test(left);
+  const rightNumeric = numeric.test(right);
+  if (leftNumeric && rightNumeric) {
+    const normalizedLeft = left.replace(/^0+/, "") || "0";
+    const normalizedRight = right.replace(/^0+/, "") || "0";
+    if (normalizedLeft.length !== normalizedRight.length) return normalizedLeft.length - normalizedRight.length;
+    return normalizedLeft < normalizedRight ? -1 : normalizedLeft > normalizedRight ? 1 : left.localeCompare(right);
+  }
+  if (leftNumeric !== rightNumeric) return leftNumeric ? -1 : 1;
+  return left.localeCompare(right);
 }
 
 function SchemaReference({ schemas, loading }: { schemas: ActionSchemas | null; loading: boolean }) {

@@ -674,9 +674,10 @@ textarea {
 
 .docsLayout {
   display: grid;
-  grid-template-columns: 184px minmax(0, 1fr);
+  grid-template-columns: 224px minmax(0, 960px);
   gap: 28px;
   align-items: start;
+  max-width: 1220px;
 }
 
 .docsNav {
@@ -725,6 +726,23 @@ textarea {
 
 .docsNavAction {
   padding-left: 18px;
+}
+
+.actionLabel {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.actionLabelName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.actionLabelKey {
+  color: var(--text-muted);
+  font-size: 12px;
 }
 
 .docsMain {
@@ -879,6 +897,61 @@ textarea {
 .defItem dd {
   margin: 2px 0 0;
   overflow-wrap: anywhere;
+}
+
+.releaseSummary {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.8fr) minmax(0, 3fr);
+  gap: 24px;
+  align-items: start;
+}
+
+.releaseIdentity {
+  min-height: 100%;
+  padding-right: 24px;
+  border-right: 1px solid var(--border);
+}
+
+.releaseIdentity .eyebrow {
+  margin-bottom: 6px;
+}
+
+.releaseCommit {
+  font-size: 20px;
+  font-weight: 680;
+}
+
+.releaseCommit .mono {
+  font-size: 1em;
+}
+
+.releaseIdentity .cellSub {
+  margin-top: 8px;
+}
+
+.overviewFacts {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px 24px;
+}
+
+.readinessFacts {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+}
+
+.readinessFacts .defItem {
+  min-width: 0;
+  padding: 2px 20px;
+  border-right: 1px solid var(--border);
+}
+
+.readinessFacts .defItem:first-child {
+  padding-left: 0;
+}
+
+.readinessFacts .defItem:last-child {
+  padding-right: 0;
+  border-right: none;
 }
 
 /* ---------- forms ---------- */
@@ -1229,5 +1302,29 @@ textarea {
 
   .docsNavAction {
     padding-left: 10px;
+  }
+
+  .releaseSummary {
+    grid-template-columns: 1fr;
+    gap: 18px;
+  }
+
+  .releaseIdentity {
+    padding: 0 0 16px;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .overviewFacts,
+  .readinessFacts {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+
+  .readinessFacts .defItem,
+  .readinessFacts .defItem:first-child,
+  .readinessFacts .defItem:last-child {
+    padding: 0;
+    border: none;
   }
 }
