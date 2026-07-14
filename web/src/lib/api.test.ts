@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { setActorHeaders } from "./api";
+import { appOpenAPIURL, setActorHeaders } from "./api";
 
 function decodeUTF8Base64(value: string): string {
   const binary = atob(value);
@@ -26,5 +26,17 @@ describe("setActorHeaders", () => {
     const encoded = headers.get("x-windforce-actor-utf8");
     expect(encoded).toBeTruthy();
     expect(decodeUTF8Base64(encoded || "")).toBe("홍길동");
+  });
+});
+
+describe("appOpenAPIURL", () => {
+  test("builds a shareable path with encoded workspace and app keys", () => {
+    expect(appOpenAPIURL("customer workspace", "MY APP")).toBe(
+      "/api/w/customer%20workspace/apps/MY%20APP/openapi.json",
+    );
+  });
+
+  test("defaults a blank workspace", () => {
+    expect(appOpenAPIURL("", "echo")).toBe("/api/w/default/apps/echo/openapi.json");
   });
 });

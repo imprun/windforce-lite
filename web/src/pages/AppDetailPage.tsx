@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Layout } from "../components/Layout";
+import { ReleaseMarkdown } from "../components/ReleaseMarkdown";
 import {
   DefinitionList,
   EmptyState,
@@ -16,6 +17,7 @@ import {
   type ActionView,
   type ActionSchemas,
   type AppDetail,
+  type AppDocumentation,
   type AppSummary,
   type GitSource,
 } from "../lib/api";
@@ -23,12 +25,12 @@ import { actionDisplayName } from "../lib/action-label";
 import { useApp, useAsync } from "../lib/app-context";
 import { formatJSON, formatRelative, formatTime, shortSHA } from "../lib/format";
 import { forgeCommitURL, forgeName, forgeTreeURL } from "../lib/repo";
-import { Link, useRouter } from "../lib/router";
+import { href, Link, useRouter } from "../lib/router";
 import { describeSchema, formatSchemaValue, type SchemaField } from "../lib/schema-document";
 
 const tabs = [
   { key: "overview", label: "Overview" },
-  { key: "docs", label: "Actions" },
+  { key: "docs", label: "Docs" },
   { key: "monitoring", label: "Monitoring" },
   { key: "repository", label: "Repository" },
   { key: "releases", label: "Releases" },
@@ -144,6 +146,7 @@ export function AppDetailPage({
       {activeTab === "docs" ? (
         <DocsTab
           sourceID={sourceID}
+          source={source}
           app={app}
           detail={detail}
           section={section}
@@ -347,12 +350,14 @@ function ReleasesTab({
 
 function DocsTab({
   sourceID,
+  source,
   app,
   detail,
   section,
   actionKey,
 }: {
   sourceID: number;
+  source: GitSource | null;
   app: AppSummary | null;
   detail: AppDetail | null;
   section?: string;
@@ -360,26 +365,30 @@ function DocsTab({
 }) {
   if (!app || !detail) {
     return (
-      <Panel title="Actions" subtitle="Request and result schemas from the active release.">
+      <Panel title="Documentation" subtitle="Guide and action schemas from the active release.">
         <EmptyState title="No release published yet.">
-          <p>Publish a release first. Docs are generated from that immutable source snapshot.</p>
+          <p>Publish a release first. Documentation is generated from that immutable source snapshot.</p>
         </EmptyState>
       </Panel>
     );
   }
 
-  const activeSection = section === "actions" ? section : "reference";
+  const activeSection = section === "actions" ? section : "guide";
   const actions = sortActions(detail.actions);
   const selectedAction = activeSection === "actions" ? actions.find((item) => item.action_key === actionKey) || null : null;
   return (
-    <Panel title="Actions" subtitle="Request and result schemas from the active release.">
+    <Panel title="Documentation" subtitle="Guide and action schemas from the active release.">
       <div className="docsLayout">
         <aside className="docsNav" aria-label="Documentation navigation">
-          <p className="docsNavTitle">Actions</p>
+          <p className="docsNavTitle">Docs</p>
           <Link
-            className={activeSection === "reference" ? "docsNavLink active" : "docsNavLink"}
+            className={activeSection === "guide" ? "docsNavLink active" : "docsNavLink"}
             to={`/apps/${sourceID}/docs`}
           >
+            Guide
+          </Link>
+          <p className="docsNavTitle">Actions</p>
+          <Link className={activeSection === "actions" && !actionKey ? "docsNavLink active" : "docsNavLink"} to={`/apps/${sourceID}/docs/actions`}>
             All actions
           </Link>
           {actions.map((action) => (
@@ -395,9 +404,8 @@ function DocsTab({
           ))}
         </aside>
         <section className="docsMain">
-          {activeSection === "reference" ? (
-            <ActionReferenceList sourceID={sourceID} actions={actions} />
-          ) : null}
+          {activeSection === "guide" ? <GuideDocument source={source} app={app} /> : null}
+          {activeSection === "actions" && !actionKey ? <ActionReferenceList sourceID={sourceID} app={app} actions={actions} /> : null}
           {activeSection === "actions" && selectedAction ? (
             <ActionReferenceDetail app={app} action={selectedAction} />
           ) : null}
@@ -408,12 +416,55 @@ function DocsTab({
   );
 }
 
-function ActionReferenceList({ sourceID, actions }: { sourceID: number; actions: ActionView[] }) {
+function GuideDocument({ source, app }: { source: GitSource | null; app: AppSummary }) {
+  const { api } = useApp();
+  const documentation = useAsync(() => api.appDocumentation(app.app_key), [api, app.app_key]);
+  if (documentation.loading && !documentation.data) return <Loading />;
+  if (documentation.error) return <ErrorNotice message={documentation.error} onRetry={documentation.reload} />;
+  return <RenderedGuide documentation={documentation.data} source={source} />;
+}
+
+function RenderedGuide({ documentation, source }: { documentation: AppDocumentation | null; source: GitSource | null }) {
+  if (!documentation?.available || !documentation.markdown) {
+    return (
+      <EmptyState title="No README.md in the active release.">
+        <p>Add a UTF-8 README.md to the app source, then publish a release.</p>
+      </EmptyState>
+    );
+  }
+  return (
+    <article className="docsArticle">
+      <header className="docsHeader">
+        <h2>Guide</h2>
+        <p>
+          {documentation.path || "README.md"} pinned to release <span className="mono">{shortSHA(documentation.commit_sha, 12)}</span>.
+        </p>
+      </header>
+      <ReleaseMarkdown
+        markdown={documentation.markdown}
+        repoURL={source?.repo_url || ""}
+        commit={documentation.commit_sha}
+        subpath={source?.subpath || ""}
+      />
+    </article>
+  );
+}
+
+function ActionReferenceList({ sourceID, app, actions }: { sourceID: number; app: AppSummary; actions: ActionView[] }) {
+  const { settings } = useApp();
+  const openAPIReferenceURL = href(`/openapi/${encodeURIComponent(settings.workspace || "default")}/${encodeURIComponent(app.app_key)}`);
   return (
     <section className="docsArticle">
       <header className="docsHeader">
-        <h2>Actions</h2>
-        <p>Select an action to review its request and result schemas.</p>
+        <div className="docsHeaderRow">
+          <div>
+            <h2>Actions</h2>
+            <p>Select an action to review its request and result schemas.</p>
+          </div>
+          <a className="button small" href={openAPIReferenceURL} target="_blank" rel="noreferrer">
+            OpenAPI
+          </a>
+        </div>
       </header>
       {actions.length === 0 ? (
         <EmptyState title="No actions in the active release." />
@@ -431,19 +482,27 @@ function ActionReferenceList({ sourceID, actions }: { sourceID: number; actions:
 }
 
 function ActionReferenceDetail({ app, action }: { app: AppSummary; action: ActionView }) {
-  const { api } = useApp();
+  const { api, settings } = useApp();
   const schemas = useAsync(() => api.actionSchemas(app.app_key, action.action_key), [api, app.app_key, action.action_key]);
   const name = actionDisplayName(action.display_name);
+  const openAPIReferenceURL = href(`/openapi/${encodeURIComponent(settings.workspace || "default")}/${encodeURIComponent(app.app_key)}`);
   return (
     <article className="docsArticle">
       <header className="docsHeader">
-        <h2>{name || `Action ${action.action_key}`}</h2>
-        <p>
-          Action key <span className="mono">{action.action_key}</span>
-        </p>
+        <div className="docsHeaderRow">
+          <div>
+            <h2>{name || `Action ${action.action_key}`}</h2>
+            <p>
+              Action key <span className="mono">{action.action_key}</span>
+            </p>
+          </div>
+          <a className="button small" href={openAPIReferenceURL} target="_blank" rel="noreferrer">
+            OpenAPI
+          </a>
+        </div>
       </header>
       {schemas.error ? <ErrorNotice message={schemas.error} onRetry={schemas.reload} /> : null}
-      <SchemaReference schemas={schemas.data} loading={schemas.loading} />
+      <SchemaReference schemas={schemas.data} loading={schemas.loading} appKey={app.app_key} actionKey={action.action_key} />
     </article>
   );
 }
@@ -476,7 +535,17 @@ function compareActionKeys(left: string, right: string): number {
   return left.localeCompare(right);
 }
 
-function SchemaReference({ schemas, loading }: { schemas: ActionSchemas | null; loading: boolean }) {
+function SchemaReference({
+  schemas,
+  loading,
+  appKey,
+  actionKey,
+}: {
+  schemas: ActionSchemas | null;
+  loading: boolean;
+  appKey: string;
+  actionKey: string;
+}) {
   if (loading && !schemas) return <Loading />;
   if (!schemas) return null;
   return (
@@ -485,12 +554,14 @@ function SchemaReference({ schemas, loading }: { schemas: ActionSchemas | null; 
         title="Request body"
         emptyMessage="This request schema has no named fields. The action accepts an unconstrained JSON value."
         exampleLabel="Example request"
+        filename={schemaFilename(appKey, actionKey, "input")}
         schema={schemas.input_schema}
       />
       <SchemaSection
         title="Result payload"
         emptyMessage="This result schema has no named fields. The action returns an unconstrained JSON value."
         exampleLabel="Example result"
+        filename={schemaFilename(appKey, actionKey, "output")}
         schema={schemas.output_schema}
       />
     </div>
@@ -501,11 +572,13 @@ function SchemaSection({
   title,
   emptyMessage,
   exampleLabel,
+  filename,
   schema,
 }: {
   title: string;
   emptyMessage: string;
   exampleLabel: string;
+  filename: string;
   schema: unknown;
 }) {
   const document = describeSchema(schema);
@@ -515,7 +588,10 @@ function SchemaSection({
         <div>
           <h3>{title}</h3>
         </div>
-        <span className="schemaType mono">{document.type}</span>
+        <div className="schemaSectionActions">
+          <span className="schemaType mono">{document.type}</span>
+          <SchemaArtifactControls filename={filename} schema={schema} />
+        </div>
       </header>
       {document.fields.length > 0 ? <SchemaFieldTable fields={document.fields} /> : <p className="schemaEmpty">{emptyMessage}</p>}
       <div className="schemaExample">
@@ -531,6 +607,68 @@ function SchemaSection({
       </details>
     </section>
   );
+}
+
+function SchemaArtifactControls({ filename, schema }: { filename: string; schema: unknown }) {
+  const { notify } = useApp();
+  const [copied, setCopied] = useState(false);
+  const text = formatJSON(schema);
+
+  const handleCopy = async () => {
+    try {
+      await copyText(text);
+      setCopied(true);
+      notify("ok", "JSON Schema copied.");
+      window.setTimeout(() => setCopied(false), 1600);
+    } catch {
+      notify("error", "Could not copy JSON Schema.");
+    }
+  };
+
+  const handleDownload = () => {
+    const blob = new Blob([text], { type: "application/schema+json;charset=utf-8" });
+    const objectURL = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = objectURL;
+    link.download = filename;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(objectURL), 0);
+  };
+
+  return (
+    <div className="schemaArtifactControls">
+      <button className="button small" type="button" onClick={() => void handleCopy()}>
+        {copied ? "Copied" : "Copy JSON"}
+      </button>
+      <button className="button small" type="button" onClick={handleDownload}>
+        Download JSON
+      </button>
+    </div>
+  );
+}
+
+async function copyText(text: string): Promise<void> {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const textArea = document.createElement("textarea");
+  textArea.value = text;
+  textArea.setAttribute("readonly", "");
+  textArea.style.position = "fixed";
+  textArea.style.opacity = "0";
+  document.body.append(textArea);
+  textArea.select();
+  const copied = document.execCommand("copy");
+  textArea.remove();
+  if (!copied) throw new Error("clipboard unavailable");
+}
+
+function schemaFilename(appKey: string, actionKey: string, kind: "input" | "output"): string {
+  const part = (value: string) => value.replace(/[^a-z0-9._-]+/giu, "_");
+  return `${part(appKey)}-${part(actionKey)}-${kind}.schema.json`;
 }
 
 function SchemaFieldTable({ fields }: { fields: SchemaField[] }) {

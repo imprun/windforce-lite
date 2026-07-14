@@ -11,12 +11,16 @@ describe("matchRoute", () => {
   test("captures params", () => {
     expect(matchRoute("/jobs/:id", "/jobs/abc-123")).toEqual({ id: "abc-123" });
     expect(matchRoute("/apps/:id/:tab?", "/apps/3/releases")).toEqual({ id: "3", tab: "releases" });
-	  expect(matchRoute("/apps/:id/:tab?/:section?/:action?", "/apps/3/docs/actions/1000")).toEqual({
-	    id: "3",
-	    tab: "docs",
-	    section: "actions",
-	    action: "1000",
-	  });
+    expect(matchRoute("/apps/:id/:tab?/:section?/:action?", "/apps/3/docs/actions/1000")).toEqual({
+      id: "3",
+      tab: "docs",
+      section: "actions",
+      action: "1000",
+    });
+    expect(matchRoute("/openapi/:workspace/:app", "/openapi/default/4MDCPCM")).toEqual({
+      workspace: "default",
+      app: "4MDCPCM",
+    });
   });
 
   test("optional trailing params may be omitted", () => {

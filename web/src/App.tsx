@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { matchRoute, useRouter } from "./lib/router";
 import { AppDetailPage } from "./pages/AppDetailPage";
 import { AppsPage } from "./pages/AppsPage";
@@ -5,8 +6,22 @@ import { ClientRegistryPage } from "./pages/ClientRegistryPage";
 import { MonitoringPage } from "./pages/MonitoringPage";
 import { SettingsPage } from "./pages/SettingsPage";
 
+const OpenAPIViewerPage = lazy(async () => {
+  const module = await import("./pages/OpenAPIViewerPage");
+  return { default: module.OpenAPIViewerPage };
+});
+
 export function App() {
   const { path } = useRouter();
+
+  const openAPI = matchRoute("/openapi/:workspace/:app", path);
+  if (openAPI) {
+    return (
+      <Suspense fallback={<p className="loading">Loading OpenAPI reference…</p>}>
+        <OpenAPIViewerPage workspace={openAPI.workspace} appKey={openAPI.app} />
+      </Suspense>
+    );
+  }
 
   const appDetail = matchRoute("/apps/:id/:tab?/:section?/:action?", path);
   if (appDetail) {

@@ -134,6 +134,10 @@ export type AppDocumentation = {
   markdown?: string;
 };
 
+export function appOpenAPIURL(workspace: string, appKey: string): string {
+  return `/api/w/${encodeURIComponent(workspace || "default")}/apps/${encodeURIComponent(appKey)}/openapi.json`;
+}
+
 export type HistoryItem = {
   id: string;
   commit_sha: string;
