@@ -375,45 +375,47 @@ function DocsTab({
   const actions = sortActions(detail.actions);
   const selectedAction = activeSection === "actions" ? actions.find((item) => item.action_key === actionKey) || null : null;
   return (
-    <div className="docsLayout">
-      <aside className="docsNav" aria-label="Documentation navigation">
-        <p className="docsNavTitle">Docs</p>
-        <Link
-          className={activeSection === "guide" ? "docsNavLink active" : "docsNavLink"}
-          to={`/apps/${sourceID}/docs`}
-        >
-          Guide
-        </Link>
-        <p className="docsNavGroup">API Reference</p>
-        <Link
-          className={activeSection === "reference" ? "docsNavLink active" : "docsNavLink"}
-          to={`/apps/${sourceID}/docs/reference`}
-        >
-          All actions
-        </Link>
-        {actions.map((action) => (
+    <Panel title="Documentation" subtitle="Release-pinned guide and API reference for this app.">
+      <div className="docsLayout">
+        <aside className="docsNav" aria-label="Documentation navigation">
+          <p className="docsNavTitle">Docs</p>
           <Link
-            key={action.action_key}
-            className={
-              action.action_key === actionKey ? "docsNavLink docsNavAction active" : "docsNavLink docsNavAction"
-            }
-            to={`/apps/${sourceID}/docs/actions/${encodeURIComponent(action.action_key)}`}
+            className={activeSection === "guide" ? "docsNavLink active" : "docsNavLink"}
+            to={`/apps/${sourceID}/docs`}
           >
-            <ActionLabel action={action} />
+            Guide
           </Link>
-        ))}
-      </aside>
-      <section className="docsMain">
-        {activeSection === "guide" ? <GuideDocument app={app} source={source} /> : null}
-        {activeSection === "reference" ? (
-          <ActionReferenceList sourceID={sourceID} app={app} actions={actions} />
-        ) : null}
-        {activeSection === "actions" && selectedAction ? (
-          <ActionReferenceDetail app={app} action={selectedAction} />
-        ) : null}
-        {activeSection === "actions" && !selectedAction ? <EmptyState title="Action not found in the active release." /> : null}
-      </section>
-    </div>
+          <p className="docsNavGroup">API Reference</p>
+          <Link
+            className={activeSection === "reference" ? "docsNavLink active" : "docsNavLink"}
+            to={`/apps/${sourceID}/docs/reference`}
+          >
+            All actions
+          </Link>
+          {actions.map((action) => (
+            <Link
+              key={action.action_key}
+              className={
+                action.action_key === actionKey ? "docsNavLink docsNavAction active" : "docsNavLink docsNavAction"
+              }
+              to={`/apps/${sourceID}/docs/actions/${encodeURIComponent(action.action_key)}`}
+            >
+              <ActionLabel action={action} />
+            </Link>
+          ))}
+        </aside>
+        <section className="docsMain">
+          {activeSection === "guide" ? <GuideDocument app={app} source={source} /> : null}
+          {activeSection === "reference" ? (
+            <ActionReferenceList sourceID={sourceID} app={app} actions={actions} />
+          ) : null}
+          {activeSection === "actions" && selectedAction ? (
+            <ActionReferenceDetail app={app} action={selectedAction} />
+          ) : null}
+          {activeSection === "actions" && !selectedAction ? <EmptyState title="Action not found in the active release." /> : null}
+        </section>
+      </div>
+    </Panel>
   );
 }
 
