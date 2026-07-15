@@ -189,6 +189,47 @@ func TestPostgresStoreClaimCompleteAndResumeLifecycle(t *testing.T) {
 	exerciseStoreLifecycle(t, store)
 }
 
+func TestPostgresStoreCreateRunAndEnqueueReturnsConflict(t *testing.T) {
+	dsn := os.Getenv("WINDFORCE_LITE_POSTGRES_TEST_DSN")
+	if dsn == "" {
+		t.Skip("WINDFORCE_LITE_POSTGRES_TEST_DSN is not set")
+	}
+	store, err := OpenPostgresStore(context.Background(), dsn)
+	if err != nil {
+		t.Fatalf("OpenPostgresStore returned error: %v", err)
+	}
+	defer store.Close()
+	if err := store.Migrate(context.Background()); err != nil {
+		t.Fatalf("Migrate returned error: %v", err)
+	}
+
+	runID := NewID("run")
+	deployment := contract.Deployment{
+		Workspace: "postgres-conflict-test",
+		App:       "echo",
+		Commit:    "commit-a",
+		Actions: map[string]contract.Action{
+			"echo": {Action: "echo"},
+		},
+	}
+	run := NewRun("test", runID, "echo", "echo", deployment, json.RawMessage(`{}`))
+	job := NewActionJob(run, json.RawMessage(`{}`))
+	defer func() {
+		_, _ = store.pool.Exec(context.Background(), `DELETE FROM run_events WHERE run_id=$1`, runID)
+		_, _ = store.pool.Exec(context.Background(), `DELETE FROM jobs WHERE run_id=$1`, runID)
+		_, _ = store.pool.Exec(context.Background(), `DELETE FROM runs WHERE id=$1`, runID)
+	}()
+
+	if err := store.CreateRunAndEnqueue(context.Background(), run, job); err != nil {
+		t.Fatalf("first CreateRunAndEnqueue returned error: %v", err)
+	}
+	duplicate := NewActionJob(run, json.RawMessage(`{}`))
+	err = store.CreateRunAndEnqueue(context.Background(), run, duplicate)
+	if !errors.Is(err, ErrConflict) {
+		t.Fatalf("duplicate CreateRunAndEnqueue error = %v, want ErrConflict", err)
+	}
+}
+
 func TestLocalStoreJobState(t *testing.T) {
 	store := NewLocalStore(t.TempDir() + "/state.json")
 	exerciseStoreJobState(t, store)

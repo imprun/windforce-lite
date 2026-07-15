@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/imprun/windforce-lite/internal/contract"
@@ -274,7 +275,7 @@ func (s *PostgresStore) RequeueQueuedJobsForApp(ctx context.Context, spec Requeu
 }
 
 func (s *PostgresStore) CreateRunAndEnqueue(ctx context.Context, run Run, job Job) error {
-	return s.withTx(ctx, func(tx pgx.Tx) error {
+	err := s.withTx(ctx, func(tx pgx.Tx) error {
 		now := time.Now().UTC()
 		run.CreatedAt = nonZeroTime(run.CreatedAt, now)
 		run.UpdatedAt = now
@@ -321,6 +322,11 @@ INSERT INTO jobs (
 		jobEnqueued := eventPayload(run.CorrelationID, map[string]any{"jobId": job.ID})
 		return insertEvent(ctx, tx, run.ID, "job_enqueued", jobEnqueued)
 	})
+	var postgresError *pgconn.PgError
+	if errors.As(err, &postgresError) && postgresError.Code == "23505" {
+		return fmt.Errorf("%w: run or job already exists", ErrConflict)
+	}
+	return err
 }
 
 func (s *PostgresStore) GetRun(ctx context.Context, runID string) (Run, error) {
