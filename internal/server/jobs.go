@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/imprun/windforce-lite/internal/contract"
+	executionpkg "github.com/imprun/windforce-lite/internal/execution"
 	"github.com/imprun/windforce-lite/internal/state"
 )
 
@@ -110,69 +111,24 @@ func (h *Handler) enqueueJobRun(w http.ResponseWriter, r *http.Request, workspac
 }
 
 func (h *Handler) enqueueJob(w http.ResponseWriter, r *http.Request, workspaceID string, app string, action string, triggerKind string, input json.RawMessage, triggerHeaders json.RawMessage) (state.Job, bool) {
-	if h.store == nil || h.catalog == nil {
-		writeError(w, http.StatusServiceUnavailable, "job API is not configured")
-		return state.Job{}, false
-	}
-	if !validAppKey(app) || !validActionKey(action) {
-		writeError(w, http.StatusBadRequest, "invalid app/action key")
-		return state.Job{}, false
-	}
-	workspaceID = contract.NormalizeWorkspace(workspaceID)
-	deployment, err := h.lookupDeployment(r.Context(), workspaceID, app)
+	actor := requestActorSubject(r)
+	admission, err := h.execution.CreateRun(r.Context(), executionpkg.CreateRunRequest{
+		Workspace:      workspaceID,
+		App:            app,
+		Action:         action,
+		Input:          input,
+		Adapter:        "http",
+		TriggerKind:    triggerKind,
+		TriggerHeaders: triggerHeaders,
+		CorrelationID:  r.Header.Get("X-Request-ID"),
+		CreatedBy:      actor,
+		PermissionedAs: actor,
+	})
 	if err != nil {
-		writeError(w, http.StatusNotFound, "app not found: "+app)
+		writeLegacyExecutionFault(w, err)
 		return state.Job{}, false
 	}
-	actionSpec, ok := deployment.Actions[action]
-	if !ok {
-		writeError(w, http.StatusNotFound, "action not found: "+app+"/"+action)
-		return state.Job{}, false
-	}
-	effectiveCapabilities := contract.EffectiveCapabilities(deployment.RequiredCapabilities, actionSpec.Capabilities)
-	capabilityTagConflict, err := contract.CapabilityTagConflict(deployment.Tag, deployment.TagOverride, actionSpec.Tag, actionSpec.TagOverride, effectiveCapabilities)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return state.Job{}, false
-	}
-	if capabilityTagConflict {
-		writeError(w, http.StatusConflict, "required worker capability conflicts with explicit tag routing")
-		return state.Job{}, false
-	}
-	run := state.NewRun("windforce", "", app, action, deployment, input)
-	if actor := requestActorSubject(r); actor != "" {
-		run.CreatedBy = actor
-		run.PermissionedAs = actor
-	}
-	if correlationID := state.CleanID(r.Header.Get("X-Request-ID")); correlationID != "" {
-		run.CorrelationID = correlationID
-	}
-	job := state.NewActionJob(run, input)
-	job.Payload.TriggerKind = triggerKind
-	job.Payload.TriggerHeaders = cloneRawMessage(triggerHeaders)
-	schemaReader := h.newCanonicalSchemaReader(r.Context(), deployment)
-	defer schemaReader.Close()
-	inputSchema, err := schemaReader.Read(actionSpec.InputSchema, actionSpec.InputSchemaBody)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return state.Job{}, false
-	}
-	outputSchema, err := schemaReader.Read(actionSpec.OutputSchema, actionSpec.OutputSchemaBody)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return state.Job{}, false
-	}
-	job.Payload.InputSchema = inputSchema
-	job.Payload.OutputSchema = outputSchema
-	if err := h.store.CreateRunAndEnqueue(r.Context(), run, job); err != nil {
-		status := http.StatusInternalServerError
-		if errors.Is(err, state.ErrConflict) {
-			status = http.StatusConflict
-		}
-		writeError(w, status, err.Error())
-		return state.Job{}, false
-	}
-	return job, true
+	return admission.Job, true
 }
 
 func (h *Handler) handleJobStatus(w http.ResponseWriter, r *http.Request, workspaceID string, jobID string) {
