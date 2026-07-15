@@ -22,6 +22,7 @@ type executionCreateRunRequest struct {
 	CorrelationID  string          `json:"correlation_id,omitempty"`
 	IdempotencyKey string          `json:"idempotency_key,omitempty"`
 	Env            []string        `json:"env,omitempty"`
+	ClientKey      string          `json:"client_key,omitempty"`
 }
 
 type executionPinnedRelease struct {
@@ -101,6 +102,7 @@ func (h *Handler) handleExecutionCreateRun(w http.ResponseWriter, r *http.Reques
 		CorrelationID:  request.CorrelationID,
 		IdempotencyKey: request.IdempotencyKey,
 		Env:            request.Env,
+		ClientKey:      request.ClientKey,
 		CreatedBy:      actor,
 		PermissionedAs: actor,
 	})

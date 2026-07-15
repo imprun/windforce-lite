@@ -40,6 +40,19 @@ func (s *LocalStore) GetClient(ctx context.Context, workspaceID string, id strin
 	return client, nil
 }
 
+func (s *LocalStore) GetClientByExternalKey(ctx context.Context, workspaceID string, externalKey string) (Client, error) {
+	snapshot, err := s.Load(ctx)
+	if err != nil {
+		return Client{}, err
+	}
+	for _, client := range snapshot.Clients[contract.NormalizeWorkspace(workspaceID)] {
+		if client.ExternalKey == externalKey {
+			return client, nil
+		}
+	}
+	return Client{}, ErrNotFound
+}
+
 func (s *LocalStore) CreateClient(ctx context.Context, workspaceID string, name string, externalKey string, actor string) (Client, error) {
 	workspaceID = contract.NormalizeWorkspace(workspaceID)
 	var created Client
@@ -92,6 +105,11 @@ func (s *LocalStore) DeleteClient(ctx context.Context, workspaceID string, id st
 			return ErrNotFound
 		}
 		delete(snapshot.Clients[workspaceID], id)
+		for key, config := range snapshot.InputConfigs[workspaceID] {
+			if config.ClientID == id {
+				delete(snapshot.InputConfigs[workspaceID], key)
+			}
+		}
 		appendLocalClientAudit(snapshot, workspaceID, id, "deleted", "", actor, now)
 		return nil
 	})

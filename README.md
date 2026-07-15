@@ -225,6 +225,10 @@ Implemented control-plane endpoints:
 - `GET /api/w/{workspace}/apps/{app}/actions/{action}` (canonical action detail including base64-encoded materialized `input_schema` and `output_schema`, matching Windforce catalog action JSON encoding)
 - `GET /api/w/{workspace}/apps/{app}/actions/{action}/schema` (materialized action schemas as raw JSON Schema documents)
 - `PATCH /api/w/{workspace}/apps/{app}/actions/{action}`
+- `GET|PUT|DELETE /api/w/{workspace}/apps/{app}/input-configs` (app/action/client input settings)
+- `GET /api/w/{workspace}/apps/{app}/input-config-audit`
+- `GET /api/w/{workspace}/clients/{clientId}/input-configs`
+- `GET /api/w/{workspace}/clients/{clientId}/input-config-audit`
 - `GET /api/w/{workspace}/worker-tags`
 - `POST /api/w/{workspace}/jobs/run/{app}/{action}`
 - `POST /api/w/{workspace}/jobs/run/{app}/{action}/wait?timeout_ms={ms}`
@@ -251,6 +255,11 @@ model:
 - `POST /execution/v1/workspaces/{workspace}/runs/{runId}/cancel`
 - `GET /execution/v1/workspaces/{workspace}/apps/{app}`
 - `GET /execution/v1/openapi.json`
+
+Trusted protocol adapters may include `client_key` when creating a Run. The
+value identifies a Client Registry record and selects client-scoped input
+settings; it is not an API credential. Run admission rejects unknown client
+keys and caller-supplied values for locked input keys.
 
 The lite script context exposes the implemented basic helpers:
 `ctx.variables`, `ctx.resources`, `ctx.state`, `ctx.http`, `ctx.logger`,
@@ -374,6 +383,13 @@ Job input and job result output are stored with the same Windforce
 `--secret-key-env` / `--secret-key-previous-env` values; when omitted, both use
 the local development default so standalone and compose runs continue to work
 without extra setup.
+
+Input settings are resolved in this order: app default, action default, client
+app, client action, then request input. Each layer performs a shallow top-level
+merge. Locked keys are the union of all applied layers, and their configured
+values cannot be overridden by the request. Setting values are encrypted at
+rest and are merged by the worker after it decrypts the persisted job input, so
+configured values are not copied into Run or Job records.
 
 ## Runtime architecture
 

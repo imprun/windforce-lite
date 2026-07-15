@@ -520,6 +520,70 @@ textarea {
   margin-left: 6px;
 }
 
+.iconButton {
+  width: 34px;
+  height: 32px;
+  padding: 0;
+  flex: 0 0 auto;
+}
+
+.inlineActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.lockedCount {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.inputConfigEditor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.inputConfigHeader,
+.inputConfigRow {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.9fr) minmax(240px, 1.7fr) 34px 34px;
+  gap: 8px;
+  align-items: start;
+}
+
+.inputConfigHeader {
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 650;
+  text-transform: uppercase;
+  padding: 0 2px;
+}
+
+.inputConfigRow textarea {
+  min-height: 36px;
+  resize: vertical;
+  line-height: 1.45;
+}
+
+.inputConfigAdd {
+  align-self: flex-start;
+  margin-top: 2px;
+}
+
+.inputSettingsTable th:nth-child(3),
+.inputSettingsTable th:nth-child(4),
+.inputSettingsTable td:nth-child(3),
+.inputSettingsTable td:nth-child(4) {
+  width: 88px;
+  text-align: right;
+}
+
 /* ---------- badges ---------- */
 
 .badge {
@@ -1509,5 +1573,33 @@ textarea {
   .navItem {
     justify-content: center;
     padding: 8px;
+  }
+
+  .inputConfigHeader {
+    display: none;
+  }
+
+  .inputConfigRow {
+    grid-template-columns: 1fr 34px 34px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .inputConfigRow input,
+  .inputConfigRow textarea {
+    grid-column: 1 / -1;
+  }
+
+  .inputConfigRow .iconButton:first-of-type {
+    grid-column: 2;
+  }
+
+  .inlineActions {
+    width: 100%;
+  }
+
+  .inlineActions select {
+    min-width: 0;
+    flex: 1 1 170px;
   }
 }

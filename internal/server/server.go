@@ -251,6 +251,14 @@ func (h *Handler) handleAPI(w http.ResponseWriter, r *http.Request) bool {
 		h.handleCanonicalClientAudit(w, r, parts[2], parts[4])
 		return true
 	}
+	if len(parts) == 6 && parts[0] == "api" && parts[1] == "w" && parts[3] == "clients" && parts[5] == "input-configs" && r.Method == http.MethodGet {
+		h.handleCanonicalClientInputConfigs(w, r, parts[2], parts[4])
+		return true
+	}
+	if len(parts) == 6 && parts[0] == "api" && parts[1] == "w" && parts[3] == "clients" && parts[5] == "input-config-audit" && r.Method == http.MethodGet {
+		h.handleCanonicalClientInputConfigAudit(w, r, parts[2], parts[4])
+		return true
+	}
 	if len(parts) == 4 && parts[0] == "api" && parts[1] == "w" && parts[3] == "git_sources" && r.Method == http.MethodGet {
 		h.handleCanonicalGitSources(w, r, parts[2])
 		return true
@@ -305,6 +313,22 @@ func (h *Handler) handleAPI(w http.ResponseWriter, r *http.Request) bool {
 	}
 	if len(parts) == 6 && parts[0] == "api" && parts[1] == "w" && parts[3] == "apps" && parts[5] == "openapi.json" && r.Method == http.MethodGet {
 		h.handleCanonicalAppOpenAPI(w, r, parts[2], parts[4])
+		return true
+	}
+	if len(parts) == 6 && parts[0] == "api" && parts[1] == "w" && parts[3] == "apps" && parts[5] == "input-configs" && r.Method == http.MethodGet {
+		h.handleCanonicalAppInputConfigs(w, r, parts[2], parts[4])
+		return true
+	}
+	if len(parts) == 6 && parts[0] == "api" && parts[1] == "w" && parts[3] == "apps" && parts[5] == "input-configs" && r.Method == http.MethodPut {
+		h.handleCanonicalSetInputConfig(w, r, parts[2], parts[4])
+		return true
+	}
+	if len(parts) == 6 && parts[0] == "api" && parts[1] == "w" && parts[3] == "apps" && parts[5] == "input-configs" && r.Method == http.MethodDelete {
+		h.handleCanonicalDeleteInputConfig(w, r, parts[2], parts[4])
+		return true
+	}
+	if len(parts) == 6 && parts[0] == "api" && parts[1] == "w" && parts[3] == "apps" && parts[5] == "input-config-audit" && r.Method == http.MethodGet {
+		h.handleCanonicalAppInputConfigAudit(w, r, parts[2], parts[4])
 		return true
 	}
 	if len(parts) == 5 && parts[0] == "api" && parts[1] == "w" && parts[3] == "apps" && r.Method == http.MethodGet {

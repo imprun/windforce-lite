@@ -2,6 +2,7 @@ import { matchRoute, useRouter } from "./lib/router";
 import { AppDetailPage } from "./pages/AppDetailPage";
 import { AppsPage } from "./pages/AppsPage";
 import { ClientRegistryPage } from "./pages/ClientRegistryPage";
+import { ClientDetailPage } from "./pages/ClientDetailPage";
 import { MonitoringPage } from "./pages/MonitoringPage";
 import { SettingsPage } from "./pages/SettingsPage";
 
@@ -24,6 +25,8 @@ export function App() {
   }
 
   if (matchRoute("/monitoring", path)) return <MonitoringPage />;
+  const clientDetail = matchRoute("/clients/:id", path);
+  if (clientDetail?.id) return <ClientDetailPage clientID={clientDetail.id} />;
   if (matchRoute("/clients", path)) return <ClientRegistryPage />;
   // Back-compat: /jobs was the pre-rename route, and /jobs/{id} was the
   // removed per-job detail page (ADR 0005).

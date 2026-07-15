@@ -21,6 +21,8 @@ type Store interface {
 	CreateRunAndEnqueue(ctx context.Context, run state.Run, job state.Job) error
 	GetRun(ctx context.Context, runID string) (state.Run, error)
 	CancelRun(ctx context.Context, runID string, reason string) (state.Run, error)
+	GetClientByExternalKey(ctx context.Context, workspaceID string, externalKey string) (state.Client, error)
+	ResolveInput(ctx context.Context, workspaceID string, appKey string, actionKey string, clientID string, request json.RawMessage) (json.RawMessage, error)
 }
 
 type FaultKind string
@@ -82,6 +84,7 @@ type CreateRunRequest struct {
 	CorrelationID  string
 	IdempotencyKey string
 	Env            []string
+	ClientKey      string
 	CreatedBy      string
 	PermissionedAs string
 }
@@ -135,9 +138,30 @@ func (s *Service) CreateRun(ctx context.Context, request CreateRunRequest) (Admi
 	if conflict {
 		return Admission{}, &Fault{Kind: FaultRoutingConflict, Message: "required worker capability conflicts with explicit tag routing"}
 	}
+	clientID := ""
+	if clientKey := strings.TrimSpace(request.ClientKey); clientKey != "" {
+		client, err := s.store.GetClientByExternalKey(ctx, request.Workspace, clientKey)
+		if err != nil {
+			if errors.Is(err, state.ErrNotFound) {
+				return Admission{}, &Fault{Kind: FaultInvalidRequest, Message: "unknown client key"}
+			}
+			return Admission{}, &Fault{Kind: FaultInternal, Message: "could not resolve client", Err: err}
+		}
+		clientID = client.ID
+	}
+	if _, err := s.store.ResolveInput(ctx, request.Workspace, request.App, request.Action, clientID, request.Input); err != nil {
+		var locked *state.LockedKeysError
+		if errors.As(err, &locked) {
+			return Admission{}, &Fault{Kind: FaultInvalidRequest, Message: locked.Error()}
+		}
+		return Admission{}, &Fault{Kind: FaultInternal, Message: "could not validate input settings", Err: err}
+	}
 
 	runID := ""
 	if key := strings.TrimSpace(request.IdempotencyKey); key != "" {
+		if clientID != "" {
+			key += "\x00client:" + clientID
+		}
 		runID = deterministicRunID(request.Workspace, request.App, request.Action, key)
 	}
 	adapter := strings.TrimSpace(request.Adapter)
@@ -149,6 +173,7 @@ func (s *Service) CreateRun(ctx context.Context, request CreateRunRequest) (Admi
 	run.Env = cloneStrings(request.Env)
 	run.CreatedBy = strings.TrimSpace(request.CreatedBy)
 	run.PermissionedAs = strings.TrimSpace(request.PermissionedAs)
+	run.ClientID = clientID
 	job := state.NewActionJob(run, cloneRaw(request.Input))
 	job.Payload.TriggerKind = strings.TrimSpace(request.TriggerKind)
 	if job.Payload.TriggerKind == "" {

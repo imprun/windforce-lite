@@ -16,9 +16,14 @@ run = client.create_run(
     app="example",
     action="lookup",
     input={"query": "value"},
+    client_key="external-client-key",
     adapter="http",
     idempotency_key="request-123",
 )
 run = client.wait(run.run_id, timeout_seconds=60)
 result = client.get_result(run.run_id)
 ```
+
+`client_key` is an optional external Client Registry key asserted by a trusted
+trigger adapter. It selects client-scoped input settings and is not a Windforce
+API credential.

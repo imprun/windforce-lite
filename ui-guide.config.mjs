@@ -75,26 +75,62 @@ export default {
         body: { confirm: true, message: "UI guide release" },
       });
     }
-    await waitForSeedRun(api);
+    const client = await api("/clients", {
+      method: "POST",
+      headers: { "x-windforce-actor": "ui-guide@example.test" },
+      body: { name: "Example Retailer", external_key: "ui-guide-client" },
+    });
+    await api("/apps/echo/input-configs", {
+      method: "PUT",
+      headers: { "x-windforce-actor": "ui-guide@example.test" },
+      body: {
+        action_key: "echo",
+        client_id: client.id,
+        config: { message: "configured for Example Retailer", response_mode: "compact" },
+        locked_keys: ["message"],
+      },
+    });
+    await waitForClientConfigRun();
   },
 };
 
-async function waitForSeedRun(api) {
-  let lastError = "";
-  for (let attempt = 0; attempt < 6; attempt += 1) {
-    try {
-      const result = await api("/jobs/run/echo/echo/wait?timeout_ms=30000", {
-        method: "POST",
-        body: { message: "hello from the UI guide" },
-      });
-      if (result.status === "success") return;
-      lastError = result.result?.message || result.status || "unknown failure";
-    } catch (error) {
-      lastError = error.message;
-    }
-    await sleep(500 * (attempt + 1));
+async function waitForClientConfigRun() {
+  const runsURL = `http://127.0.0.1:${port}/execution/v1/workspaces/default/runs`;
+  const rejected = await fetch(runsURL, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ app: "echo", action: "echo", client_key: "ui-guide-client", input: { message: "caller value" } }),
+  });
+  if (rejected.status !== 400) {
+    throw new Error(`locked input was not rejected: HTTP ${rejected.status}`);
   }
-  throw new Error(`seed run did not succeed: ${lastError}`);
+
+  const admitted = await fetch(runsURL, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ app: "echo", action: "echo", client_key: "ui-guide-client", input: {} }),
+  });
+  if (!admitted.ok) {
+    throw new Error(`client-config run admission failed: HTTP ${admitted.status} ${await admitted.text()}`);
+  }
+  const run = await admitted.json();
+
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    const response = await fetch(`${runsURL}/${encodeURIComponent(run.run_id)}/result`);
+    const result = await response.json();
+    if (response.status === 202) {
+      await sleep(250);
+      continue;
+    }
+    if (!response.ok) {
+      throw new Error(`client-config run failed: HTTP ${response.status} ${JSON.stringify(result)}`);
+    }
+    if (result.output?.input?.message !== "configured for Example Retailer") {
+      throw new Error(`worker did not apply client input settings: ${JSON.stringify(result)}`);
+    }
+    return;
+  }
+  throw new Error("client-config run did not finish");
 }
 
 function sleep(ms) {

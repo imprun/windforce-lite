@@ -44,6 +44,18 @@ FROM client_registry WHERE workspace_id=$1 AND id=$2
 	return client, err
 }
 
+func (s *PostgresStore) GetClientByExternalKey(ctx context.Context, workspaceID string, externalKey string) (Client, error) {
+	client, err := scanClient(s.pool.QueryRow(ctx, `
+SELECT id, workspace_id, name, external_key, created_by, updated_by, created_at, updated_at
+FROM client_registry
+WHERE workspace_id=$1 AND external_key=$2
+`, contract.NormalizeWorkspace(workspaceID), externalKey))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Client{}, ErrNotFound
+	}
+	return client, err
+}
+
 func (s *PostgresStore) CreateClient(ctx context.Context, workspaceID string, name string, externalKey string, actor string) (Client, error) {
 	workspaceID = contract.NormalizeWorkspace(workspaceID)
 	id := NewID("client")

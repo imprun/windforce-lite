@@ -18,7 +18,7 @@ import (
 
 const runColumns = `
 	id, adapter, app, action, state, deployment, input, output, result, error,
-	task_id, correlation_id, env, created_at, updated_at, expires_at
+	task_id, correlation_id, env, client_id, created_at, updated_at, expires_at
 `
 
 const jobColumns = `
@@ -299,11 +299,11 @@ func (s *PostgresStore) CreateRunAndEnqueue(ctx context.Context, run Run, job Jo
 		if _, err := tx.Exec(ctx, `
 INSERT INTO runs (
 	id, adapter, app, action, state, deployment, input, output, result, error,
-	task_id, correlation_id, env, created_at, updated_at, expires_at
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+	task_id, correlation_id, env, client_id, created_at, updated_at, expires_at
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
 `, run.ID, run.Adapter, run.App, run.Action, string(run.State), mustRaw(run.Deployment), requiredRaw(run.Input),
 			nullableRaw(run.Output), nullableResult(run.Result), nullableRaw(run.Error), nullableString(run.TaskID),
-			nullableString(run.CorrelationID), nullableStrings(run.Env), run.CreatedAt, run.UpdatedAt, run.ExpiresAt); err != nil {
+			nullableString(run.CorrelationID), nullableStrings(run.Env), nullableString(run.ClientID), run.CreatedAt, run.UpdatedAt, run.ExpiresAt); err != nil {
 			return err
 		}
 		if _, err := tx.Exec(ctx, `

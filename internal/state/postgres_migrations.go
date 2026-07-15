@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS runs (
     task_id TEXT,
     correlation_id TEXT,
     env JSONB,
+    client_id TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     expires_at TIMESTAMPTZ
@@ -155,9 +156,36 @@ CREATE TABLE IF NOT EXISTS client_registry_audit (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS input_config (
+    workspace_id TEXT NOT NULL,
+    app_key TEXT NOT NULL,
+    action_key TEXT NOT NULL DEFAULT '',
+    client_id TEXT,
+    config JSONB NOT NULL,
+    locked_keys TEXT[] NOT NULL DEFAULT '{}',
+    updated_by TEXT NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE NULLS NOT DISTINCT (workspace_id, app_key, action_key, client_id),
+    FOREIGN KEY (workspace_id, client_id)
+        REFERENCES client_registry(workspace_id, id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS input_config_audit (
+    id BIGSERIAL PRIMARY KEY,
+    workspace_id TEXT NOT NULL,
+    app_key TEXT NOT NULL,
+    action_key TEXT NOT NULL DEFAULT '',
+    client_id TEXT,
+    kind TEXT NOT NULL,
+    detail TEXT NOT NULL DEFAULT '',
+    actor TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 ALTER TABLE runs ADD COLUMN IF NOT EXISTS result JSONB;
 ALTER TABLE runs ADD COLUMN IF NOT EXISTS correlation_id TEXT;
 ALTER TABLE runs ADD COLUMN IF NOT EXISTS env JSONB;
+ALTER TABLE runs ADD COLUMN IF NOT EXISTS client_id TEXT;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS canceled_by TEXT;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS canceled_reason TEXT;
@@ -182,6 +210,12 @@ CREATE INDEX IF NOT EXISTS runs_correlation_id_idx
 
 CREATE INDEX IF NOT EXISTS client_registry_audit_client_idx
     ON client_registry_audit (workspace_id, client_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS input_config_lookup_idx
+    ON input_config (workspace_id, app_key, action_key, client_id);
+
+CREATE INDEX IF NOT EXISTS input_config_audit_lookup_idx
+    ON input_config_audit (workspace_id, app_key, client_id, created_at DESC);
 `)
 	return err
 }

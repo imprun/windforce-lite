@@ -60,6 +60,36 @@ export type ClientPayload = {
   external_key: string;
 };
 
+export type InputConfig = {
+  workspace_id: string;
+  app_key: string;
+  action_key: string;
+  client_id?: string;
+  config: Record<string, unknown>;
+  locked_keys: string[];
+  updated_by: string;
+  updated_at: string;
+};
+
+export type InputConfigPayload = {
+  action_key: string;
+  client_id?: string;
+  config: Record<string, unknown>;
+  locked_keys: string[];
+};
+
+export type InputConfigAudit = {
+  id: string;
+  workspace_id: string;
+  app_key: string;
+  action_key: string;
+  client_id?: string;
+  kind: string;
+  detail?: string;
+  actor: string;
+  created_at: string;
+};
+
 export type ProbeResult = {
   reachable: boolean;
   branch?: string;
@@ -251,6 +281,10 @@ export class WindforceApi {
     return this.request("/clients");
   }
 
+  client(id: string): Promise<Client> {
+    return this.request(`/clients/${encodeURIComponent(id)}`);
+  }
+
   createClient(payload: ClientPayload): Promise<Client> {
     return this.request("/clients", { method: "POST", body: payload });
   }
@@ -261,6 +295,36 @@ export class WindforceApi {
 
   async deleteClient(id: string): Promise<void> {
     await this.request(`/clients/${encodeURIComponent(id)}`, { method: "DELETE" });
+  }
+
+  clientInputConfigs(id: string): Promise<InputConfig[]> {
+    return this.request(`/clients/${encodeURIComponent(id)}/input-configs`);
+  }
+
+  clientInputConfigAudit(id: string): Promise<InputConfigAudit[]> {
+    return this.request(`/clients/${encodeURIComponent(id)}/input-config-audit`);
+  }
+
+  appInputConfigs(appKey: string): Promise<InputConfig[]> {
+    return this.request(`/apps/${encodeURIComponent(appKey)}/input-configs`);
+  }
+
+  appInputConfigAudit(appKey: string): Promise<InputConfigAudit[]> {
+    return this.request(`/apps/${encodeURIComponent(appKey)}/input-config-audit`);
+  }
+
+  setInputConfig(appKey: string, payload: InputConfigPayload): Promise<InputConfig> {
+    return this.request(`/apps/${encodeURIComponent(appKey)}/input-configs`, { method: "PUT", body: payload });
+  }
+
+  async deleteInputConfig(appKey: string, actionKey: string, clientID = ""): Promise<void> {
+    const params = new URLSearchParams();
+    if (actionKey) params.set("action_key", actionKey);
+    if (clientID) params.set("client_id", clientID);
+    const query = params.toString();
+    await this.request(`/apps/${encodeURIComponent(appKey)}/input-configs${query ? `?${query}` : ""}`, {
+      method: "DELETE",
+    });
   }
 
   gitSources(): Promise<GitSource[]> {

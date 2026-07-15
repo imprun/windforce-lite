@@ -72,6 +72,26 @@ func buildControlPlaneOpenAPI(baseURL string, workspaceID string) map[string]any
 				}, "401", "403"),
 			},
 		},
+		"/api/w/{workspace}/clients/{client_id}/input-configs": map[string]any{
+			"get": map[string]any{
+				"operationId": "listClientInputConfigs",
+				"summary":     "List input settings for an external client",
+				"parameters":  []any{oapiWorkspaceParam(workspaceID), oapiPathParam("client_id", "Client id.")},
+				"responses": withErrors(map[string]any{
+					"200": oapiResponse("Client input settings.", map[string]any{"type": "array", "items": oapiSchemaRef("InputConfig")}),
+				}, "401", "403", "404"),
+			},
+		},
+		"/api/w/{workspace}/clients/{client_id}/input-config-audit": map[string]any{
+			"get": map[string]any{
+				"operationId": "listClientInputConfigAudit",
+				"summary":     "List input-setting audit records for an external client",
+				"parameters":  []any{oapiWorkspaceParam(workspaceID), oapiPathParam("client_id", "Client id.")},
+				"responses": withErrors(map[string]any{
+					"200": oapiResponse("Client input-setting audit trail.", map[string]any{"type": "array", "items": oapiSchemaRef("InputConfigAudit")}),
+				}, "401", "403", "404"),
+			},
+		},
 		"/api/w/{workspace}/git_sources": map[string]any{
 			"get": map[string]any{
 				"operationId": "listGitSources",
@@ -236,6 +256,47 @@ func buildControlPlaneOpenAPI(baseURL string, workspaceID string) map[string]any
 				"responses": withErrors(map[string]any{
 					"200": oapiResponse("App invocation OpenAPI.", map[string]any{"type": "object", "additionalProperties": true}),
 				}, "400", "401", "403", "404"),
+			},
+		},
+		"/api/w/{workspace}/apps/{app}/input-configs": map[string]any{
+			"get": map[string]any{
+				"operationId": "listAppInputConfigs",
+				"summary":     "List default and client-specific input settings",
+				"parameters":  []any{oapiWorkspaceParam(workspaceID), oapiPathParam("app", "App key.")},
+				"responses": withErrors(map[string]any{
+					"200": oapiResponse("App input settings.", map[string]any{"type": "array", "items": oapiSchemaRef("InputConfig")}),
+				}, "401", "403", "404"),
+			},
+			"put": map[string]any{
+				"operationId": "setAppInputConfig",
+				"summary":     "Set one app, action, and client input-setting layer",
+				"parameters":  []any{oapiWorkspaceParam(workspaceID), oapiPathParam("app", "App key.")},
+				"requestBody": oapiJSONBody(oapiSchemaRef("SetInputConfigRequest"), true),
+				"responses": withErrors(map[string]any{
+					"200": oapiResponse("Saved input-setting layer.", oapiSchemaRef("InputConfig")),
+				}, "400", "401", "403", "404"),
+			},
+			"delete": map[string]any{
+				"operationId": "deleteAppInputConfig",
+				"summary":     "Delete one input-setting layer",
+				"parameters": []any{
+					oapiWorkspaceParam(workspaceID), oapiPathParam("app", "App key."),
+					oapiQueryParam("action_key", "Empty selects the app-level layer.", oapiStringSchema(), false),
+					oapiQueryParam("client_id", "Empty selects the client-independent default layer.", oapiStringSchema(), false),
+				},
+				"responses": withErrors(map[string]any{
+					"204": oapiResponse("Input-setting layer deleted.", nil),
+				}, "400", "401", "403", "404"),
+			},
+		},
+		"/api/w/{workspace}/apps/{app}/input-config-audit": map[string]any{
+			"get": map[string]any{
+				"operationId": "listAppInputConfigAudit",
+				"summary":     "List input-setting audit records for an app",
+				"parameters":  []any{oapiWorkspaceParam(workspaceID), oapiPathParam("app", "App key.")},
+				"responses": withErrors(map[string]any{
+					"200": oapiResponse("App input-setting audit trail.", map[string]any{"type": "array", "items": oapiSchemaRef("InputConfigAudit")}),
+				}, "401", "403", "404"),
 			},
 		},
 		"/api/w/{workspace}/apps/{app}/actions/{action}": map[string]any{
@@ -628,6 +689,45 @@ func controlPlaneSchemas() map[string]any {
 				"created_at":   oapiDateTimeSchema(),
 			},
 			"required": []any{"id", "workspace_id", "client_id", "kind", "actor", "created_at"},
+		},
+		"InputConfig": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"workspace_id": oapiStringSchema(),
+				"app_key":      oapiStringSchema(),
+				"action_key":   oapiStringSchema(),
+				"client_id":    oapiStringSchema(),
+				"config":       map[string]any{"type": "object", "additionalProperties": true},
+				"locked_keys":  stringArray,
+				"updated_by":   oapiStringSchema(),
+				"updated_at":   oapiDateTimeSchema(),
+			},
+			"required": []any{"workspace_id", "app_key", "action_key", "config", "locked_keys", "updated_by", "updated_at"},
+		},
+		"SetInputConfigRequest": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"action_key":  oapiStringSchema(),
+				"client_id":   oapiStringSchema(),
+				"config":      map[string]any{"type": "object", "additionalProperties": true},
+				"locked_keys": stringArray,
+			},
+			"required": []any{"config", "locked_keys"},
+		},
+		"InputConfigAudit": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"id":           oapiStringSchema(),
+				"workspace_id": oapiStringSchema(),
+				"app_key":      oapiStringSchema(),
+				"action_key":   oapiStringSchema(),
+				"client_id":    oapiStringSchema(),
+				"kind":         oapiStringSchema(),
+				"detail":       oapiStringSchema(),
+				"actor":        oapiStringSchema(),
+				"created_at":   oapiDateTimeSchema(),
+			},
+			"required": []any{"id", "workspace_id", "app_key", "action_key", "kind", "actor", "created_at"},
 		},
 		"GitSource": map[string]any{
 			"type": "object",

@@ -107,6 +107,54 @@ func TestProcessorCompletesQueuedRun(t *testing.T) {
 	}
 }
 
+func TestProcessorAppliesInputConfigBeforeExecution(t *testing.T) {
+	processor, stateStore, run := newProcessorTestHarness(t, "echo")
+	if _, err := stateStore.SetInputConfig(context.Background(), state.InputConfig{
+		WorkspaceID: "workspace-a", AppKey: "echo", ActionKey: "echo",
+		Config: json.RawMessage(`{"region":"kr"}`),
+	}, "operator"); err != nil {
+		t.Fatal(err)
+	}
+	processed, err := processor.ProcessOne(context.Background())
+	if err != nil || !processed {
+		t.Fatalf("ProcessOne = %v, %v", processed, err)
+	}
+	completed, err := stateStore.GetRun(context.Background(), run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var output struct {
+		Input map[string]json.RawMessage `json:"input"`
+	}
+	if err := json.Unmarshal(completed.Output, &output); err != nil {
+		t.Fatal(err)
+	}
+	if string(output.Input["region"]) != `"kr"` || string(output.Input["message"]) != `"hello"` {
+		t.Fatalf("worker input = %s", completed.Output)
+	}
+}
+
+func TestProcessorRejectsLockedInputConfig(t *testing.T) {
+	processor, stateStore, run := newProcessorTestHarness(t, "echo")
+	if _, err := stateStore.SetInputConfig(context.Background(), state.InputConfig{
+		WorkspaceID: "workspace-a", AppKey: "echo", ActionKey: "echo",
+		Config: json.RawMessage(`{"message":"server"}`), LockedKeys: []string{"message"},
+	}, "operator"); err != nil {
+		t.Fatal(err)
+	}
+	processed, err := processor.ProcessOne(context.Background())
+	if err != nil || !processed {
+		t.Fatalf("ProcessOne = %v, %v", processed, err)
+	}
+	completed, err := stateStore.GetRun(context.Background(), run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if completed.State != state.RunFailed || completed.Result == nil || !strings.Contains(string(completed.Result.Output), "InputConfigLocked") {
+		t.Fatalf("completed = %#v", completed)
+	}
+}
+
 func TestProcessorAppliesLogSizeCap(t *testing.T) {
 	processor, stateStore, run := newProcessorTestHarness(t, "echo")
 	processor.LogCapBytes = 5

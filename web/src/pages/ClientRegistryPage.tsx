@@ -5,6 +5,7 @@ import { ClientDialog } from "../features/ClientDialog";
 import type { Client } from "../lib/api";
 import { useApp, useAsync } from "../lib/app-context";
 import { formatRelative, formatTime } from "../lib/format";
+import { Link } from "../lib/router";
 
 export function ClientRegistryPage() {
   const { api } = useApp();
@@ -72,7 +73,9 @@ export function ClientRegistryPage() {
                 {clients.map((client) => (
                   <tr key={client.id}>
                     <td>
-                      <span className="cellTitle">{client.name}</span>
+                      <Link className="cellTitle" to={`/clients/${client.id}`}>
+                        {client.name}
+                      </Link>
                     </td>
                     <td className="mono">{client.external_key}</td>
                     <td title={formatTime(client.updated_at)}>

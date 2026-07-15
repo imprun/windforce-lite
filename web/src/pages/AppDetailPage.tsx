@@ -13,6 +13,7 @@ import {
 import { StatTile, WindowSelector, windowLabel } from "../components/stats";
 import { PublishReleaseDialog } from "../features/PublishReleaseDialog";
 import { RepositorySettings } from "../features/RepositorySettings";
+import { AppInputSettings } from "../features/AppInputSettings";
 import {
   type ActionView,
   type ActionSchemas,
@@ -31,6 +32,7 @@ import { describeSchema, formatSchemaValue, type SchemaField } from "../lib/sche
 const tabs = [
   { key: "overview", label: "Overview" },
   { key: "docs", label: "Docs" },
+  { key: "input-settings", label: "Input Settings" },
   { key: "monitoring", label: "Monitoring" },
   { key: "repository", label: "Repository" },
   { key: "releases", label: "Releases" },
@@ -153,6 +155,7 @@ export function AppDetailPage({
           actionKey={actionKey}
         />
       ) : null}
+      {activeTab === "input-settings" && detail ? <AppInputSettings detail={detail} /> : null}
       {activeTab === "monitoring" ? <MonitoringTab app={app} /> : null}
       {activeTab === "repository" && source ? <RepositorySettings source={source} onChanged={state.reload} /> : null}
       {activeTab === "releases" ? (

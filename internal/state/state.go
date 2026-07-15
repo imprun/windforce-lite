@@ -91,6 +91,7 @@ type Run struct {
 	Env            []string            `json:"env,omitempty"`
 	CreatedBy      string              `json:"createdBy,omitempty"`
 	PermissionedAs string              `json:"permissionedAs,omitempty"`
+	ClientID       string              `json:"clientId,omitempty"`
 	CreatedAt      time.Time           `json:"createdAt"`
 	UpdatedAt      time.Time           `json:"updatedAt"`
 	ExpiresAt      *time.Time          `json:"expiresAt,omitempty"`
@@ -114,6 +115,7 @@ type JobPayload struct {
 	Env            []string            `json:"env,omitempty"`
 	CreatedBy      string              `json:"createdBy,omitempty"`
 	PermissionedAs string              `json:"permissionedAs,omitempty"`
+	ClientID       string              `json:"clientId,omitempty"`
 	FlowRunID      string              `json:"flowRunId,omitempty"`
 	FlowStepID     string              `json:"flowStepId,omitempty"`
 	FlowKey        string              `json:"flowKey,omitempty"`
@@ -297,6 +299,29 @@ type ClientAudit struct {
 	CreatedAt   time.Time `json:"created_at"`
 }
 
+type InputConfig struct {
+	WorkspaceID string          `json:"workspace_id"`
+	AppKey      string          `json:"app_key"`
+	ActionKey   string          `json:"action_key"`
+	ClientID    string          `json:"client_id,omitempty"`
+	Config      json.RawMessage `json:"config"`
+	LockedKeys  []string        `json:"locked_keys"`
+	UpdatedBy   string          `json:"updated_by"`
+	UpdatedAt   time.Time       `json:"updated_at"`
+}
+
+type InputConfigAudit struct {
+	ID          string    `json:"id"`
+	WorkspaceID string    `json:"workspace_id"`
+	AppKey      string    `json:"app_key"`
+	ActionKey   string    `json:"action_key"`
+	ClientID    string    `json:"client_id,omitempty"`
+	Kind        string    `json:"kind"`
+	Detail      string    `json:"detail,omitempty"`
+	Actor       string    `json:"actor"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
 func (record *ClientAudit) UnmarshalJSON(data []byte) error {
 	type auditAlias ClientAudit
 	if err := json.Unmarshal(data, (*auditAlias)(record)); err != nil {
@@ -341,6 +366,8 @@ type Snapshot struct {
 	Resources          map[string]map[string]Resource        `json:"resources"`
 	Clients            map[string]map[string]Client          `json:"clients"`
 	ClientAudits       map[string][]ClientAudit              `json:"clientAudits"`
+	InputConfigs       map[string]map[string]InputConfig     `json:"inputConfigs"`
+	InputConfigAudits  map[string][]InputConfigAudit         `json:"inputConfigAudits"`
 	LegacyClients      map[string]map[string]Client          `json:"apiClients,omitempty"`
 	LegacyClientAudits map[string][]ClientAudit              `json:"apiClientAudits,omitempty"`
 }
@@ -366,10 +393,17 @@ type Store interface {
 	GetResource(ctx context.Context, workspaceID string, path string) (Resource, bool, error)
 	ListClients(ctx context.Context, workspaceID string) ([]Client, error)
 	GetClient(ctx context.Context, workspaceID string, id string) (Client, error)
+	GetClientByExternalKey(ctx context.Context, workspaceID string, externalKey string) (Client, error)
 	CreateClient(ctx context.Context, workspaceID string, name string, externalKey string, actor string) (Client, error)
 	UpdateClient(ctx context.Context, workspaceID string, id string, name string, externalKey string, actor string) (Client, error)
 	DeleteClient(ctx context.Context, workspaceID string, id string, actor string) error
 	ListClientAudit(ctx context.Context, workspaceID string, id string) ([]ClientAudit, error)
+	ListInputConfigsForApp(ctx context.Context, workspaceID string, appKey string) ([]InputConfig, error)
+	ListInputConfigsForClient(ctx context.Context, workspaceID string, clientID string) ([]InputConfig, error)
+	SetInputConfig(ctx context.Context, config InputConfig, actor string) (InputConfig, error)
+	DeleteInputConfig(ctx context.Context, workspaceID string, appKey string, actionKey string, clientID string, actor string) error
+	ListInputConfigAudit(ctx context.Context, workspaceID string, appKey string, clientID string) ([]InputConfigAudit, error)
+	ResolveInput(ctx context.Context, workspaceID string, appKey string, actionKey string, clientID string, request json.RawMessage) (json.RawMessage, error)
 	DecryptInput(ctx context.Context, workspaceID string, input json.RawMessage) (json.RawMessage, error)
 	ClaimJob(ctx context.Context, workerID string, leaseTTL time.Duration) (Job, Lease, error)
 	ClaimJobForTags(ctx context.Context, workerID string, tags []string, leaseTTL time.Duration) (Job, Lease, error)
@@ -461,6 +495,7 @@ func NewActionJob(run Run, input json.RawMessage) Job {
 			Env:            append([]string(nil), run.Env...),
 			CreatedBy:      actorCreatedBy(run),
 			PermissionedAs: actorPermissionedAs(run),
+			ClientID:       run.ClientID,
 		},
 	}
 }

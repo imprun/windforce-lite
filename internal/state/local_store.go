@@ -986,6 +986,12 @@ func ensureSnapshot(snapshot *Snapshot) {
 			snapshot.ClientAudits = map[string][]ClientAudit{}
 		}
 	}
+	if snapshot.InputConfigs == nil {
+		snapshot.InputConfigs = map[string]map[string]InputConfig{}
+	}
+	if snapshot.InputConfigAudits == nil {
+		snapshot.InputConfigAudits = map[string][]InputConfigAudit{}
+	}
 	snapshot.LegacyClients = nil
 	snapshot.LegacyClientAudits = nil
 }

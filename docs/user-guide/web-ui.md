@@ -119,3 +119,13 @@ The sidebar collapses to an icon rail so wide tables get the full viewport. The 
 1. Click the collapse control beside the product title at the top of the sidebar.
 2. Navigate with the icon rail; hover shows each destination.
 3. Click the control again to expand the sidebar.
+
+## Manage client input settings
+
+Review app- and action-specific values applied for one external client.
+
+![Manage client input settings](../assets/ui/client-input-settings.png)
+
+1. Open Client Registry.
+2. Select an external client.
+3. Open a settings row to review its JSON values and locked keys.

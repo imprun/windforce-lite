@@ -17,7 +17,22 @@ func (h *Handler) handleExecutionOpenAPI(w http.ResponseWriter, r *http.Request)
 		"servers": []map[string]string{{"url": serverURL}},
 		"paths": map[string]any{
 			"/execution/v1/workspaces/{workspace}/runs": map[string]any{
-				"post": map[string]any{"summary": "Create a run", "operationId": "createRun", "responses": executionOpenAPIResponses("Run admitted")},
+				"post": map[string]any{
+					"summary": "Create a run", "operationId": "createRun",
+					"requestBody": oapiJSONBody(map[string]any{
+						"type": "object",
+						"properties": map[string]any{
+							"app":          oapiStringSchema(),
+							"action":       oapiStringSchema(),
+							"input":        map[string]any{"type": "object", "additionalProperties": true},
+							"client_key":   map[string]any{"type": "string", "description": "External Client Registry key asserted by a trusted trigger adapter. It is not a Windforce API credential."},
+							"adapter":      oapiStringSchema(),
+							"trigger_kind": oapiStringSchema(),
+						},
+						"required": []any{"app", "action", "input"},
+					}, true),
+					"responses": executionOpenAPIResponses("Run admitted"),
+				},
 			},
 			"/execution/v1/workspaces/{workspace}/runs/{run_id}": map[string]any{
 				"get": map[string]any{"summary": "Get run status", "operationId": "getRun", "responses": executionOpenAPIResponses("Run status")},
