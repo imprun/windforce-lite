@@ -72,21 +72,20 @@ docker compose --profile backend up -d control-plane
 docker compose --profile worker up -d worker
 ```
 
-`standalone` starts PostgreSQL, backend, and worker together. When the workspace
-devstack provides PostgreSQL and the HTTP trigger, set `WINDFORCE_LITE_DATABASE_URL`
-and `WINDFORCE_LITE_DATA_VOLUME`, then start only the `backend` and `worker`
-profiles. The data volume must be the same volume mounted by the HTTP trigger,
-because the trigger reads the active catalog that the control-plane writes.
-The compose `volume-init` service fixes the mounted data volume ownership before
-the control-plane or worker starts.
+`standalone` starts PostgreSQL, backend, and worker together. External protocol
+adapters join the Compose network and call the backend's versioned Execution
+API. PostgreSQL and the active catalog remain private to Windforce Lite. The
+compose `volume-init` service fixes the mounted data volume ownership before the
+control-plane or worker starts.
 
 ## Run
 
-A queued run executes an action from the active catalog:
+A run request is admitted and executed as follows:
 
-1. Read the app deployment from the catalog.
-2. Find the requested action.
-3. Fetch the deployment source by the deployment's pinned
+1. Resolve the active app deployment and requested action.
+2. Pin the deployment, action schemas, routing, and execution settings into a
+   Run and Job in one state-store transaction.
+3. Fetch the deployment source by the pinned
    workspace/git-source/commit into a local runtime cache.
 4. Execute the app-level entrypoint from the fetched source directory.
 5. Build the Windforce `ctx` object from `input.json` and `WF_*` environment.
@@ -242,6 +241,16 @@ Implemented control-plane endpoints:
 - `POST /api/w/{workspace}/resources`
 - `GET /api/w/{workspace}/resources/get/p/{path}`
 
+Protocol adapters use the Execution API instead of the control-plane storage
+model:
+
+- `POST /execution/v1/workspaces/{workspace}/runs`
+- `GET /execution/v1/workspaces/{workspace}/runs/{runId}`
+- `GET /execution/v1/workspaces/{workspace}/runs/{runId}/result`
+- `POST /execution/v1/workspaces/{workspace}/runs/{runId}/cancel`
+- `GET /execution/v1/workspaces/{workspace}/apps/{app}`
+- `GET /execution/v1/openapi.json`
+
 The lite script context exposes the implemented basic helpers:
 `ctx.variables`, `ctx.resources`, `ctx.state`, `ctx.http`, `ctx.logger`,
 and the run identity fields. Full Windforce flow approval URL minting
@@ -305,10 +314,12 @@ canonical action detail endpoint still keeps Windforce's catalog encoding:
 `GET /api/w/{workspace}/apps/{app}/actions/{action}` returns base64-encoded
 schema bytes.
 
-Action schemas are exposed through the Windforce control-plane API. Protocol
-adapters may translate trigger ingress and response envelopes, but they do not
-own schema discovery outside the control plane. The canonical app invocation
-schema endpoint is `GET /api/w/{workspace}/apps/{app}/openapi.json`.
+Action schemas are exposed to operators through the control-plane API and to
+protocol adapters through
+`GET /execution/v1/workspaces/{workspace}/apps/{app}`. Adapters translate their
+ingress and response envelopes while Windforce keeps release and schema
+selection authoritative. The canonical app invocation schema endpoint is
+`GET /api/w/{workspace}/apps/{app}/openapi.json`.
 `windforce-lite` additionally exposes `GET /api/w/{workspace}/openapi.json`
 only as generated documentation for the supported lite control-plane subset.
 The workspace `control-openapi` command reads that documentation endpoint,
@@ -365,28 +376,31 @@ without extra setup.
 
 ## Runtime architecture
 
-The runtime follows the original Windforce control-plane/worker model:
+Windforce Lite has three explicit planes:
 
-- the control-plane run API creates a run and enqueues a job
-- worker polls the queue, prepares the pinned deployment source, and executes it
-- HITL pauses a run in `WAITING_HUMAN`
-- resume API enqueues the next job
+- Control Plane manages sources, releases, configuration, and audit history.
+- Trigger Plane contains protocol adapters that call the Execution API.
+- Execution Plane admits Runs, owns the PostgreSQL queue, and runs Jobs.
+
+Run admission resolves and pins the active release before a Job is enqueued.
+Workers poll the queue, prepare that pinned source, and execute it. HITL pauses a
+Run in `WAITING_HUMAN`; a resume operation enqueues its next Job.
 
 Prepared source is cached by workspace/git-source/commit under the worker cache
 root. A `.ready` marker is written only after fetch, dependency install, and SDK
 injection complete, so a failed prepare is retried from a fresh source copy on
 the next job.
 
-Production process roles are separated:
+Process roles are separated:
 
-- `windforce-lite api`: control plane, HTTP run ingress, run status, HITL resume
+- `windforce-lite api`: control plane and versioned Execution API
 - `windforce-lite worker`: job polling and action execution
 - `windforce-lite standalone`: local/dev combined mode
 
-Protocol adapters should live outside this core repository unless they are
-generic Windforce adapters. They adapt routes, request terms, environment
-variables, and response envelopes at the edge; they do not own source sync or
-mutate the Windforce catalog model.
+Protocol adapters adapt routes, request terms, environment variables, and
+response envelopes at the edge. They call the Execution API through an SDK and
+do not own source sync, queue records, or the Windforce catalog model. See
+[Architecture](docs/architecture.md) for the dependency rules.
 
 ## Lightweight Admin UI
 

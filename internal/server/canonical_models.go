@@ -4,11 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
-	"os"
-	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -16,6 +13,7 @@ import (
 
 	catalogpkg "github.com/imprun/windforce-lite/internal/catalog"
 	"github.com/imprun/windforce-lite/internal/contract"
+	executionpkg "github.com/imprun/windforce-lite/internal/execution"
 	gitsourcepkg "github.com/imprun/windforce-lite/internal/gitsource"
 )
 
@@ -404,97 +402,14 @@ func (h *Handler) newCanonicalActionView(schemaReader *canonicalSchemaReader, de
 	}, nil
 }
 
-type canonicalSchemaReader struct {
-	ctx   context.Context
-	store interface {
-		FetchTo(context.Context, string, string, string, string) error
-	}
-	deployment contract.Deployment
-	sourceDir  string
-	err        error
-}
+type canonicalSchemaReader = executionpkg.SchemaReader
 
 func (h *Handler) newCanonicalSchemaReader(ctx context.Context, deployment contract.Deployment) *canonicalSchemaReader {
-	reader := &canonicalSchemaReader{ctx: ctx, deployment: deployment}
+	var store executionpkg.BundleStore
 	if h.syncer != nil && h.syncer.Store != nil {
-		reader.store = h.syncer.Store
+		store = h.syncer.Store
 	}
-	return reader
-}
-
-func (r *canonicalSchemaReader) Close() {
-	if r.sourceDir != "" {
-		_ = os.RemoveAll(r.sourceDir)
-	}
-}
-
-func (r *canonicalSchemaReader) Read(schemaPath string, schemaBody json.RawMessage) (json.RawMessage, error) {
-	if body, ok, err := materializedSchemaBody(schemaBody); ok || err != nil {
-		return body, err
-	}
-	if schemaPath == "" {
-		return emptyJSONSchema(), nil
-	}
-	if filepath.IsAbs(schemaPath) || strings.HasPrefix(schemaPath, "/") || strings.Contains(schemaPath, "..") {
-		return nil, fmt.Errorf("schema path %q must be a relative path inside the app", schemaPath)
-	}
-	if r.store == nil {
-		return nil, errors.New("source storage is not configured")
-	}
-	sourceDir, err := r.ensureSourceDir()
-	if err != nil {
-		return nil, err
-	}
-	data, err := os.ReadFile(filepath.Join(sourceDir, filepath.FromSlash(schemaPath)))
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("manifest references schema %q but the file is missing", schemaPath)
-		}
-		return nil, err
-	}
-	if !json.Valid(data) {
-		return nil, fmt.Errorf("schema %q is not valid JSON", schemaPath)
-	}
-	return json.RawMessage(append([]byte(nil), data...)), nil
-}
-
-func materializedSchemaBody(schemaBody json.RawMessage) (json.RawMessage, bool, error) {
-	trimmed := bytes.TrimSpace(schemaBody)
-	if len(trimmed) == 0 || string(trimmed) == "null" {
-		return nil, false, nil
-	}
-	if !json.Valid(trimmed) {
-		return nil, true, errors.New("materialized schema is not valid JSON")
-	}
-	return json.RawMessage(append([]byte(nil), trimmed...)), true, nil
-}
-
-func emptyJSONSchema() json.RawMessage {
-	return json.RawMessage([]byte("{}"))
-}
-
-func (r *canonicalSchemaReader) ensureSourceDir() (string, error) {
-	if r.err != nil {
-		return "", r.err
-	}
-	if r.sourceDir != "" {
-		return r.sourceDir, nil
-	}
-	if r.store == nil {
-		return "", nil
-	}
-	sourceDir, err := os.MkdirTemp("", "windforce-lite-schema-")
-	if err != nil {
-		r.err = err
-		return "", err
-	}
-	if err := r.store.FetchTo(r.ctx, sourceDir, r.deployment.SourceWorkspace(), r.deployment.SourceGitSourceID(), r.deployment.Commit); err != nil {
-		_ = os.RemoveAll(sourceDir)
-		r.err = err
-		return "", err
-	}
-	r.sourceDir = sourceDir
-	return sourceDir, nil
+	return executionpkg.NewSchemaReader(ctx, store, deployment)
 }
 
 func canonicalAppID(deployment contract.Deployment) string {

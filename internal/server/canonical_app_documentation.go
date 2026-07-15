@@ -41,7 +41,7 @@ func (h *Handler) handleCanonicalAppDocumentation(w http.ResponseWriter, r *http
 	}
 	reader := h.newCanonicalSchemaReader(r.Context(), deployment)
 	defer reader.Close()
-	sourceDir, err := reader.ensureSourceDir()
+	sourceDir, err := reader.EnsureSourceDir()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

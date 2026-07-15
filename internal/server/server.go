@@ -16,6 +16,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/imprun/windforce-lite/internal/contract"
+	executionpkg "github.com/imprun/windforce-lite/internal/execution"
 	gitsourcepkg "github.com/imprun/windforce-lite/internal/gitsource"
 	"github.com/imprun/windforce-lite/internal/state"
 	"github.com/imprun/windforce-lite/internal/syncer"
@@ -59,6 +60,7 @@ type Handler struct {
 	secretKeyPrevious string
 	sampleRoot        string
 	wait              time.Duration
+	execution         *executionpkg.Service
 	syncLocks         sync.Map
 }
 
@@ -104,6 +106,10 @@ func New(config Config) http.Handler {
 	if secretKey == "" {
 		secretKey = DefaultSecretKey
 	}
+	var bundleStore executionpkg.BundleStore
+	if config.Syncer != nil {
+		bundleStore = config.Syncer.Store
+	}
 	return &Handler{
 		store:             config.Store,
 		catalog:           config.Catalog,
@@ -116,6 +122,7 @@ func New(config Config) http.Handler {
 		secretKeyPrevious: config.SecretKeyPrevious,
 		sampleRoot:        config.SampleRoot,
 		wait:              config.Wait,
+		execution:         executionpkg.NewService(config.Store, config.Catalog, bundleStore),
 	}
 }
 
@@ -137,7 +144,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			writeError(w, status, message)
 			return
 		}
-		if h.handleAPI(w, authorizedRequest) {
+		if h.handleExecutionAPI(w, authorizedRequest) || h.handleAPI(w, authorizedRequest) {
 			return
 		}
 	}
