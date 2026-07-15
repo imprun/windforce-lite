@@ -1,12 +1,21 @@
 import { useEffect, useState, type ReactNode } from "react";
+import {
+  Activity,
+  AppWindow,
+  ContactRound,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Settings,
+  Wind,
+} from "lucide-react";
 import { useApp } from "../lib/app-context";
 import { Link, useRouter } from "../lib/router";
 
 const navItems = [
-  { to: "/", label: "Apps", icon: "▤", match: (path: string) => path === "/" || path.startsWith("/apps") },
-  { to: "/clients", label: "Client Registry", icon: "◎", match: (path: string) => path.startsWith("/clients") },
-  { to: "/monitoring", label: "Monitoring", icon: "◔", match: (path: string) => path.startsWith("/monitoring") || path.startsWith("/jobs") },
-  { to: "/settings", label: "Settings", icon: "⚙", match: (path: string) => path.startsWith("/settings") },
+  { to: "/", label: "Apps", icon: AppWindow, match: (path: string) => path === "/" || path.startsWith("/apps") },
+  { to: "/clients", label: "Client Registry", icon: ContactRound, match: (path: string) => path.startsWith("/clients") },
+  { to: "/monitoring", label: "Monitoring", icon: Activity, match: (path: string) => path.startsWith("/monitoring") || path.startsWith("/jobs") },
+  { to: "/settings", label: "Settings", icon: Settings, match: (path: string) => path.startsWith("/settings") },
 ];
 
 function loadCollapsed(): boolean {
@@ -35,38 +44,47 @@ export function Layout({
   return (
     <div className={collapsed ? "appShell sidebarCollapsed" : "appShell"}>
       <aside className="sidebar">
-        <Link className="brand" to="/" title="windforce-lite">
-          <span className="brandMark" aria-hidden="true">
-            ⌁
-          </span>
-          <span className="brandName">windforce-lite</span>
-        </Link>
+        <div className="sidebarHeader">
+          <Link className="brand" to="/" title="windforce-lite">
+            <span className="brandMark" aria-hidden="true">
+              <Wind size={17} strokeWidth={2.2} />
+            </span>
+            <span className="brandName">windforce-lite</span>
+          </Link>
+          <button
+            id="sidebarToggle"
+            type="button"
+            className="sidebarToggle"
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            aria-expanded={!collapsed}
+            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            onClick={() => setCollapsed((current) => !current)}
+          >
+            {collapsed ? (
+              <PanelLeftOpen size={18} strokeWidth={1.8} aria-hidden="true" />
+            ) : (
+              <PanelLeftClose size={18} strokeWidth={1.8} aria-hidden="true" />
+            )}
+          </button>
+        </div>
         <nav className="nav" aria-label="Primary">
-          {navItems.map((item) => (
-            <Link
-              key={item.to}
-              to={item.to}
-              className={item.match(path) ? "navItem active" : "navItem"}
-              title={item.label}
-            >
-              <span className="navIcon" aria-hidden="true">
-                {item.icon}
-              </span>
-              <span className="navLabel">{item.label}</span>
-            </Link>
-          ))}
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            return (
+              <Link
+                key={item.to}
+                to={item.to}
+                className={item.match(path) ? "navItem active" : "navItem"}
+                title={item.label}
+              >
+                <span className="navIcon" aria-hidden="true">
+                  <Icon size={18} strokeWidth={1.8} />
+                </span>
+                <span className="navLabel">{item.label}</span>
+              </Link>
+            );
+          })}
         </nav>
-        <button
-          id="sidebarToggle"
-          type="button"
-          className="sidebarToggle"
-          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          aria-expanded={!collapsed}
-          onClick={() => setCollapsed((current) => !current)}
-        >
-          <span aria-hidden="true">{collapsed ? "»" : "«"}</span>
-          <span className="navLabel">Collapse</span>
-        </button>
         <div className="sidebarFooter">
           <span className="workspacePill" title="Active workspace">
             workspace / {settings.workspace}

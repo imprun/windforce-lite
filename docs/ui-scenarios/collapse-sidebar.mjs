@@ -6,7 +6,7 @@ export default {
     "The sidebar collapses to an icon rail so wide tables get the full viewport. The choice is remembered in the browser.",
   screenshot: "docs/assets/ui/collapse-sidebar.png",
   guide: [
-    "Click the collapse control at the bottom of the sidebar.",
+    "Click the collapse control beside the product title at the top of the sidebar.",
     "Navigate with the icon rail; hover shows each destination.",
     "Click the control again to expand the sidebar.",
   ],

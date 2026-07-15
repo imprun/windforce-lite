@@ -3,19 +3,20 @@ export default {
   id: "action-schemas",
   title: "Review action schemas",
   description:
-    "The Actions tab shows each action's materialized input and output JSON Schemas — the contract workers and callers rely on.",
+    "The Docs tab shows each action's release-pinned input and output JSON Schemas.",
   screenshot: "docs/assets/ui/action-schemas.png",
   guide: [
-    "Open an app and switch to the Actions tab.",
-    "Review the input and output JSON Schemas materialized from the release.",
-    "Invoke actions through the control-plane API or the CLI; the UI documents the contract only.",
+    "Open an app and switch to the Docs tab.",
+    "Choose an action from the API reference.",
+    "Review its request and result fields or download the source JSON Schema.",
   ],
   async run({ page, capture }) {
     await page.goto();
     await page.waitForSelector("#appList .tableRow");
     await page.click("#appList .tableRow");
-    await page.clickText("Actions");
-    await page.waitForText("h2", "Action · echo");
+    await page.clickText("Docs");
+    await page.click('a[href$="/docs/actions/echo"]');
+    await page.waitForText("h3", "Request body");
     await capture(this.id);
   },
 };

@@ -119,20 +119,35 @@ p {
   position: sticky;
   top: 0;
   height: 100vh;
+  transition: width 160ms ease, padding 160ms ease;
+}
+
+.sidebarHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
 }
 
 .brand {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 4px 8px;
+  min-width: 0;
+  flex: 1;
+  padding: 4px 6px;
   color: var(--text-primary);
   font-weight: 650;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
 }
 
 .brand:hover {
   text-decoration: none;
+}
+
+.brandName,
+.navLabel {
+  white-space: nowrap;
 }
 
 .brandMark {
@@ -140,10 +155,10 @@ p {
   place-items: center;
   width: 28px;
   height: 28px;
-  border-radius: 8px;
+  flex-shrink: 0;
+  border-radius: 7px;
   background: var(--accent);
   color: var(--accent-contrast);
-  font-size: 16px;
 }
 
 .nav {
@@ -188,18 +203,19 @@ p {
 }
 
 .sidebarToggle {
-  display: flex;
-  align-items: center;
-  gap: 9px;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  margin-left: auto;
   font: inherit;
-  font-size: 13px;
-  padding: 8px 10px;
-  border: none;
+  padding: 0;
+  border: 1px solid transparent;
   border-radius: var(--radius-small);
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
-  text-align: left;
 }
 
 .sidebarToggle:hover {
@@ -207,32 +223,33 @@ p {
   color: var(--text-primary);
 }
 
-.sidebarToggle span[aria-hidden] {
-  width: 18px;
-  text-align: center;
-  flex-shrink: 0;
+.sidebarToggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .sidebarCollapsed .sidebar {
-  width: 60px;
-  padding: 20px 10px;
+  width: 64px;
+  padding: 20px 12px;
 }
 
-.sidebarCollapsed .brand {
+.sidebarCollapsed .sidebarHeader {
   justify-content: center;
-  padding: 4px 0;
 }
 
-.sidebarCollapsed .brandName,
+.sidebarCollapsed .brand,
 .sidebarCollapsed .navLabel,
 .sidebarCollapsed .sidebarFooter {
   display: none;
 }
 
-.sidebarCollapsed .navItem,
-.sidebarCollapsed .sidebarToggle {
+.sidebarCollapsed .navItem {
   justify-content: center;
   padding: 8px 0;
+}
+
+.sidebarCollapsed .sidebarToggle {
+  margin-left: 0;
 }
 
 .sidebarFooter {
@@ -273,7 +290,7 @@ p {
 .topbar h1 {
   font-size: 20px;
   font-weight: 680;
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
 }
 
 .topbarSubtitle {
@@ -582,7 +599,7 @@ textarea {
 .statValue {
   font-size: 22px;
   font-weight: 700;
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
   font-variant-numeric: tabular-nums;
 }
 
@@ -1392,6 +1409,10 @@ textarea {
     display: none;
   }
 
+  .sidebarCollapsed .brand {
+    display: flex;
+  }
+
   .sidebarCollapsed .navLabel {
     display: inline;
   }
@@ -1455,5 +1476,38 @@ textarea {
   .readinessFacts .defItem:last-child {
     padding: 0;
     border: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .sidebar {
+    padding-left: 12px;
+    padding-right: 12px;
+    gap: 8px;
+  }
+
+  .sidebarHeader {
+    flex-shrink: 0;
+  }
+
+  .brand {
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  .brandName,
+  .navLabel,
+  .sidebarCollapsed .brandName,
+  .sidebarCollapsed .navLabel {
+    display: none;
+  }
+
+  .nav {
+    gap: 0;
+  }
+
+  .navItem {
+    justify-content: center;
+    padding: 8px;
   }
 }

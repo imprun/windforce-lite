@@ -28,12 +28,12 @@ Register App points the control plane at a repository source. Registration valid
 
 ## Inspect an app
 
-The app detail Overview tab shows the active worker contract, the exposed actions, and readiness signals for the release.
+The app detail Overview tab shows the active release and readiness signals for workers.
 
 ![Inspect an app](../assets/ui/app-detail.png)
 
 1. Open an app from the Apps view.
-2. Review the active contract: app key, release commit, entrypoint, route tag, and timeout.
+2. Review the active release: app key, release commit, entrypoint, and update time.
 3. Follow the source code link to browse the repository at the pinned release commit on GitHub/GitLab.
 4. Use the tabs for repository settings, release history, and action schemas.
 
@@ -60,13 +60,13 @@ The Releases tab is the publish history of the worker-visible contract: who publ
 
 ## Review action schemas
 
-The Actions tab shows each action's materialized input and output JSON Schemas — the contract workers and callers rely on.
+The Docs tab shows each action's release-pinned input and output JSON Schemas.
 
 ![Review action schemas](../assets/ui/action-schemas.png)
 
-1. Open an app and switch to the Actions tab.
-2. Review the input and output JSON Schemas materialized from the release.
-3. Invoke actions through the control-plane API or the CLI; the UI documents the contract only.
+1. Open an app and switch to the Docs tab.
+2. Choose an action from the API reference.
+3. Review its request and result fields or download the source JSON Schema.
 
 ## Monitor one app
 
@@ -116,6 +116,6 @@ The sidebar collapses to an icon rail so wide tables get the full viewport. The 
 
 ![Collapse the sidebar](../assets/ui/collapse-sidebar.png)
 
-1. Click the collapse control at the bottom of the sidebar.
+1. Click the collapse control beside the product title at the top of the sidebar.
 2. Navigate with the icon rail; hover shows each destination.
 3. Click the control again to expand the sidebar.
