@@ -11,6 +11,8 @@ import (
 
 	"github.com/imprun/windforce-lite/internal/catalog"
 	"github.com/imprun/windforce-lite/internal/contract"
+	"github.com/imprun/windforce-lite/internal/event"
+	"github.com/imprun/windforce-lite/internal/webhook"
 )
 
 func TestLocalReleaseCatalogPublishesAtomically(t *testing.T) {
@@ -160,10 +162,24 @@ func TestPostgresReleasePublicationRollsBackAllWrites(t *testing.T) {
 		"control_active_release",
 		"control_source_release_marker",
 		"control_audit",
+		"control_plane_event",
+		"webhook_delivery",
 	}
 	for _, failedTable := range writeTables {
 		t.Run(failedTable, func(t *testing.T) {
 			store := openIsolatedPostgresCatalogStore(t, dsn)
+			store.ConfigureInputCrypto("postgres-test-secret-key", "")
+			if _, err := store.CreateSubscription(ctx, webhook.Subscription{
+				WorkspaceID:   "workspace-a",
+				Name:          "Release rollback",
+				Endpoint:      "https://hooks.example.test/releases",
+				SigningSecret: "signing-secret-0123456789",
+				EventTypes:    []string{event.ReleasePublishedType},
+				Enabled:       true,
+				CreatedBy:     "tester",
+			}); err != nil {
+				t.Fatal(err)
+			}
 			if _, err := store.pool.Exec(ctx, `
 CREATE FUNCTION reject_release_write() RETURNS trigger AS $$
 BEGIN

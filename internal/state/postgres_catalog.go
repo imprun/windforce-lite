@@ -3,12 +3,14 @@ package state
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 
 	"github.com/imprun/windforce-lite/internal/catalog"
 	"github.com/imprun/windforce-lite/internal/contract"
+	"github.com/imprun/windforce-lite/internal/webhook"
 )
 
 var _ catalog.Store = (*PostgresStore)(nil)
@@ -34,6 +36,13 @@ func (s *PostgresStore) PublishRelease(ctx context.Context, deployment contract.
 		ReleasedAt:  history.CreatedAt,
 	}
 	err = s.withTx(ctx, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, history.Workspace+"/"+history.App); err != nil {
+			return err
+		}
+		previous, err := postgresPreviousRelease(ctx, tx, history.Workspace, history.App)
+		if err != nil {
+			return err
+		}
 		if _, err := tx.Exec(ctx, `
 INSERT INTO control_release_history (
     id, workspace_id, git_source_id, app_key, commit_sha, record, created_at
@@ -51,7 +60,7 @@ ON CONFLICT (workspace_id, app_key) DO UPDATE SET
 `, history.Workspace, history.App, history.ID, deploymentJSON, history.CreatedAt); err != nil {
 			return err
 		}
-		_, err := tx.Exec(ctx, `
+		_, err = tx.Exec(ctx, `
 INSERT INTO control_source_release_marker (workspace_id, git_source_id, commit_sha, released_at)
 VALUES ($1, $2, $3, $4)
 ON CONFLICT (workspace_id, git_source_id) DO UPDATE SET
@@ -65,9 +74,95 @@ ON CONFLICT (workspace_id, git_source_id) DO UPDATE SET
 INSERT INTO control_audit (id, workspace_id, git_source_id, app_key, kind, record, created_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7)
 `, audit.ID, audit.Workspace, audit.GitSourceID, audit.App, audit.Kind, auditJSON, audit.CreatedAt)
-		return err
+		if err != nil {
+			return err
+		}
+		releaseEvent, err := prepareReleaseEvent(history, previous)
+		if err != nil {
+			return err
+		}
+		eventJSON, err := json.Marshal(releaseEvent)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `
+INSERT INTO control_plane_event (id, workspace_id, event_type, subject, body, created_at)
+VALUES ($1, $2, $3, $4, $5, $6)
+`, releaseEvent.ID, history.Workspace, releaseEvent.Type, releaseEvent.Subject, eventJSON, releaseEvent.Time); err != nil {
+			return err
+		}
+		rows, err := tx.Query(ctx, `
+SELECT `+webhookSubscriptionColumns+`
+FROM webhook_subscription
+WHERE workspace_id = $1 AND enabled = true AND deleted_at IS NULL
+FOR SHARE
+`, history.Workspace)
+		if err != nil {
+			return err
+		}
+		subscriptions := make([]WebhookSubscriptionRecord, 0)
+		for rows.Next() {
+			record, err := scanWebhookSubscription(rows)
+			if err != nil {
+				rows.Close()
+				return err
+			}
+			subscriptions = append(subscriptions, record)
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return err
+		}
+		rows.Close()
+		outboxAt := time.Now().UTC()
+		for _, record := range subscriptions {
+			candidate := subscriptionFromRecord(record, "", "")
+			if !webhook.Matches(candidate, releaseEvent.Type, history.App) {
+				continue
+			}
+			delivery := newWebhookDelivery(releaseEvent, history.Workspace, record.ID, outboxAt)
+			if _, err := tx.Exec(ctx, `
+INSERT INTO webhook_delivery (
+    id, workspace_id, event_id, subscription_id, state, attempt, next_attempt_at,
+    created_at, updated_at
+) VALUES ($1, $2, $3, $4, $5, 0, $6, $6, $6)
+`, delivery.ID, delivery.WorkspaceID, delivery.EventID, delivery.SubscriptionID, delivery.State, delivery.NextAttemptAt); err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 	return deployment, err
+}
+
+func postgresPreviousRelease(ctx context.Context, tx pgx.Tx, workspaceID string, appKey string) (*catalog.DeploymentHistory, error) {
+	var historyID *string
+	var deploymentJSON []byte
+	err := tx.QueryRow(ctx, `
+SELECT history_id, deployment
+FROM control_active_release
+WHERE workspace_id = $1 AND app_key = $2
+FOR UPDATE
+`, contract.NormalizeWorkspace(workspaceID), appKey).Scan(&historyID, &deploymentJSON)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var deployment contract.Deployment
+	if err := json.Unmarshal(deploymentJSON, &deployment); err != nil {
+		return nil, err
+	}
+	previous := &catalog.DeploymentHistory{
+		Workspace: contract.NormalizeWorkspace(workspaceID),
+		App:       appKey,
+		Commit:    deployment.Commit,
+	}
+	if historyID != nil {
+		previous.ID = *historyID
+	}
+	return previous, nil
 }
 
 func (s *PostgresStore) GetDeployment(ctx context.Context, app string) (contract.Deployment, error) {

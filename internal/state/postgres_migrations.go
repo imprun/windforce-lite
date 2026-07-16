@@ -219,6 +219,54 @@ CREATE TABLE IF NOT EXISTS control_source_release_marker (
     PRIMARY KEY (workspace_id, git_source_id)
 );
 
+CREATE TABLE IF NOT EXISTS control_plane_event (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    body JSONB NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS webhook_subscription (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    endpoint_encrypted JSONB NOT NULL,
+    signing_secret_encrypted JSONB NOT NULL,
+    event_types JSONB NOT NULL,
+    app_keys JSONB NOT NULL,
+    enabled BOOLEAN NOT NULL DEFAULT true,
+    created_by TEXT NOT NULL,
+    updated_by TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL,
+    deleted_at TIMESTAMPTZ
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS webhook_subscription_active_name_idx
+    ON webhook_subscription (workspace_id, name)
+    WHERE deleted_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS webhook_delivery (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL,
+    event_id TEXT NOT NULL REFERENCES control_plane_event(id),
+    subscription_id TEXT NOT NULL REFERENCES webhook_subscription(id),
+    state TEXT NOT NULL,
+    attempt INTEGER NOT NULL DEFAULT 0,
+    next_attempt_at TIMESTAMPTZ NOT NULL,
+    lease_owner TEXT,
+    lease_expires_at TIMESTAMPTZ,
+    response_status INTEGER,
+    latency_ms BIGINT,
+    error_summary TEXT,
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL,
+    completed_at TIMESTAMPTZ,
+    UNIQUE (event_id, subscription_id)
+);
+
 ALTER TABLE runs ADD COLUMN IF NOT EXISTS result JSONB;
 ALTER TABLE runs ADD COLUMN IF NOT EXISTS correlation_id TEXT;
 ALTER TABLE runs ADD COLUMN IF NOT EXISTS env JSONB;
@@ -262,6 +310,19 @@ CREATE INDEX IF NOT EXISTS control_release_history_app_idx
 
 CREATE INDEX IF NOT EXISTS control_audit_source_idx
     ON control_audit (workspace_id, git_source_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS control_plane_event_lookup_idx
+    ON control_plane_event (workspace_id, event_type, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS webhook_delivery_claim_idx
+    ON webhook_delivery (state, next_attempt_at, created_at);
+
+CREATE INDEX IF NOT EXISTS webhook_delivery_lease_idx
+    ON webhook_delivery (lease_expires_at)
+    WHERE state = 'delivering';
+
+CREATE INDEX IF NOT EXISTS webhook_delivery_subscription_idx
+    ON webhook_delivery (workspace_id, subscription_id, created_at DESC);
 `)
 	return err
 }

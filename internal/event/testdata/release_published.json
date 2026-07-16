@@ -1,0 +1,19 @@
+{
+  "specversion": "1.0",
+  "id": "evt_0123456789abcdef",
+  "type": "windforce.release.published",
+  "source": "/workspaces/default/control-plane",
+  "subject": "apps/checkout/releases/rel_current",
+  "time": "2026-07-16T10:00:00Z",
+  "datacontenttype": "application/json",
+  "data": {
+    "workspace": "default",
+    "app_key": "checkout",
+    "release_id": "rel_current",
+    "commit": "commit-current",
+    "previous_release_id": "rel_previous",
+    "previous_commit": "commit-previous",
+    "actor": "operator@example.test",
+    "note": "Publish checkout update"
+  }
+}

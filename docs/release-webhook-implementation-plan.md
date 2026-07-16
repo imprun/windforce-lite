@@ -106,6 +106,8 @@ type TransactionalReleaseStore interface {
 
 ## 1단계: Event 계약과 상태 인터페이스
 
+- 상태: Completed ([#71](https://github.com/imprun/windforce-lite/issues/71))
+
 ### 작업
 
 - `windforce.release.published` Go contract와 CloudEvents JSON fixture를 정의한다.
@@ -134,6 +136,8 @@ Event와 matching delivery 생성은 0단계의 `ReleaseTx`에 참여한다. `We
 - 지원하지 않는 event type과 잘못된 payload가 저장 전에 거부된다.
 
 ## 2단계: PostgreSQL Outbox schema와 Local Store
+
+- 상태: Completed ([#71](https://github.com/imprun/windforce-lite/issues/71))
 
 ### PostgreSQL schema
 
@@ -214,6 +218,8 @@ CREATE TABLE webhook_delivery (
 - 암호화 설정이 없을 때 secret 평문 저장을 허용하지 않는다.
 
 ## 3단계: 릴리즈 발행과 Outbox 연결
+
+- 상태: Completed ([#71](https://github.com/imprun/windforce-lite/issues/71))
 
 ### 작업
 

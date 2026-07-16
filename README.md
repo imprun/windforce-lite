@@ -41,11 +41,12 @@ that already calls it.
 4. Load `windforce.json`.
 5. Materialize the source tree into the bundle store under
    `{workspace}/{gitSourceId}/{commit}`.
-6. Publish the active release, release history, source release marker, and audit
-   record in one state-store transaction after the bundle is complete.
+6. Publish the active release, release history, source release marker, audit
+   record, Control Plane event, and matching Webhook deliveries in one
+   state-store transaction after the bundle is complete.
 
 The ordering is intentional: a catalog entry must not point at a bundle that a
-worker cannot fetch.
+worker cannot fetch. Webhook HTTP requests are not made in this transaction.
 
 The state backend is the source of truth for the active release catalog. Local
 mode stores it in the state JSON file; PostgreSQL mode stores it in control-plane

@@ -35,6 +35,11 @@ record in one transaction. Local mode persists the catalog in its state JSON
 file; PostgreSQL mode persists it in control-plane tables shared by the Control
 Plane and Execution API.
 
+The same publication transaction stores a CloudEvents-compatible Control Plane
+event and one pending delivery for each enabled matching Webhook subscription.
+Endpoint and signing-secret values use workspace encryption. External HTTP
+delivery is always outside the publication transaction.
+
 ## Trigger Plane
 
 The Trigger Plane is a set of protocol adapters. A protocol adapter owns only

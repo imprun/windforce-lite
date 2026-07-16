@@ -13,6 +13,8 @@ import (
 
 	"github.com/imprun/windforce-lite/internal/catalog"
 	"github.com/imprun/windforce-lite/internal/contract"
+	controlevent "github.com/imprun/windforce-lite/internal/event"
+	"github.com/imprun/windforce-lite/internal/webhook"
 )
 
 type LocalStore struct {
@@ -993,6 +995,15 @@ func ensureSnapshot(snapshot *Snapshot) {
 	}
 	if snapshot.InputConfigAudits == nil {
 		snapshot.InputConfigAudits = map[string][]InputConfigAudit{}
+	}
+	if snapshot.WebhookSubscriptions == nil {
+		snapshot.WebhookSubscriptions = map[string]WebhookSubscriptionRecord{}
+	}
+	if snapshot.ControlPlaneEvents == nil {
+		snapshot.ControlPlaneEvents = map[string]controlevent.Envelope{}
+	}
+	if snapshot.WebhookDeliveries == nil {
+		snapshot.WebhookDeliveries = map[string]webhook.Delivery{}
 	}
 	snapshot.LegacyClients = nil
 	snapshot.LegacyClientAudits = nil

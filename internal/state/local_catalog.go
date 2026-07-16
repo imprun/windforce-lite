@@ -21,6 +21,7 @@ func (s *LocalStore) PublishRelease(ctx context.Context, deployment contract.Dep
 		published, history, audit = catalog.PreparePublication(deployment, releasedAt)
 		releaseCatalog := &snapshot.ReleaseCatalog
 		catalog.NormalizeSnapshot(releaseCatalog)
+		previous := latestReleaseHistory(*releaseCatalog, published.SourceWorkspace(), published.App)
 		releaseCatalog.Deployments[catalog.DeploymentKey(published.SourceWorkspace(), published.App)] = published
 		releaseCatalog.History = append(releaseCatalog.History, history)
 		releaseCatalog.Audit = append(releaseCatalog.Audit, audit)
@@ -31,6 +32,15 @@ func (s *LocalStore) PublishRelease(ctx context.Context, deployment contract.Dep
 			ReleasedAt:  history.CreatedAt,
 		}
 		releaseCatalog.SourceMarkers[catalog.SourceReleaseKey(marker.Workspace, marker.GitSourceID)] = marker
+		releaseEvent, err := prepareReleaseEvent(history, previous)
+		if err != nil {
+			return err
+		}
+		snapshot.ControlPlaneEvents[releaseEvent.ID] = releaseEvent
+		for _, subscription := range matchingSubscriptions(snapshot.WebhookSubscriptions, published.SourceWorkspace(), releaseEvent.Type, published.App) {
+			delivery := newWebhookDelivery(releaseEvent, published.SourceWorkspace(), subscription.ID, now)
+			snapshot.WebhookDeliveries[delivery.ID] = delivery
+		}
 		return nil
 	})
 	return published, err

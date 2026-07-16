@@ -12,6 +12,8 @@ import (
 
 	"github.com/imprun/windforce-lite/internal/catalog"
 	"github.com/imprun/windforce-lite/internal/contract"
+	controlevent "github.com/imprun/windforce-lite/internal/event"
+	"github.com/imprun/windforce-lite/internal/webhook"
 )
 
 type RunState string
@@ -356,22 +358,25 @@ type JobLog struct {
 }
 
 type Snapshot struct {
-	Sequence           int64                                 `json:"sequence"`
-	Runs               map[string]Run                        `json:"runs"`
-	Jobs               map[string]Job                        `json:"jobs"`
-	HumanTasks         map[string]HumanTask                  `json:"humanTasks"`
-	Events             []RunEvent                            `json:"events"`
-	JobLogs            map[string]JobLog                     `json:"jobLogs"`
-	JobState           map[string]map[string]json.RawMessage `json:"jobState"`
-	Variables          map[string]map[string]Variable        `json:"variables"`
-	Resources          map[string]map[string]Resource        `json:"resources"`
-	Clients            map[string]map[string]Client          `json:"clients"`
-	ClientAudits       map[string][]ClientAudit              `json:"clientAudits"`
-	InputConfigs       map[string]map[string]InputConfig     `json:"inputConfigs"`
-	InputConfigAudits  map[string][]InputConfigAudit         `json:"inputConfigAudits"`
-	LegacyClients      map[string]map[string]Client          `json:"apiClients,omitempty"`
-	LegacyClientAudits map[string][]ClientAudit              `json:"apiClientAudits,omitempty"`
-	ReleaseCatalog     catalog.Snapshot                      `json:"releaseCatalog"`
+	Sequence             int64                                 `json:"sequence"`
+	Runs                 map[string]Run                        `json:"runs"`
+	Jobs                 map[string]Job                        `json:"jobs"`
+	HumanTasks           map[string]HumanTask                  `json:"humanTasks"`
+	Events               []RunEvent                            `json:"events"`
+	JobLogs              map[string]JobLog                     `json:"jobLogs"`
+	JobState             map[string]map[string]json.RawMessage `json:"jobState"`
+	Variables            map[string]map[string]Variable        `json:"variables"`
+	Resources            map[string]map[string]Resource        `json:"resources"`
+	Clients              map[string]map[string]Client          `json:"clients"`
+	ClientAudits         map[string][]ClientAudit              `json:"clientAudits"`
+	InputConfigs         map[string]map[string]InputConfig     `json:"inputConfigs"`
+	InputConfigAudits    map[string][]InputConfigAudit         `json:"inputConfigAudits"`
+	LegacyClients        map[string]map[string]Client          `json:"apiClients,omitempty"`
+	LegacyClientAudits   map[string][]ClientAudit              `json:"apiClientAudits,omitempty"`
+	ReleaseCatalog       catalog.Snapshot                      `json:"releaseCatalog"`
+	WebhookSubscriptions map[string]WebhookSubscriptionRecord  `json:"webhookSubscriptions"`
+	ControlPlaneEvents   map[string]controlevent.Envelope      `json:"controlPlaneEvents"`
+	WebhookDeliveries    map[string]webhook.Delivery           `json:"webhookDeliveries"`
 }
 
 type Store interface {
