@@ -15,9 +15,16 @@ import (
 )
 
 func TestDispatcherResumesPersistedDeliveryAfterRestart(t *testing.T) {
-	received := make(chan string, 1)
+	type receivedHeaders struct {
+		eventID   string
+		eventType string
+	}
+	received := make(chan receivedHeaders, 1)
 	receiver := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-		received <- request.Header.Get(webhook.HeaderEventID)
+		received <- receivedHeaders{
+			eventID:   request.Header.Get(webhook.HeaderEventID),
+			eventType: request.Header.Get(webhook.HeaderEventType),
+		}
 		response.WriteHeader(http.StatusNoContent)
 	}))
 	defer receiver.Close()
@@ -64,9 +71,9 @@ func TestDispatcherResumesPersistedDeliveryAfterRestart(t *testing.T) {
 		t.Fatalf("ProcessOne() = %v, %v", processed, err)
 	}
 	select {
-	case eventID := <-received:
-		if eventID == "" {
-			t.Fatal("receiver did not get event ID")
+	case headers := <-received:
+		if headers.eventID == "" || headers.eventType != controlevent.ReleasePublishedType {
+			t.Fatalf("receiver headers = %#v", headers)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("receiver was not called")

@@ -1,6 +1,7 @@
 .PHONY: help fmt test test-postgres build web-install web-dev web-build web-embed web-test web-typecheck clean dev \
 	compose-up compose-db compose-execution-api compose-worker compose-webhook-dispatcher compose-dev compose-dev-worker compose-dev-build compose-dev-logs compose-build compose-down compose-reset compose-logs compose-ps postgres-dsn \
 	dev-standalone dev-standalone-postgres dev-api dev-worker worker-once dev-webhook-dispatcher webhook-once \
+	webhook-receiver \
 	windforce-variable-set windforce-git-token windforce-register windforce-sync windforce-deploy windforce-sample \
 	windforce-schema windforce-openapi windforce-control-openapi \
 	windforce-run windforce-run-wait windforce-jobs windforce-job windforce-job-result windforce-job-logs windforce-job-cancel \
@@ -42,6 +43,7 @@ OUTPUT ?= $(DEV_DIR)/output.json
 WINDFORCE_LITE_API_PORT ?= 18091
 WINDFORCE_LITE_WEB_PORT ?= 18090
 ADDR ?= 127.0.0.1:$(WINDFORCE_LITE_API_PORT)
+WINDFORCE_WEBHOOK_RECEIVER_ADDR ?= 127.0.0.1:19090
 
 WF_API_URL ?= http://127.0.0.1:$(WINDFORCE_LITE_API_PORT)
 WF_WORKSPACE ?= default
@@ -104,6 +106,7 @@ help:
 	@echo "  worker-once            claim at most one PostgreSQL-backed queued job"
 	@echo "  dev-webhook-dispatcher run release webhook dispatcher with PostgreSQL state"
 	@echo "  webhook-once           process at most one pending webhook delivery"
+	@echo "  webhook-receiver       run the signed local contract receiver on WINDFORCE_WEBHOOK_RECEIVER_ADDR"
 	@echo "  windforce-variable-set set secret WF_VARIABLE_PATH from WF_VARIABLE_VALUE_ENV through the control API"
 	@echo "  windforce-git-token    store WF_GIT_TOKEN_ENV at WF_VARIABLE_PATH for git source auth"
 	@echo "  windforce-register     register WF_REPO_URL as WF_GIT_SOURCE_NAME through the control API"
@@ -238,6 +241,9 @@ dev-webhook-dispatcher: compose-db
 
 webhook-once: compose-db
 	$(GO) run $(CMD) webhook-dispatcher --state-backend postgres --database-url "$(POSTGRES_DSN)" --migrate --once
+
+webhook-receiver:
+	$(GO) run ./examples/webhook-receiver --addr "$(WINDFORCE_WEBHOOK_RECEIVER_ADDR)"
 
 windforce-variable-set:
 	python tools/windforce_control.py --api-url "$(WF_API_URL)" --workspace "$(WF_WORKSPACE)" --pretty variable-set --path "$(WF_VARIABLE_PATH)" --value-env "$(WF_VARIABLE_VALUE_ENV)" --app "$(WF_VARIABLE_APP)" --secret --description "$(WF_VARIABLE_DESCRIPTION)"

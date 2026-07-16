@@ -67,7 +67,7 @@ func TestHTTPSenderSignsStableCloudEventAndClassifiesResponse(t *testing.T) {
 		if timestamp != TimestampValue(now) {
 			t.Fatalf("request %d timestamp = %q", index, timestamp)
 		}
-		if header.Get(HeaderEventID) != claimed.Event.ID || header.Get(HeaderDelivery) != claimed.Delivery.ID {
+		if header.Get(HeaderEventID) != claimed.Event.ID || header.Get(HeaderEventType) != claimed.Event.Type || header.Get(HeaderDelivery) != claimed.Delivery.ID {
 			t.Fatalf("request %d identity headers = %#v", index, header)
 		}
 		if !VerifySignature(claimed.Subscription.SigningSecret, timestamp, bodies[index], header.Get(HeaderSignature)) {

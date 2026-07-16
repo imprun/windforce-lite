@@ -1,38 +1,27 @@
 package webhook
 
 import (
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
-	"strconv"
-	"strings"
 	"time"
+
+	webhookcontract "github.com/imprun/windforce-lite/pkg/webhook"
 )
 
 const (
-	HeaderEventID   = "X-Windforce-Event"
-	HeaderDelivery  = "X-Windforce-Delivery"
-	HeaderTimestamp = "X-Windforce-Timestamp"
-	HeaderSignature = "X-Windforce-Signature"
+	HeaderEventID   = webhookcontract.HeaderEventID
+	HeaderEventType = webhookcontract.HeaderEventType
+	HeaderDelivery  = webhookcontract.HeaderDelivery
+	HeaderTimestamp = webhookcontract.HeaderTimestamp
+	HeaderSignature = webhookcontract.HeaderSignature
 )
 
 func TimestampValue(at time.Time) string {
-	return strconv.FormatInt(at.UTC().Unix(), 10)
+	return webhookcontract.TimestampValue(at)
 }
 
 func Sign(secret string, timestamp string, body []byte) string {
-	mac := hmac.New(sha256.New, []byte(secret))
-	_, _ = mac.Write([]byte(timestamp))
-	_, _ = mac.Write([]byte("."))
-	_, _ = mac.Write(body)
-	return "v1=" + hex.EncodeToString(mac.Sum(nil))
+	return webhookcontract.Sign(secret, timestamp, body)
 }
 
 func VerifySignature(secret string, timestamp string, body []byte, signature string) bool {
-	provided := strings.TrimSpace(signature)
-	if !strings.HasPrefix(provided, "v1=") {
-		return false
-	}
-	expected := Sign(secret, timestamp, body)
-	return hmac.Equal([]byte(expected), []byte(provided))
+	return webhookcontract.VerifySignature(secret, timestamp, body, signature)
 }

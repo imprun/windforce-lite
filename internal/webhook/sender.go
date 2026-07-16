@@ -88,6 +88,7 @@ func (sender *HTTPSender) Send(ctx context.Context, claimed *ClaimedDelivery) At
 	request.Header.Set("Content-Type", "application/cloudevents+json")
 	request.Header.Set("User-Agent", sender.config.UserAgent)
 	request.Header.Set(HeaderEventID, claimed.Event.ID)
+	request.Header.Set(HeaderEventType, claimed.Event.Type)
 	request.Header.Set(HeaderDelivery, claimed.Delivery.ID)
 	request.Header.Set(HeaderTimestamp, timestamp)
 	request.Header.Set(HeaderSignature, Sign(claimed.Subscription.SigningSecret, timestamp, body))

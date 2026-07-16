@@ -421,9 +421,16 @@ Release publication stores a CloudEvents event and matching Webhook deliveries
 in the same state transaction as the active release. The separate
 `webhook-dispatcher` process claims those deliveries and sends signed HTTP
 requests after the release transaction commits. Delivery uses
-`X-Windforce-Event`, `X-Windforce-Delivery`, `X-Windforce-Timestamp`, and
-`X-Windforce-Signature` headers. The signature is
+`X-Windforce-Event` (event ID), `X-Windforce-Event-Type`,
+`X-Windforce-Delivery`, `X-Windforce-Timestamp`, and `X-Windforce-Signature`
+headers. The signature is
 `v1=<hex HMAC-SHA256(secret, timestamp + "." + rawBody)>`.
+
+The versioned JSON Schema, fixtures, receiver rules, and runnable local
+receiver are published in
+[`contracts/webhooks/v1`](contracts/webhooks/v1/README.md). Messenger-specific
+connectors verify this generic contract and own provider credentials, message
+templates, rate limits, and durable event-ID deduplication.
 
 Webhook endpoints use HTTPS by default. DNS results are checked again for each
 attempt, private addresses require an explicit host or CIDR allowlist, and

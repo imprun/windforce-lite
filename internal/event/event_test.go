@@ -32,7 +32,7 @@ func TestReleasePublishedGolden(t *testing.T) {
 		t.Fatal(err)
 	}
 	got = append(got, '\n')
-	want, err := os.ReadFile(filepath.Join("testdata", "release_published.json"))
+	want, err := os.ReadFile(filepath.Join("..", "..", "contracts", "webhooks", "v1", "release-published.example.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,6 +43,20 @@ func TestReleasePublishedGolden(t *testing.T) {
 		if bytes.Contains(bytes.ToLower(got), protected) {
 			t.Fatalf("release event contains protected field %q: %s", protected, got)
 		}
+	}
+}
+
+func TestPublicWebhookTestFixture(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "contracts", "webhooks", "v1", "webhook-test.example.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var value Envelope
+	if err := json.Unmarshal(raw, &value); err != nil {
+		t.Fatal(err)
+	}
+	if err := Validate(value); err != nil {
+		t.Fatal(err)
 	}
 }
 

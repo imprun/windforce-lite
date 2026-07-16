@@ -140,7 +140,8 @@ Dispatcher는 다음 헤더를 전송한다.
 
 | Header | 값 |
 |---|---|
-| `X-Windforce-Event` | event type |
+| `X-Windforce-Event` | event ID |
+| `X-Windforce-Event-Type` | event type |
 | `X-Windforce-Delivery` | delivery ID |
 | `X-Windforce-Timestamp` | Unix timestamp |
 | `X-Windforce-Signature` | `v1=<HMAC-SHA256>` |

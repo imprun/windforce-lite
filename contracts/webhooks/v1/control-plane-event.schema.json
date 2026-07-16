@@ -1,0 +1,148 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/imprun/windforce-lite/main/contracts/webhooks/v1/control-plane-event.schema.json",
+  "title": "Windforce Lite control plane webhook event",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "specversion",
+    "id",
+    "type",
+    "source",
+    "subject",
+    "time",
+    "datacontenttype",
+    "data"
+  ],
+  "properties": {
+    "specversion": {
+      "const": "1.0"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^evt_[A-Za-z0-9]+$"
+    },
+    "type": {
+      "enum": [
+        "windforce.release.published",
+        "windforce.webhook.test"
+      ]
+    },
+    "source": {
+      "type": "string",
+      "pattern": "^/workspaces/[^/]+/control-plane$"
+    },
+    "subject": {
+      "type": "string",
+      "minLength": 1
+    },
+    "time": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "datacontenttype": {
+      "const": "application/json"
+    },
+    "data": {
+      "type": "object"
+    }
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "type": {
+          "const": "windforce.release.published"
+        },
+        "subject": {
+          "pattern": "^apps/[^/]+/releases/[^/]+$"
+        },
+        "data": {
+          "$ref": "#/$defs/releasePublishedData"
+        }
+      }
+    },
+    {
+      "properties": {
+        "type": {
+          "const": "windforce.webhook.test"
+        },
+        "subject": {
+          "pattern": "^webhooks/[^/]+/test$"
+        },
+        "data": {
+          "$ref": "#/$defs/webhookTestData"
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "releasePublishedData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "workspace",
+        "app_key",
+        "release_id",
+        "commit",
+        "actor"
+      ],
+      "properties": {
+        "workspace": {
+          "type": "string",
+          "minLength": 1
+        },
+        "app_key": {
+          "type": "string",
+          "minLength": 1
+        },
+        "release_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "commit": {
+          "type": "string",
+          "minLength": 1
+        },
+        "previous_release_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "previous_commit": {
+          "type": "string",
+          "minLength": 1
+        },
+        "actor": {
+          "type": "string",
+          "minLength": 1
+        },
+        "note": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "webhookTestData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "workspace",
+        "subscription_id",
+        "actor"
+      ],
+      "properties": {
+        "workspace": {
+          "type": "string",
+          "minLength": 1
+        },
+        "subscription_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "actor": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}
