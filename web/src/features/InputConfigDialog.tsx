@@ -108,6 +108,7 @@ export function InputConfigDialog({
   }
 
   const fixedClient = clients.find((client) => client.id === fixedClientID);
+  const fixedClientLabel = fixedClientID === "" ? "All clients (default)" : fixedClient?.name || fixedClientID;
   return (
     <Modal
       title={existing ? "Edit Input Settings" : "Add Input Settings"}
@@ -118,7 +119,7 @@ export function InputConfigDialog({
       <div className="formGrid">
         <Field label="Client scope">
           {fixedClientID !== undefined ? (
-            <input value={fixedClient?.name || fixedClientID} disabled />
+            <input value={fixedClientLabel} disabled />
           ) : (
             <select value={clientID} disabled={identityLocked} onChange={(event) => setClientID(event.target.value)}>
               <option value="">All clients (default)</option>

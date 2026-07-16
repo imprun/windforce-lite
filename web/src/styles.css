@@ -700,6 +700,73 @@ textarea {
   display: none;
 }
 
+.settingsSummaryToolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.settingsSummaryToolbar .searchInput {
+  width: min(360px, 100%);
+}
+
+.settingsSummaryToolbar > span {
+  color: var(--text-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.inputSettingSummaryTable {
+  min-width: 820px;
+  table-layout: fixed;
+}
+
+.inputSettingSummaryTable th:first-child {
+  width: 20%;
+}
+
+.inputSettingSummaryTable th:nth-child(2) {
+  width: 20%;
+}
+
+.inputSettingSummaryTable th:nth-child(3) {
+  width: 27%;
+}
+
+.inputSettingSummaryTable th:nth-child(4) {
+  width: 8%;
+}
+
+.inputSettingSummaryTable th:nth-child(5) {
+  width: 17%;
+}
+
+.inputSettingSummaryTable th:last-child {
+  width: 46px;
+}
+
+.inputSettingSummaryTable .cellSub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.summaryPagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.summaryPaginationControls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 /* ---------- badges ---------- */
 
 .badge {
@@ -1824,6 +1891,89 @@ textarea {
   .inputSettingFieldLabel {
     display: block;
     margin-bottom: 4px;
+  }
+
+  .settingsSummaryToolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .settingsSummaryToolbar .searchInput {
+    width: 100%;
+  }
+
+  .inputSettingSummaryTable {
+    min-width: 0;
+    table-layout: auto;
+  }
+
+  .inputSettingSummaryTable thead {
+    display: none;
+  }
+
+  .inputSettingSummaryTable tbody,
+  .inputSettingSummaryTable tr,
+  .inputSettingSummaryTable td {
+    display: block;
+  }
+
+  .inputSettingSummaryTable tr {
+    position: relative;
+    padding: 12px 44px 12px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .inputSettingSummaryTable tbody tr:last-child {
+    border-bottom: none;
+  }
+
+  .inputSettingSummaryTable td {
+    padding: 3px 0;
+    border-bottom: none;
+  }
+
+  .inputSettingSummaryOpen {
+    position: absolute;
+    top: 10px;
+    right: 8px;
+  }
+
+  .inputSettingSummaryCoverage,
+  .inputSettingSummaryValues,
+  .inputSettingSummaryLocked,
+  .inputSettingSummaryUpdated {
+    font-size: 12px;
+  }
+
+  .inputSettingSummaryCoverage::before,
+  .inputSettingSummaryValues::before,
+  .inputSettingSummaryLocked::before,
+  .inputSettingSummaryUpdated::before {
+    color: var(--text-muted);
+    font-weight: 520;
+  }
+
+  .inputSettingSummaryCoverage::before { content: "Coverage · "; }
+  .inputSettingSummaryValues::before { content: "Values · "; }
+  .inputSettingSummaryLocked::before { content: "Locked · "; }
+  .inputSettingSummaryUpdated::before { content: "Changed · "; }
+
+  .inputSettingSummaryCoverage .cellTitle,
+  .inputSettingSummaryValues .cellTitle,
+  .inputSettingSummaryUpdated .cellTitle {
+    display: inline;
+    font-size: 12px;
+  }
+
+  .inputSettingSummaryCoverage .cellSub,
+  .inputSettingSummaryValues .cellSub,
+  .inputSettingSummaryUpdated .cellSub {
+    white-space: normal;
+  }
+
+  .summaryPagination {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .inputConfigRow {

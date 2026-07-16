@@ -27,8 +27,10 @@ export function App() {
 
   if (matchRoute("/monitoring", path)) return <MonitoringPage />;
   if (matchRoute("/audit", path)) return <AuditPage />;
-  const clientDetail = matchRoute("/clients/:id", path);
-  if (clientDetail?.id) return <ClientDetailPage clientID={clientDetail.id} />;
+  const clientDetail = matchRoute("/clients/:id/:tab?/:appKey?", path);
+  if (clientDetail?.id) {
+    return <ClientDetailPage clientID={clientDetail.id} tab={clientDetail.tab || "overview"} appKey={clientDetail.appKey} />;
+  }
   if (matchRoute("/clients", path)) return <ClientRegistryPage />;
   // Back-compat: /jobs was the pre-rename route, and /jobs/{id} was the
   // removed per-job detail page (ADR 0005).

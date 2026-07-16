@@ -156,7 +156,13 @@ export function AppDetailPage({
           actionKey={actionKey}
         />
       ) : null}
-      {activeTab === "input-settings" && detail ? <AppInputSettings detail={detail} sourceID={sourceID} /> : null}
+      {activeTab === "input-settings" && detail ? (
+        <AppInputSettings
+          detail={detail}
+          sourceID={sourceID}
+          selectedClientID={section === "client" ? actionKey : undefined}
+        />
+      ) : null}
       {activeTab === "monitoring" ? <MonitoringTab app={app} /> : null}
       {activeTab === "repository" && source ? <RepositorySettings source={source} onChanged={state.reload} /> : null}
       {activeTab === "releases" ? (
