@@ -529,6 +529,118 @@ ORDER BY created_at DESC, id DESC
 	return audits, rows.Err()
 }
 
+func (s *PostgresStore) WebhookQueueStats(ctx context.Context) (webhook.QueueStats, error) {
+	var stats webhook.QueueStats
+	err := s.pool.QueryRow(ctx, `
+SELECT COUNT(*), MIN(created_at)
+FROM webhook_delivery
+WHERE state IN ($1, $2, $3)
+`, webhook.DeliveryPending, webhook.DeliveryRetrying, webhook.DeliveryDelivering).Scan(&stats.PendingCount, &stats.OldestPending)
+	return stats, err
+}
+
+func (s *PostgresStore) PruneWebhookData(ctx context.Context, policy webhook.RetentionPolicy) (webhook.RetentionResult, error) {
+	policy.BatchSize = normalizedWebhookRetentionBatchSize(policy.BatchSize)
+	var result webhook.RetentionResult
+	err := s.withTx(ctx, func(tx pgx.Tx) error {
+		if err := tx.QueryRow(ctx, `
+WITH candidates AS (
+    SELECT id
+    FROM webhook_delivery
+    WHERE (
+        state = $2
+        AND $5::timestamptz IS NOT NULL
+        AND COALESCE(completed_at, updated_at) < $5
+    ) OR (
+        state = $3
+        AND $6::timestamptz IS NOT NULL
+        AND COALESCE(completed_at, updated_at) < $6
+    ) OR (
+        state = $4
+        AND $7::timestamptz IS NOT NULL
+        AND COALESCE(completed_at, updated_at) < $7
+    )
+    ORDER BY COALESCE(completed_at, updated_at), id
+    FOR UPDATE SKIP LOCKED
+    LIMIT $1
+), deleted AS (
+    DELETE FROM webhook_delivery
+    WHERE id IN (SELECT id FROM candidates)
+    RETURNING id
+)
+SELECT COUNT(*) FROM deleted
+`, policy.BatchSize,
+			webhook.DeliverySucceeded,
+			webhook.DeliveryCanceled,
+			webhook.DeliveryFailed,
+			optionalWebhookRetentionCutoff(policy.SucceededBefore),
+			optionalWebhookRetentionCutoff(policy.CanceledBefore),
+			optionalWebhookRetentionCutoff(policy.FailedBefore),
+		).Scan(&result.Deliveries); err != nil {
+			return err
+		}
+
+		remaining := int64(policy.BatchSize) - result.Deliveries
+		if remaining > 0 {
+			if err := tx.QueryRow(ctx, `
+WITH candidates AS (
+    SELECT event.id
+    FROM control_plane_event event
+    WHERE NOT EXISTS (
+        SELECT 1 FROM webhook_delivery delivery WHERE delivery.event_id = event.id
+    )
+    ORDER BY event.created_at, event.id
+    FOR UPDATE SKIP LOCKED
+    LIMIT $1
+), deleted AS (
+    DELETE FROM control_plane_event
+    WHERE id IN (SELECT id FROM candidates)
+    RETURNING id
+)
+SELECT COUNT(*) FROM deleted
+`, remaining).Scan(&result.Events); err != nil {
+				return err
+			}
+			remaining -= result.Events
+		}
+
+		if remaining > 0 && !policy.SubscriptionBefore.IsZero() {
+			if err := tx.QueryRow(ctx, `
+WITH candidates AS (
+    SELECT subscription.id
+    FROM webhook_subscription subscription
+    WHERE subscription.deleted_at < $2
+      AND NOT EXISTS (
+          SELECT 1
+          FROM webhook_delivery delivery
+          WHERE delivery.workspace_id = subscription.workspace_id
+            AND delivery.subscription_id = subscription.id
+      )
+    ORDER BY subscription.deleted_at, subscription.id
+    FOR UPDATE SKIP LOCKED
+    LIMIT $1
+), deleted AS (
+    DELETE FROM webhook_subscription
+    WHERE id IN (SELECT id FROM candidates)
+    RETURNING id
+)
+SELECT COUNT(*) FROM deleted
+`, remaining, policy.SubscriptionBefore).Scan(&result.Subscriptions); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	return result, err
+}
+
+func optionalWebhookRetentionCutoff(value time.Time) *time.Time {
+	if value.IsZero() {
+		return nil
+	}
+	return &value
+}
+
 func (s *PostgresStore) postgresSubscription(ctx context.Context, record WebhookSubscriptionRecord) (webhook.Subscription, error) {
 	return s.postgresSubscriptionWithProvider(ctx, s, record)
 }

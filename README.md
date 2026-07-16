@@ -431,6 +431,26 @@ redirects are not followed. A host-run local receiver may use HTTP loopback only
 when `WINDFORCE_LITE_WEBHOOK_ALLOW_INSECURE_LOOPBACK=true`. Endpoint paths,
 queries, signing secrets, and response bodies are not written to delivery logs.
 
+The dedicated dispatcher exposes Prometheus metrics on
+`WINDFORCE_LITE_WEBHOOK_METRICS_ADDR` (default `:9090`); `standalone` exposes
+the same metrics at `/metrics` on its existing HTTP listener. Metric labels are
+limited to event type, delivery state, and attempt outcome. Useful alert rules
+include a nonzero increase of
+`windforce_webhook_deliveries_total{state="failed"}` and
+`windforce_webhook_oldest_pending_seconds` exceeding the expected delivery
+delay.
+
+Webhook delivery records are pruned in bounded batches by the dispatcher.
+Succeeded and canceled deliveries default to 30 days, failed deliveries to 90
+days, and pending/retrying/delivering records are never pruned. Events are
+removed only after their deliveries are gone; soft-deleted subscriptions are
+removed only after their deliveries are gone. Configure the terminal TTLs with
+`WINDFORCE_LITE_WEBHOOK_SUCCESS_RETENTION_DAYS` and
+`WINDFORCE_LITE_WEBHOOK_FAILURE_RETENTION_DAYS`; `0` keeps that outcome
+forever. `WINDFORCE_LITE_WEBHOOK_RETENTION_INTERVAL`,
+`WINDFORCE_LITE_WEBHOOK_RETENTION_BATCH_SIZE`, and
+`WINDFORCE_LITE_WEBHOOK_RETENTION_TIME_BUDGET` bound cleanup work.
+
 ## Runtime architecture
 
 Windforce Lite has three explicit planes:

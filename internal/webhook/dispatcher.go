@@ -33,6 +33,7 @@ type Dispatcher struct {
 	BackoffMax  time.Duration
 	Now         func() time.Time
 	Logger      *slog.Logger
+	Metrics     *Metrics
 }
 
 func (dispatcher *Dispatcher) ProcessOne(ctx context.Context) (bool, error) {
@@ -52,6 +53,7 @@ func (dispatcher *Dispatcher) ProcessOne(ctx context.Context) (bool, error) {
 	if err := dispatcher.Store.CompleteDelivery(ctx, claimed.Lease, result); err != nil {
 		return true, err
 	}
+	dispatcher.Metrics.ObserveAttempt(claimed.Event.Type, attempt.Outcome, result.State, attempt.Latency)
 	dispatcher.logAttempt(claimed, attempt, result)
 	return true, nil
 }

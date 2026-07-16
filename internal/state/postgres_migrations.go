@@ -335,6 +335,10 @@ CREATE INDEX IF NOT EXISTS webhook_delivery_lease_idx
 CREATE INDEX IF NOT EXISTS webhook_delivery_subscription_idx
     ON webhook_delivery (workspace_id, subscription_id, created_at DESC);
 
+CREATE INDEX IF NOT EXISTS webhook_delivery_retention_idx
+    ON webhook_delivery (state, completed_at, updated_at, id)
+    WHERE state IN ('succeeded', 'failed', 'canceled');
+
 CREATE INDEX IF NOT EXISTS webhook_audit_workspace_idx
     ON webhook_audit (workspace_id, created_at DESC, id DESC);
 `)

@@ -250,6 +250,126 @@ func TestPostgresWebhookTransactionsUseSingleConnection(t *testing.T) {
 	}
 }
 
+func TestPostgresWebhookRetentionPrunesOnlyTerminalDeliveries(t *testing.T) {
+	dsn := os.Getenv("WINDFORCE_LITE_POSTGRES_TEST_DSN")
+	if dsn == "" {
+		t.Skip("WINDFORCE_LITE_POSTGRES_TEST_DSN is not set")
+	}
+	ctx := context.Background()
+	store := openIsolatedPostgresCatalogStore(t, dsn)
+	store.ConfigureInputCrypto("postgres-test-secret-key", "")
+	if _, err := store.CreateSubscription(ctx, webhook.Subscription{
+		WorkspaceID:   "workspace-a",
+		Name:          "Retained subscription",
+		Endpoint:      "https://hooks.example.test/releases",
+		SigningSecret: "signing-secret-0123456789",
+		EventTypes:    []string{controlevent.ReleasePublishedType},
+		Enabled:       true,
+		CreatedBy:     "operator@example.test",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	removable, err := store.CreateSubscription(ctx, webhook.Subscription{
+		WorkspaceID:   "workspace-a",
+		Name:          "Deleted subscription",
+		Endpoint:      "https://hooks.example.test/deleted",
+		SigningSecret: "signing-secret-0123456789",
+		EventTypes:    []string{controlevent.ReleasePublishedType},
+		AppKeys:       []string{"never-matches"},
+		Enabled:       true,
+		CreatedBy:     "operator@example.test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index := 0; index < 6; index++ {
+		deployment := releaseCatalogDeployment("workspace-a", "source-a", "echo", fmt.Sprintf("commit-%d", index))
+		if _, err := store.PublishRelease(ctx, deployment, time.Now().UTC()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := store.DeleteSubscription(ctx, "workspace-a", removable.ID, "operator@example.test"); err != nil {
+		t.Fatal(err)
+	}
+
+	rows, err := store.pool.Query(ctx, `SELECT id FROM webhook_delivery ORDER BY id`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	deliveryIDs := make([]string, 0, 6)
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		deliveryIDs = append(deliveryIDs, id)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().UTC().Add(-100 * 24 * time.Hour)
+	states := []webhook.DeliveryState{
+		webhook.DeliverySucceeded,
+		webhook.DeliveryFailed,
+		webhook.DeliveryCanceled,
+		webhook.DeliveryPending,
+		webhook.DeliveryRetrying,
+		webhook.DeliveryDelivering,
+	}
+	for index, deliveryID := range deliveryIDs {
+		createdAt := old.Add(time.Duration(index) * time.Minute)
+		var completedAt *time.Time
+		if !isActiveWebhookDelivery(states[index]) {
+			completedAt = cloneTime(&createdAt)
+		}
+		if _, err := store.pool.Exec(ctx, `
+UPDATE webhook_delivery
+SET state = $2, created_at = $3, updated_at = $3, completed_at = $4
+WHERE id = $1
+`, deliveryID, states[index], createdAt, completedAt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := store.pool.Exec(ctx, `UPDATE webhook_subscription SET deleted_at = $2 WHERE id = $1`, removable.ID, old); err != nil {
+		t.Fatal(err)
+	}
+
+	stats, err := store.WebhookQueueStats(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantOldest := old.Add(3 * time.Minute)
+	if stats.PendingCount != 3 || stats.OldestPending == nil || stats.OldestPending.Sub(wantOldest).Abs() > time.Microsecond {
+		t.Fatalf("queue stats = %#v", stats)
+	}
+	cutoff := time.Now().UTC().Add(-30 * 24 * time.Hour)
+	result, err := store.PruneWebhookData(ctx, webhook.RetentionPolicy{
+		SucceededBefore:    cutoff,
+		CanceledBefore:     cutoff,
+		FailedBefore:       cutoff,
+		SubscriptionBefore: cutoff,
+		BatchSize:          20,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result != (webhook.RetentionResult{Deliveries: 3, Events: 3, Subscriptions: 1}) {
+		t.Fatalf("retention result = %#v", result)
+	}
+	var deliveries int
+	var events int
+	if err := store.pool.QueryRow(ctx, `SELECT COUNT(*) FROM webhook_delivery`).Scan(&deliveries); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.pool.QueryRow(ctx, `SELECT COUNT(*) FROM control_plane_event`).Scan(&events); err != nil {
+		t.Fatal(err)
+	}
+	if deliveries != 3 || events != 3 {
+		t.Fatalf("remaining counts = deliveries:%d events:%d", deliveries, events)
+	}
+}
+
 func TestPostgresWebhookDeliveryUniqueConstraint(t *testing.T) {
 	dsn := os.Getenv("WINDFORCE_LITE_POSTGRES_TEST_DSN")
 	if dsn == "" {

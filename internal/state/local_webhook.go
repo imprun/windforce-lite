@@ -370,6 +370,136 @@ func (s *LocalStore) ListAudit(ctx context.Context, workspaceID string) ([]webho
 	return audits, nil
 }
 
+func (s *LocalStore) WebhookQueueStats(ctx context.Context) (webhook.QueueStats, error) {
+	snapshot, err := s.Load(ctx)
+	if err != nil {
+		return webhook.QueueStats{}, err
+	}
+	var stats webhook.QueueStats
+	for _, delivery := range snapshot.WebhookDeliveries {
+		if !isActiveWebhookDelivery(delivery.State) {
+			continue
+		}
+		stats.PendingCount++
+		if stats.OldestPending == nil || delivery.CreatedAt.Before(*stats.OldestPending) {
+			stats.OldestPending = cloneTime(&delivery.CreatedAt)
+		}
+	}
+	return stats, nil
+}
+
+func (s *LocalStore) PruneWebhookData(ctx context.Context, policy webhook.RetentionPolicy) (webhook.RetentionResult, error) {
+	policy.BatchSize = normalizedWebhookRetentionBatchSize(policy.BatchSize)
+	var result webhook.RetentionResult
+	err := s.update(ctx, func(snapshot *Snapshot, _ time.Time) error {
+		remaining := policy.BatchSize
+		candidates := make([]webhook.Delivery, 0)
+		for _, delivery := range snapshot.WebhookDeliveries {
+			if webhookDeliveryExpired(delivery, policy) {
+				candidates = append(candidates, delivery)
+			}
+		}
+		sort.Slice(candidates, func(left int, right int) bool {
+			leftTime := webhookDeliveryRetentionTime(candidates[left])
+			rightTime := webhookDeliveryRetentionTime(candidates[right])
+			if leftTime.Equal(rightTime) {
+				return candidates[left].ID < candidates[right].ID
+			}
+			return leftTime.Before(rightTime)
+		})
+		for _, delivery := range candidates {
+			if remaining == 0 {
+				break
+			}
+			delete(snapshot.WebhookDeliveries, delivery.ID)
+			result.Deliveries++
+			remaining--
+		}
+
+		if remaining > 0 {
+			referencedEvents := make(map[string]struct{}, len(snapshot.WebhookDeliveries))
+			for _, delivery := range snapshot.WebhookDeliveries {
+				referencedEvents[delivery.EventID] = struct{}{}
+			}
+			eventIDs := make([]string, 0)
+			for eventID := range snapshot.ControlPlaneEvents {
+				if _, referenced := referencedEvents[eventID]; !referenced {
+					eventIDs = append(eventIDs, eventID)
+				}
+			}
+			sort.Strings(eventIDs)
+			for _, eventID := range eventIDs {
+				if remaining == 0 {
+					break
+				}
+				delete(snapshot.ControlPlaneEvents, eventID)
+				result.Events++
+				remaining--
+			}
+		}
+
+		if remaining > 0 && !policy.SubscriptionBefore.IsZero() {
+			referencedSubscriptions := make(map[string]struct{}, len(snapshot.WebhookDeliveries))
+			for _, delivery := range snapshot.WebhookDeliveries {
+				referencedSubscriptions[webhookSubscriptionKey(delivery.WorkspaceID, delivery.SubscriptionID)] = struct{}{}
+			}
+			subscriptionKeys := make([]string, 0)
+			for key, subscription := range snapshot.WebhookSubscriptions {
+				if subscription.DeletedAt == nil || !subscription.DeletedAt.Before(policy.SubscriptionBefore) {
+					continue
+				}
+				if _, referenced := referencedSubscriptions[key]; !referenced {
+					subscriptionKeys = append(subscriptionKeys, key)
+				}
+			}
+			sort.Strings(subscriptionKeys)
+			for _, key := range subscriptionKeys {
+				if remaining == 0 {
+					break
+				}
+				delete(snapshot.WebhookSubscriptions, key)
+				result.Subscriptions++
+				remaining--
+			}
+		}
+		return nil
+	})
+	return result, err
+}
+
+func isActiveWebhookDelivery(state webhook.DeliveryState) bool {
+	return state == webhook.DeliveryPending || state == webhook.DeliveryRetrying || state == webhook.DeliveryDelivering
+}
+
+func webhookDeliveryExpired(delivery webhook.Delivery, policy webhook.RetentionPolicy) bool {
+	cutoff := time.Time{}
+	switch delivery.State {
+	case webhook.DeliverySucceeded:
+		cutoff = policy.SucceededBefore
+	case webhook.DeliveryCanceled:
+		cutoff = policy.CanceledBefore
+	case webhook.DeliveryFailed:
+		cutoff = policy.FailedBefore
+	default:
+		return false
+	}
+	return !cutoff.IsZero() && webhookDeliveryRetentionTime(delivery).Before(cutoff)
+}
+
+func webhookDeliveryRetentionTime(delivery webhook.Delivery) time.Time {
+	if delivery.CompletedAt != nil {
+		return *delivery.CompletedAt
+	}
+	return delivery.UpdatedAt
+}
+
+func normalizedWebhookRetentionBatchSize(batchSize int) int {
+	if batchSize <= 0 {
+		return 1000
+	}
+	return batchSize
+}
+
 func (s *LocalStore) localSubscription(ctx context.Context, record WebhookSubscriptionRecord) (webhook.Subscription, error) {
 	config := inputCryptoConfig{SecretKey: s.SecretKey, SecretKeyPrevious: s.SecretKeyPrevious}
 	endpoint, err := decryptWebhookString(ctx, nil, config, record.WorkspaceID, record.EndpointEncrypted, "webhook endpoint")

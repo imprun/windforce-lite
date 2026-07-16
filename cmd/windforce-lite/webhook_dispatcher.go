@@ -16,10 +16,16 @@ import (
 )
 
 const (
-	defaultWebhookDispatchInterval = 500 * time.Millisecond
-	defaultWebhookRequestTimeout   = 10 * time.Second
-	defaultWebhookLeaseTTL         = 30 * time.Second
-	defaultWebhookMaxAttempts      = 8
+	defaultWebhookDispatchInterval    = 500 * time.Millisecond
+	defaultWebhookRequestTimeout      = 10 * time.Second
+	defaultWebhookLeaseTTL            = 30 * time.Second
+	defaultWebhookMaxAttempts         = 8
+	defaultWebhookMetricsAddr         = ":9090"
+	defaultWebhookSuccessRetention    = 30 * 24 * time.Hour
+	defaultWebhookFailureRetention    = 90 * 24 * time.Hour
+	defaultWebhookRetentionInterval   = 10 * time.Minute
+	defaultWebhookRetentionBatchSize  = 1000
+	defaultWebhookRetentionTimeBudget = 5 * time.Second
 )
 
 type webhookDispatcherFlags struct {
@@ -31,6 +37,11 @@ type webhookDispatcherFlags struct {
 	allowedCIDRs          *string
 	allowInsecureLoopback *bool
 	workerID              *string
+	successRetention      *time.Duration
+	failureRetention      *time.Duration
+	retentionInterval     *time.Duration
+	retentionBatchSize    *int
+	retentionTimeBudget   *time.Duration
 }
 
 func bindWebhookDispatcherFlags(flags *flag.FlagSet, prefix string) webhookDispatcherFlags {
@@ -43,6 +54,11 @@ func bindWebhookDispatcherFlags(flags *flag.FlagSet, prefix string) webhookDispa
 		allowedCIDRs:          flags.String(prefix+"allowed-cidrs", os.Getenv("WINDFORCE_LITE_WEBHOOK_ALLOWED_CIDRS"), "comma-separated private webhook endpoint CIDR allowlist"),
 		allowInsecureLoopback: flags.Bool(prefix+"allow-insecure-loopback", envBool("WINDFORCE_LITE_WEBHOOK_ALLOW_INSECURE_LOOPBACK", false), "allow HTTP loopback webhook endpoints for local development"),
 		workerID:              flags.String(prefix+"worker-id", "", "webhook dispatcher identity"),
+		successRetention:      flags.Duration(prefix+"success-retention", envDays("WINDFORCE_LITE_WEBHOOK_SUCCESS_RETENTION_DAYS", defaultWebhookSuccessRetention), "how long succeeded/canceled webhook deliveries are kept; 0 keeps them forever"),
+		failureRetention:      flags.Duration(prefix+"failure-retention", envDays("WINDFORCE_LITE_WEBHOOK_FAILURE_RETENTION_DAYS", defaultWebhookFailureRetention), "how long failed webhook deliveries are kept; 0 keeps them forever"),
+		retentionInterval:     flags.Duration(prefix+"retention-interval", envParsedDuration("WINDFORCE_LITE_WEBHOOK_RETENTION_INTERVAL", defaultWebhookRetentionInterval), "how often webhook retention runs"),
+		retentionBatchSize:    flags.Int(prefix+"retention-batch-size", envInt("WINDFORCE_LITE_WEBHOOK_RETENTION_BATCH_SIZE", defaultWebhookRetentionBatchSize), "maximum webhook records removed per retention batch"),
+		retentionTimeBudget:   flags.Duration(prefix+"retention-time-budget", envParsedDuration("WINDFORCE_LITE_WEBHOOK_RETENTION_TIME_BUDGET", defaultWebhookRetentionTimeBudget), "maximum time spent in one webhook retention cycle"),
 	}
 }
 
@@ -56,6 +72,7 @@ func runWebhookDispatcher(args []string) int {
 	secretKeyEnv := flags.String("secret-key-env", "SECRET_KEY", "environment variable that contains the instance secret used for webhook encryption")
 	secretKeyPreviousEnv := flags.String("secret-key-previous-env", "SECRET_KEY_PREVIOUS", "environment variable that contains the previous instance secret during rotation")
 	dispatcherFlags := bindWebhookDispatcherFlags(flags, "")
+	metricsAddr := flags.String("metrics-addr", firstNonEmpty(strings.TrimSpace(os.Getenv("WINDFORCE_LITE_WEBHOOK_METRICS_ADDR")), defaultWebhookMetricsAddr), "webhook dispatcher metrics listen address; empty disables metrics")
 	once := flags.Bool("once", false, "process at most one pending webhook delivery and exit")
 	if err := flags.Parse(args); err != nil {
 		return 2
@@ -70,7 +87,8 @@ func runWebhookDispatcher(args []string) int {
 	}
 	defer closeState()
 	configureInputCrypto(stateStore, effectiveSecretKey(tokenFromEnv(*secretKeyEnv)), tokenFromEnv(*secretKeyPreviousEnv))
-	dispatcher, err := newWebhookDispatcher(stateStore, dispatcherFlags)
+	metrics := webhook.NewMetrics()
+	dispatcher, err := newWebhookDispatcher(stateStore, dispatcherFlags, metrics)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "webhook-dispatcher config: %v\n", err)
 		return 1
@@ -84,6 +102,18 @@ func runWebhookDispatcher(args []string) int {
 		_ = writeJSON(os.Stdout, map[string]bool{"processed": processed})
 		return 0
 	}
+	if _, err := startWebhookMetricsServer(ctx, *metricsAddr, metrics.Handler(dispatcher.Store)); err != nil {
+		fmt.Fprintf(os.Stderr, "webhook-dispatcher metrics: %v\n", err)
+		return 1
+	}
+	retention, err := webhookRetentionFromFlags(dispatcherFlags)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "webhook-dispatcher retention: %v\n", err)
+		return 1
+	}
+	if retention.Enabled() {
+		go runWebhookRetentionLoop(ctx, dispatcher.Store, retention)
+	}
 	if err := dispatcher.RunLoop(ctx, *dispatcherFlags.dispatchInterval); err != nil {
 		fmt.Fprintf(os.Stderr, "webhook-dispatcher: %v\n", err)
 		return 1
@@ -91,7 +121,7 @@ func runWebhookDispatcher(args []string) int {
 	return 0
 }
 
-func newWebhookDispatcher(stateStore state.Store, flags webhookDispatcherFlags) (*webhook.Dispatcher, error) {
+func newWebhookDispatcher(stateStore state.Store, flags webhookDispatcherFlags, metrics *webhook.Metrics) (*webhook.Dispatcher, error) {
 	webhookStore, ok := stateStore.(webhook.Store)
 	if !ok {
 		return nil, fmt.Errorf("state backend does not provide webhook delivery storage")
@@ -129,6 +159,7 @@ func newWebhookDispatcher(stateStore state.Store, flags webhookDispatcherFlags) 
 		WorkerID:    strings.TrimSpace(*flags.workerID),
 		LeaseTTL:    *flags.leaseTTL,
 		MaxAttempts: *flags.maxAttempts,
+		Metrics:     metrics,
 	}, nil
 }
 

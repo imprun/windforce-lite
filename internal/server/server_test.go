@@ -41,6 +41,22 @@ func decodeCatalogSchema(t *testing.T, raw json.RawMessage) []byte {
 	return decoded
 }
 
+func TestMetricsEndpointBypassesAPIAuthentication(t *testing.T) {
+	handler := New(Config{
+		Store:      state.NewLocalStore(filepath.Join(t.TempDir(), "state.json")),
+		EnableAPI:  true,
+		AdminToken: "admin-secret",
+		MetricsHandler: http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+			_, _ = io.WriteString(response, "windforce_webhook_pending_deliveries 0\n")
+		}),
+	})
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), "windforce_webhook_pending_deliveries") {
+		t.Fatalf("metrics response = %d %q", recorder.Code, recorder.Body.String())
+	}
+}
+
 func TestJobLogsAPI(t *testing.T) {
 	tempDir := t.TempDir()
 	store := state.NewLocalStore(filepath.Join(tempDir, "state.json"))

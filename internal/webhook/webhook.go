@@ -128,6 +128,31 @@ type Store interface {
 	CompleteDelivery(ctx context.Context, lease DeliveryLease, result DeliveryResult) error
 	RetryDelivery(ctx context.Context, workspaceID string, deliveryID string, actor string) error
 	ListAudit(ctx context.Context, workspaceID string) ([]Audit, error)
+	WebhookQueueStats(ctx context.Context) (QueueStats, error)
+	PruneWebhookData(ctx context.Context, policy RetentionPolicy) (RetentionResult, error)
+}
+
+type QueueStats struct {
+	PendingCount  int64
+	OldestPending *time.Time
+}
+
+type RetentionPolicy struct {
+	SucceededBefore    time.Time
+	CanceledBefore     time.Time
+	FailedBefore       time.Time
+	SubscriptionBefore time.Time
+	BatchSize          int
+}
+
+type RetentionResult struct {
+	Deliveries    int64
+	Events        int64
+	Subscriptions int64
+}
+
+func (result RetentionResult) Empty() bool {
+	return result.Deliveries == 0 && result.Events == 0 && result.Subscriptions == 0
 }
 
 func ValidateSubscription(subscription Subscription) error {

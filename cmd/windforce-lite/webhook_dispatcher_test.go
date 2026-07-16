@@ -68,7 +68,7 @@ func TestRunWebhookDispatcherOnceDeliversPersistedEvent(t *testing.T) {
 
 func TestNewWebhookDispatcherRejectsUnsafeTiming(t *testing.T) {
 	flags := flagSetForWebhookTest(t, 5*time.Second, 5*time.Second)
-	if _, err := newWebhookDispatcher(state.NewLocalStore(filepath.Join(t.TempDir(), "state.json")), flags); err == nil {
+	if _, err := newWebhookDispatcher(state.NewLocalStore(filepath.Join(t.TempDir(), "state.json")), flags, nil); err == nil {
 		t.Fatal("request timeout equal to lease was accepted")
 	}
 }

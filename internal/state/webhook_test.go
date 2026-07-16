@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -235,6 +236,116 @@ func TestLocalExpiredDeliveryLeaseIsReclaimed(t *testing.T) {
 	completedAt := time.Now().UTC()
 	if err := store.CompleteDelivery(ctx, first.Lease, webhook.DeliveryResult{State: webhook.DeliveryFailed, CompletedAt: completedAt}); !errors.Is(err, webhook.ErrInvalidLease) {
 		t.Fatalf("stale lease completion error = %v", err)
+	}
+}
+
+func TestLocalWebhookRetentionPrunesOnlyTerminalDeliveries(t *testing.T) {
+	store := NewLocalStore(filepath.Join(t.TempDir(), "state.json"))
+	store.ConfigureInputCrypto("local-test-secret-key", "")
+	ctx := context.Background()
+	if _, err := store.CreateSubscription(ctx, webhook.Subscription{
+		WorkspaceID:   "workspace-a",
+		Name:          "Retained subscription",
+		Endpoint:      "https://hooks.example.test/releases",
+		SigningSecret: "signing-secret-0123456789",
+		EventTypes:    []string{controlevent.ReleasePublishedType},
+		Enabled:       true,
+		CreatedBy:     "operator@example.test",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	removable, err := store.CreateSubscription(ctx, webhook.Subscription{
+		WorkspaceID:   "workspace-a",
+		Name:          "Deleted subscription",
+		Endpoint:      "https://hooks.example.test/deleted",
+		SigningSecret: "signing-secret-0123456789",
+		EventTypes:    []string{controlevent.ReleasePublishedType},
+		AppKeys:       []string{"never-matches"},
+		Enabled:       true,
+		CreatedBy:     "operator@example.test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index := 0; index < 6; index++ {
+		deployment := releaseCatalogDeployment("workspace-a", "source-a", "echo", "commit-"+string(rune('a'+index)))
+		if _, err := store.PublishRelease(ctx, deployment, time.Now().UTC()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := store.DeleteSubscription(ctx, "workspace-a", removable.ID, "operator@example.test"); err != nil {
+		t.Fatal(err)
+	}
+
+	snapshot, err := store.Load(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	deliveryIDs := make([]string, 0, len(snapshot.WebhookDeliveries))
+	for deliveryID := range snapshot.WebhookDeliveries {
+		deliveryIDs = append(deliveryIDs, deliveryID)
+	}
+	sort.Strings(deliveryIDs)
+	old := time.Now().UTC().Add(-100 * 24 * time.Hour)
+	states := []webhook.DeliveryState{
+		webhook.DeliverySucceeded,
+		webhook.DeliveryFailed,
+		webhook.DeliveryCanceled,
+		webhook.DeliveryPending,
+		webhook.DeliveryRetrying,
+		webhook.DeliveryDelivering,
+	}
+	for index, deliveryID := range deliveryIDs {
+		delivery := snapshot.WebhookDeliveries[deliveryID]
+		delivery.State = states[index]
+		delivery.CreatedAt = old.Add(time.Duration(index) * time.Minute)
+		delivery.UpdatedAt = delivery.CreatedAt
+		if isActiveWebhookDelivery(delivery.State) {
+			delivery.CompletedAt = nil
+		} else {
+			delivery.CompletedAt = cloneTime(&delivery.UpdatedAt)
+		}
+		snapshot.WebhookDeliveries[deliveryID] = delivery
+	}
+	removableRecord := snapshot.WebhookSubscriptions[webhookSubscriptionKey("workspace-a", removable.ID)]
+	removableRecord.DeletedAt = cloneTime(&old)
+	snapshot.WebhookSubscriptions[webhookSubscriptionKey("workspace-a", removable.ID)] = removableRecord
+	if err := store.write(snapshot); err != nil {
+		t.Fatal(err)
+	}
+
+	stats, err := store.WebhookQueueStats(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.PendingCount != 3 || stats.OldestPending == nil || !stats.OldestPending.Equal(old.Add(3*time.Minute)) {
+		t.Fatalf("queue stats = %#v", stats)
+	}
+	cutoff := time.Now().UTC().Add(-30 * 24 * time.Hour)
+	result, err := store.PruneWebhookData(ctx, webhook.RetentionPolicy{
+		SucceededBefore:    cutoff,
+		CanceledBefore:     cutoff,
+		FailedBefore:       cutoff,
+		SubscriptionBefore: cutoff,
+		BatchSize:          20,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result != (webhook.RetentionResult{Deliveries: 3, Events: 3, Subscriptions: 1}) {
+		t.Fatalf("retention result = %#v", result)
+	}
+	remaining, err := store.Load(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(remaining.WebhookDeliveries) != 3 || len(remaining.ControlPlaneEvents) != 3 {
+		t.Fatalf("remaining counts = deliveries:%d events:%d", len(remaining.WebhookDeliveries), len(remaining.ControlPlaneEvents))
+	}
+	for _, delivery := range remaining.WebhookDeliveries {
+		if !isActiveWebhookDelivery(delivery.State) {
+			t.Fatalf("terminal delivery was retained: %#v", delivery)
+		}
 	}
 }
 

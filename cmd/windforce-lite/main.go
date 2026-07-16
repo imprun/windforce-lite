@@ -22,6 +22,7 @@ import (
 	"github.com/imprun/windforce-lite/internal/server"
 	"github.com/imprun/windforce-lite/internal/state"
 	"github.com/imprun/windforce-lite/internal/syncer"
+	"github.com/imprun/windforce-lite/internal/webhook"
 	"github.com/imprun/windforce-lite/internal/worker"
 )
 
@@ -130,6 +131,17 @@ func runServer(args []string, mode string) int {
 		runtimeBaseURL = localBaseURL(*addr)
 	}
 	combinedMode := mode == "standalone"
+	var webhookMetrics *webhook.Metrics
+	var webhookMetricsHandler http.Handler
+	if combinedMode {
+		webhookStore, ok := stateStore.(webhook.Store)
+		if !ok {
+			fmt.Fprintln(os.Stderr, "standalone state backend does not provide webhook delivery storage")
+			return 1
+		}
+		webhookMetrics = webhook.NewMetrics()
+		webhookMetricsHandler = webhookMetrics.Handler(webhookStore)
+	}
 	handler := server.New(server.Config{
 		Store:              stateStore,
 		Catalog:            releaseCatalog,
@@ -142,6 +154,7 @@ func runServer(args []string, mode string) int {
 		JobTokenSecret:     jobTokenSecret,
 		SecretKey:          secretKey,
 		SecretKeyPrevious:  secretKeyPrevious,
+		MetricsHandler:     webhookMetricsHandler,
 	})
 
 	retention := jobRetentionPolicy{
@@ -155,9 +168,14 @@ func runServer(args []string, mode string) int {
 	}
 
 	if mode == "standalone" {
-		dispatcher, err := newWebhookDispatcher(stateStore, webhookDispatcherFlags)
+		dispatcher, err := newWebhookDispatcher(stateStore, webhookDispatcherFlags, webhookMetrics)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "standalone webhook dispatcher: %v\n", err)
+			return 1
+		}
+		webhookRetention, err := webhookRetentionFromFlags(webhookDispatcherFlags)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "standalone webhook retention: %v\n", err)
 			return 1
 		}
 		processor := worker.Processor{
@@ -191,6 +209,9 @@ func runServer(args []string, mode string) int {
 				fmt.Fprintf(os.Stderr, "standalone webhook dispatcher: %v\n", err)
 			}
 		}()
+		if webhookRetention.Enabled() {
+			go runWebhookRetentionLoop(context.Background(), dispatcher.Store, webhookRetention)
+		}
 	}
 
 	fmt.Fprintf(os.Stderr, "windforce-lite %s listening on %s\n", mode, *addr)

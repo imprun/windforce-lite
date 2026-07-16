@@ -173,6 +173,12 @@ Outbound 요청은 다음 정책을 적용한다.
 
 구독 변경과 수동 재시도는 canonical audit에 기록한다. Delivery 이력은 전송 운영 데이터이며 audit log 자체를 대신하지 않는다.
 
+### 9. Dispatcher가 관측성과 delivery 보존을 소유한다
+
+전용 Dispatcher는 Prometheus metrics listener를 제공한다. `standalone`은 기존 HTTP listener의 `/metrics`를 사용한다. Metric label은 event type, delivery state와 attempt outcome으로 제한하며 endpoint, subscription, app key와 delivery ID를 사용하지 않는다.
+
+Dispatcher retention loop는 succeeded/canceled delivery를 기본 30일, failed delivery를 기본 90일 보존한다. pending, retrying과 delivering 상태는 삭제하지 않는다. Event는 모든 delivery가 삭제된 뒤, soft-deleted subscription은 참조 delivery가 없어진 뒤에만 물리 삭제한다. 정리는 batch 크기와 실행 시간 예산으로 제한하며 terminal TTL `0`은 해당 규칙을 비활성화한다.
+
 ## Non-goals
 
 - Control Plane 안에서 Slack Block Kit 또는 Telegram Bot API payload를 생성하지 않는다.

@@ -49,6 +49,7 @@ type Config struct {
 	SecretKeyPrevious  string
 	SampleRoot         string
 	Wait               time.Duration
+	MetricsHandler     http.Handler
 }
 
 type Handler struct {
@@ -65,6 +66,7 @@ type Handler struct {
 	secretKeyPrevious  string
 	sampleRoot         string
 	wait               time.Duration
+	metricsHandler     http.Handler
 	execution          *executionpkg.Service
 	syncLocks          sync.Map
 }
@@ -133,6 +135,7 @@ func New(config Config) http.Handler {
 		sampleRoot:         config.SampleRoot,
 		wait:               config.Wait,
 		execution:          executionpkg.NewService(config.Store, config.Catalog, bundleStore),
+		metricsHandler:     config.MetricsHandler,
 	}
 }
 
@@ -143,6 +146,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.URL.Path == "/readyz" {
 		writeJSON(w, http.StatusOK, map[string]bool{"ready": h.store != nil})
+		return
+	}
+	if r.URL.Path == "/metrics" && r.Method == http.MethodGet && h.metricsHandler != nil {
+		h.metricsHandler.ServeHTTP(w, r)
 		return
 	}
 	if h.enableWebUI && h.handleWebUI(w, r) {
