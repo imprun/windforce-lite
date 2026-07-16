@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { formatInputSettingValue } from "./AppInputSettings";
+import { formatInputSettingValue } from "./InputSettingScopeList";
 
 describe("formatInputSettingValue", () => {
   test("preserves JSON scalar types", () => {

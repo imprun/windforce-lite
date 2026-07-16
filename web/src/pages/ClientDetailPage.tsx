@@ -1,13 +1,15 @@
-import { Lock, Pencil, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Layout } from "../components/Layout";
 import { DefinitionList, EmptyState, ErrorNotice, Loading, Modal, Panel } from "../components/ui";
 import { ClientDialog } from "../features/ClientDialog";
 import { InputConfigDialog } from "../features/InputConfigDialog";
+import { InputSettingScopeList } from "../features/InputSettingScopeList";
 import { AuditEventTable } from "../features/AuditEventTable";
 import { type InputConfig } from "../lib/api";
+import { actionDisplayName } from "../lib/action-label";
 import { useApp, useAsync } from "../lib/app-context";
-import { formatRelative, formatTime } from "../lib/format";
+import { formatTime } from "../lib/format";
 import { Link, useRouter } from "../lib/router";
 
 type EditingConfig = { appKey: string; config?: InputConfig };
@@ -26,7 +28,10 @@ export function ClientDetailPage({ clientID }: { clientID: string }) {
         api.auditEvents({ clientID, limit: 250 }),
         api.apps(),
       ]);
-      return { client, configs, auditEvents, apps: apps.apps || [] };
+      const releasedApps = apps.apps || [];
+      const appDetailResults = await Promise.allSettled(releasedApps.map((app) => api.app(app.app_key)));
+      const appDetails = appDetailResults.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
+      return { client, configs, auditEvents, apps: releasedApps, appDetails };
     },
     [api, clientID],
   );
@@ -38,6 +43,10 @@ export function ClientDetailPage({ clientID }: { clientID: string }) {
   const appsByKey = useMemo(
     () => new Map((state.data?.apps || []).map((app) => [app.app_key, app])),
     [state.data?.apps],
+  );
+  const appDetailsByKey = useMemo(
+    () => new Map((state.data?.appDetails || []).map((detail) => [detail.app.app_key, detail])),
+    [state.data?.appDetails],
   );
 
   if (state.loading && !state.data) {
@@ -111,62 +120,26 @@ export function ClientDetailPage({ clientID }: { clientID: string }) {
         {configs.length === 0 ? (
           <EmptyState title={apps.length ? "No input settings for this client." : "No released apps are available."} />
         ) : (
-          <div className="tableWrap">
-            <table className="table inputSettingsTable" id="clientInputSettings">
-              <thead>
-                <tr>
-                  <th>App</th>
-                  <th>Action scope</th>
-                  <th>Keys</th>
-                  <th>Locked</th>
-                  <th>Updated</th>
-                  <th>Actor</th>
-                  <th aria-label="Row actions" />
-                </tr>
-              </thead>
-              <tbody>
-                {configs.map((config) => (
-                  <tr key={`${config.app_key}-${config.action_key || "all"}`}>
-                    <td>
-                      <span className="cellTitle mono">{config.app_key}</span>
-                      <span className="cellSub">{appsByKey.has(config.app_key) ? "released" : "release unavailable"}</span>
-                    </td>
-                    <td>
-                      <span className="cellTitle mono">{config.action_key || "All actions"}</span>
-                      <span className="cellSub">{config.action_key ? "action override" : "app override"}</span>
-                    </td>
-                    <td>{Object.keys(config.config).length}</td>
-                    <td>
-                      {config.locked_keys.length ? (
-                        <span className="lockedCount">
-                          <Lock size={14} aria-hidden="true" /> {config.locked_keys.length}
-                        </span>
-                      ) : (
-                        "0"
-                      )}
-                    </td>
-                    <td title={formatTime(config.updated_at)}>
-                      <span className="cellTitle">{formatRelative(config.updated_at)}</span>
-                      <span className="cellSub">{formatTime(config.updated_at)}</span>
-                    </td>
-                    <td>{config.updated_by}</td>
-                    <td className="rowActions">
-                      <button
-                        className="button small iconButton"
-                        type="button"
-                        title="Edit input settings"
-                        aria-label="Edit input settings"
-                        disabled={!appsByKey.has(config.app_key)}
-                        onClick={() => setEditingConfig({ appKey: config.app_key, config })}
-                      >
-                        <Pencil size={15} aria-hidden="true" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <InputSettingScopeList
+            id="clientInputSettings"
+            items={configs.map((config) => {
+              const app = appsByKey.get(config.app_key);
+              const action = appDetailsByKey.get(config.app_key)?.actions.find((item) => item.action_key === config.action_key);
+              const actionName = action ? actionDisplayName(action.display_name) || action.action_key : config.action_key || "All actions";
+              return {
+                key: `${config.app_key}-${config.action_key || "all"}`,
+                config,
+                primaryLabel: "App",
+                primaryValue: app ? <Link to={`/apps/${app.git_source_id}/input-settings`}>{config.app_key}</Link> : config.app_key,
+                primaryMeta: app ? "Released app" : "Release unavailable",
+                actionName,
+                actionMeta: config.action_key ? `${config.action_key} · Action override` : "App-wide client override",
+                editLabel: `Edit ${config.app_key} input settings for ${actionName}`,
+                editDisabled: !app,
+                onEdit: () => setEditingConfig({ appKey: config.app_key, config }),
+              };
+            })}
+          />
         )}
       </Panel>
 
