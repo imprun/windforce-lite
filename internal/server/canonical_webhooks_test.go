@@ -202,3 +202,13 @@ func TestControlPlaneOpenAPIIncludesWebhookManagement(t *testing.T) {
 		}
 	}
 }
+
+func TestCanonicalWebhookSubscriptionUsesEmptyJSONArrays(t *testing.T) {
+	payload, err := json.Marshal(canonicalWebhookSubscriptionFrom(webhook.Subscription{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(payload, []byte(`"event_types":[]`)) || !bytes.Contains(payload, []byte(`"app_keys":[]`)) {
+		t.Fatalf("empty webhook scopes must remain JSON arrays: %s", payload)
+	}
+}

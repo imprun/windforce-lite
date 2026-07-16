@@ -1723,6 +1723,11 @@ textarea {
     gap: 12px;
   }
 
+  .sidebarCollapsed .sidebar {
+    width: 100%;
+    padding: 12px 16px;
+  }
+
   .nav {
     flex-direction: row;
   }
@@ -1844,6 +1849,8 @@ textarea {
   }
 
   .nav {
+    flex: 1;
+    justify-content: space-around;
     gap: 0;
   }
 
@@ -2002,5 +2009,492 @@ textarea {
 
   .auditFilters {
     grid-template-columns: 1fr;
+  }
+}
+
+/* ---------- webhook administration ---------- */
+
+.settingsNav {
+  margin-bottom: 16px;
+}
+
+.webhookSummaryBar {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  min-height: 42px;
+  margin-bottom: 12px;
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--surface-1);
+  color: var(--text-secondary);
+}
+
+.webhookSummaryBar strong {
+  color: var(--text-primary);
+  font-size: 16px;
+}
+
+.summaryCritical,
+.deliveryErrorSummary {
+  color: var(--status-critical);
+}
+
+.historyToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.historyToggle input,
+.toggleField input,
+.appScopeOption input {
+  width: auto;
+}
+
+.webhookTable {
+  min-width: 900px;
+  table-layout: fixed;
+}
+
+.webhookTable th:nth-child(1) { width: 22%; }
+.webhookTable th:nth-child(2) { width: 25%; }
+.webhookTable th:nth-child(3) { width: 19%; }
+.webhookTable th:nth-child(4) { width: 18%; }
+.webhookTable th:nth-child(5) { width: 16%; }
+
+.webhookStatusLine {
+  margin-top: 5px;
+}
+
+.badge-warning {
+  background: var(--status-warning-bg);
+}
+
+.badge-critical {
+  background: var(--status-critical-bg);
+  color: var(--status-critical);
+}
+
+.badge-running {
+  background: var(--status-running-bg);
+}
+
+.badge-neutral {
+  background: var(--status-neutral-bg);
+}
+
+.webhookFormLayout,
+.webhookDetailStack {
+  display: grid;
+  gap: 14px;
+}
+
+.webhookFormLayout {
+  max-width: 1080px;
+}
+
+.formGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.webhookEventSummary,
+.toggleField,
+.webhookSecurityRow,
+.dangerZoneRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.webhookEventSummary {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.webhookEventSummary p,
+.toggleField small,
+.securityIdentity p,
+.dangerZoneRow p {
+  display: block;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.webhookEventIcon {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  border-radius: 50%;
+  color: var(--status-good);
+  background: var(--status-good-bg);
+}
+
+.webhookScopeMode {
+  width: max-content;
+  margin-bottom: 12px;
+}
+
+.webhookScopeFieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+.webhookScopeFieldset legend {
+  margin-bottom: 8px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 620;
+}
+
+.appScopePicker {
+  max-width: 760px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  overflow: hidden;
+}
+
+.appScopePicker.compact {
+  max-width: none;
+}
+
+.scopeSearch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-muted);
+}
+
+.scopeSearch input {
+  padding: 2px 0;
+  border: none;
+  background: transparent;
+  outline: none;
+}
+
+.appScopeList {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.appScopeOption {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  min-width: 0;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+
+.appScopeOption:nth-child(odd) {
+  border-right: 1px solid var(--border);
+}
+
+.appScopeOption span,
+.appScopeOption small {
+  display: block;
+  min-width: 0;
+}
+
+.appScopeOption small {
+  overflow: hidden;
+  color: var(--text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.webhookFormActions {
+  justify-content: flex-end;
+  padding: 4px 0 0;
+}
+
+.secretReveal {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.secretReveal code {
+  min-width: 0;
+  flex: 1;
+  overflow-wrap: anywhere;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--surface-2);
+}
+
+.webhookSecretFooter {
+  justify-content: space-between;
+}
+
+.detailBreadcrumb {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.detailBreadcrumb a {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.webhookDetailTabs {
+  margin-bottom: 14px;
+}
+
+.webhookConfigSummary {
+  display: grid;
+  grid-template-columns: 150px minmax(220px, 1.4fr) minmax(220px, 1fr) minmax(190px, 1fr);
+  gap: 18px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.webhookConfigSummary > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.webhookConfigSummary strong {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.webhookEditForm {
+  display: grid;
+  gap: 18px;
+  margin-top: 18px;
+}
+
+.toggleField {
+  align-items: flex-start;
+  width: max-content;
+  max-width: 100%;
+  cursor: pointer;
+}
+
+.toggleField input {
+  margin-top: 3px;
+}
+
+.webhookSecurityRow,
+.dangerZoneRow {
+  justify-content: space-between;
+}
+
+.securityIdentity {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.securityIdentity svg {
+  margin-top: 2px;
+  color: var(--text-secondary);
+}
+
+.deliveryToolbar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.deliveryToolbar .filterField {
+  width: 190px;
+}
+
+.webhookDeliveryTable {
+  min-width: 860px;
+  table-layout: fixed;
+}
+
+.webhookDeliveryTable th:nth-child(1) { width: 14%; }
+.webhookDeliveryTable th:nth-child(2) { width: 26%; }
+.webhookDeliveryTable th:nth-child(3) { width: 10%; }
+.webhookDeliveryTable th:nth-child(4) { width: 25%; }
+.webhookDeliveryTable th:nth-child(5) { width: 25%; }
+
+.tableLink {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 580;
+  cursor: pointer;
+}
+
+.tableLink:hover {
+  text-decoration: underline;
+}
+
+.deliveryErrorSummary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tableFooter {
+  display: flex;
+  justify-content: center;
+  padding: 14px 0 2px;
+}
+
+.sheetBackdrop {
+  position: fixed;
+  z-index: 80;
+  inset: 0;
+  display: flex;
+  justify-content: flex-end;
+  background: rgba(11, 11, 11, 0.48);
+}
+
+.sheet {
+  display: flex;
+  width: min(680px, calc(100vw - 48px));
+  height: 100%;
+  flex-direction: column;
+  border-left: 1px solid var(--border);
+  background: var(--surface-1);
+  box-shadow: var(--shadow);
+}
+
+.sheetHeader,
+.sheetFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 18px;
+}
+
+.sheetHeader {
+  border-bottom: 1px solid var(--border);
+}
+
+.sheetHeader h2 {
+  font-size: 17px;
+}
+
+.sheetHeader p {
+  color: var(--text-muted);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.sheetBody {
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+  padding: 18px;
+}
+
+.sheetFooter {
+  border-top: 1px solid var(--border);
+}
+
+.sheetSection + .sheetSection {
+  margin-top: 22px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+
+.sheetSection h3 {
+  margin-bottom: 10px;
+  font-size: 14px;
+}
+
+.deliveryIdentity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sheetFacts {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-bottom: 12px;
+}
+
+@media (max-width: 900px) {
+  .webhookConfigSummary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .webhookSummaryBar,
+  .deliveryToolbar,
+  .webhookSecurityRow,
+  .dangerZoneRow,
+  .secretReveal {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .historyToggle {
+    margin-left: 0;
+  }
+
+  .formGrid,
+  .appScopeList,
+  .webhookConfigSummary,
+  .sheetFacts {
+    grid-template-columns: 1fr;
+  }
+
+  .appScopeOption:nth-child(odd) {
+    border-right: none;
+  }
+
+  .webhookScopeMode {
+    width: 100%;
+  }
+
+  .webhookScopeMode .segment {
+    flex: 1;
+  }
+
+  .detailBreadcrumb .mono {
+    display: none;
+  }
+
+  .deliveryToolbar .filterField {
+    width: 100%;
+  }
+
+  .sheet {
+    width: 100%;
+  }
+
+  .sheetFooter .fieldHint {
+    display: none;
   }
 }

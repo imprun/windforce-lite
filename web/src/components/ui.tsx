@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from "react";
+import { X } from "lucide-react";
 import type { ProbeResult } from "../lib/api";
 import { formatJSON } from "../lib/format";
 
@@ -136,6 +137,48 @@ export function Modal({
         </header>
         <div className="dialogBody">{children}</div>
       </section>
+    </div>
+  );
+}
+
+export function Sheet({
+  title,
+  subtitle,
+  onClose,
+  children,
+  actions,
+  id,
+}: {
+  title: string;
+  subtitle?: string;
+  onClose: () => void;
+  children: ReactNode;
+  actions?: ReactNode;
+  id?: string;
+}) {
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose]);
+
+  return (
+    <div className="sheetBackdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <aside className="sheet" role="dialog" aria-modal="true" aria-label={title} id={id}>
+        <header className="sheetHeader">
+          <div>
+            <h2>{title}</h2>
+            {subtitle ? <p>{subtitle}</p> : null}
+          </div>
+          <button className="button iconButton" type="button" aria-label="Close" title="Close" onClick={onClose}>
+            <X size={18} aria-hidden="true" />
+          </button>
+        </header>
+        <div className="sheetBody">{children}</div>
+        {actions ? <footer className="sheetFooter">{actions}</footer> : null}
+      </aside>
     </div>
   );
 }

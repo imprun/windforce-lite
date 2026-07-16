@@ -9,7 +9,7 @@ export default {
     "Open the Web UI; the Apps view lists every registered app.",
     "Check the release state badge: released apps have a worker-visible contract, registered apps do not yet.",
     "Compare repository source, last release commit, action count, and route tag per app.",
-    "Use Publish Release directly from a row, or Open App for the full detail view.",
+    "Select an app row or app name to open its full detail view, or publish a release from the row.",
   ],
   async run({ page, capture }) {
     await page.goto();

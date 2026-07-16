@@ -7,6 +7,8 @@ import { pathToFileURL } from "node:url";
 
 const root = process.cwd();
 const verify = process.argv.includes("--verify");
+const smoke = process.argv.includes("--smoke");
+const scenarioFilter = process.argv.find((argument) => argument.startsWith("--scenario="))?.slice("--scenario=".length);
 
 function resolveRoot(...parts) {
   return path.resolve(root, ...parts);
@@ -161,8 +163,8 @@ async function createPlaywrightBrowser(config) {
     }
   }
   return {
-    async newPage() {
-      const context = await browser.newContext({ viewport: config.viewport });
+    async newPage(viewport = config.viewport) {
+      const context = await browser.newContext({ viewport });
       const page = await context.newPage();
       const errors = [];
       page.on("pageerror", (error) => errors.push(error.message));
@@ -242,9 +244,13 @@ async function createCdpBrowser(config) {
   });
   let id = 0;
   const pending = new Map();
+  const eventHandlers = new Map();
   ws.addEventListener("message", (event) => {
     const message = JSON.parse(event.data);
-    if (!message.id) return;
+    if (!message.id) {
+      eventHandlers.get(message.sessionId)?.(message);
+      return;
+    }
     const item = pending.get(message.id);
     if (!item) return;
     pending.delete(message.id);
@@ -259,11 +265,11 @@ async function createCdpBrowser(config) {
   }
 
   return {
-    async newPage() {
+    async newPage(viewport = config.viewport) {
       const target = await send("Target.createTarget", { url: "about:blank" });
       const attached = await send("Target.attachToTarget", { targetId: target.targetId, flatten: true });
       const sessionId = attached.sessionId;
-      const page = new CdpPage(config, send, sessionId);
+      const page = new CdpPage(config, send, sessionId, viewport, eventHandlers);
       await page.initialize();
       return page;
     },
@@ -297,21 +303,45 @@ async function removeTempDir(dir) {
 }
 
 class CdpPage {
-  constructor(config, send, sessionId) {
+  constructor(config, send, sessionId, viewport, eventHandlers) {
     this.config = config;
     this.send = send;
     this.sessionId = sessionId;
+    this.viewport = viewport;
+    this.eventHandlers = eventHandlers;
+    this.errors = [];
   }
 
   async initialize() {
+    this.eventHandlers.set(this.sessionId, (message) => this.handleEvent(message));
     await this.send("Page.enable", {}, this.sessionId);
     await this.send("Runtime.enable", {}, this.sessionId);
+    await this.send("Log.enable", {}, this.sessionId);
     await this.send("Emulation.setDeviceMetricsOverride", {
-      width: this.config.viewport.width,
-      height: this.config.viewport.height,
+      width: this.viewport.width,
+      height: this.viewport.height,
       deviceScaleFactor: 1,
       mobile: false,
     }, this.sessionId);
+  }
+
+  handleEvent(message) {
+    if (message.method === "Runtime.exceptionThrown") {
+      const detail = message.params?.exceptionDetails;
+      this.errors.push(detail?.exception?.description || detail?.text || "Unhandled page exception");
+      return;
+    }
+    if (message.method === "Log.entryAdded" && message.params?.entry?.level === "error") {
+      if (!message.params.entry.text.includes("favicon")) this.errors.push(message.params.entry.text);
+      return;
+    }
+    if (message.method === "Runtime.consoleAPICalled" && message.params?.type === "error") {
+      const text = (message.params.args || [])
+        .map((argument) => argument.value ?? argument.description ?? "")
+        .filter(Boolean)
+        .join(" ");
+      if (text && !text.includes("favicon")) this.errors.push(text);
+    }
   }
 
   async goto() {
@@ -408,11 +438,13 @@ class CdpPage {
   }
 
   async screenshot(file) {
+    if (this.errors.length > 0) throw new Error(`browser errors:\n${this.errors.join("\n")}`);
     const result = await this.send("Page.captureScreenshot", { format: "png", fromSurface: true }, this.sessionId);
     await writeFile(file, Buffer.from(result.data, "base64"));
   }
 
   async close() {
+    this.eventHandlers.delete(this.sessionId);
     // The browser process is short-lived for this runner, so target cleanup is unnecessary.
   }
 }
@@ -469,21 +501,25 @@ async function waitForCdp(port) {
 async function main() {
   const configModule = await import(pathToFileURL(resolveRoot("ui-guide.config.mjs")).href + `?v=${Date.now()}`);
   const config = configModule.default;
-  const scenarios = await loadScenarios(config);
-  const verifyScreenshotsDir = verify ? await mkdtemp(path.join(tmpdir(), "windforce-lite-ui-guide-verify-")) : "";
+  const loadedScenarios = await loadScenarios(config);
+  const selectedIDs = new Set((scenarioFilter || "").split(",").filter(Boolean));
+  const scenarios = selectedIDs.size ? loadedScenarios.filter((scenario) => selectedIDs.has(scenario.id)) : loadedScenarios;
+  if (scenarios.length === 0) throw new Error(`no UI guide scenarios matched ${scenarioFilter}`);
+  const transientCapture = verify || smoke;
+  const verifyScreenshotsDir = transientCapture ? await mkdtemp(path.join(tmpdir(), "windforce-lite-ui-guide-verify-")) : "";
   if (!verify) await mkdir(resolveRoot(config.screenshotsDir), { recursive: true });
 
   const api = (apiPath, options) => requestJSON(config.apiBaseUrl + apiPath, options);
-  if (config.start) await config.start({ exec, waitForHttp });
-  if (config.seed) await config.seed({ api, exec, waitForHttp });
-
-  const browser = (await createPlaywrightBrowser(config)) || (await createCdpBrowser(config));
+  let browser = null;
   try {
+    if (config.start) await config.start({ exec, waitForHttp });
+    if (config.seed) await config.seed({ api, exec, waitForHttp });
+    browser = (await createPlaywrightBrowser(config)) || (await createCdpBrowser(config));
     for (const scenario of scenarios) {
-      const page = await browser.newPage();
+      const page = await browser.newPage(scenario.viewport || config.viewport);
       try {
         const capture = async () => {
-          const file = verify ? path.join(verifyScreenshotsDir, `${scenario.id}.png`) : resolveRoot(scenario.screenshot);
+          const file = transientCapture ? path.join(verifyScreenshotsDir, `${scenario.id}.png`) : resolveRoot(scenario.screenshot);
           await mkdir(path.dirname(file), { recursive: true });
           await stabilizePage(page);
           await page.screenshot(file);
@@ -494,10 +530,14 @@ async function main() {
       }
     }
   } finally {
-    await browser.close();
+    if (browser) await browser.close();
+    if (config.stop) await config.stop();
   }
 
-  if (verify) {
+  if (smoke) {
+    await rm(verifyScreenshotsDir, { recursive: true, force: true });
+    console.log("UI smoke scenarios passed.");
+  } else if (verify) {
     await verifyGuide(config, scenarios);
     await rm(verifyScreenshotsDir, { recursive: true, force: true });
     console.log("UI guide verified.");

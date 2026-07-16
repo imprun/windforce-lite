@@ -6,6 +6,9 @@ import { ClientDetailPage } from "./pages/ClientDetailPage";
 import { MonitoringPage } from "./pages/MonitoringPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { AuditPage } from "./pages/AuditPage";
+import { WebhookCreatePage } from "./pages/WebhookCreatePage";
+import { WebhookDetailPage } from "./pages/WebhookDetailPage";
+import { WebhookSettingsPage } from "./pages/WebhookSettingsPage";
 
 export function App() {
   const { path } = useRouter();
@@ -36,6 +39,12 @@ export function App() {
   // removed per-job detail page (ADR 0005).
   const legacyJobs = matchRoute("/jobs/:id?", path);
   if (legacyJobs) return <MonitoringPage legacyJobID={legacyJobs.id} />;
+  if (matchRoute("/settings/webhooks/new", path)) return <WebhookCreatePage />;
+  const webhookDetail = matchRoute("/settings/webhooks/:id/:tab?", path);
+  if (webhookDetail?.id) {
+    return <WebhookDetailPage subscriptionID={webhookDetail.id} tab={webhookDetail.tab || "overview"} />;
+  }
+  if (matchRoute("/settings/webhooks", path)) return <WebhookSettingsPage />;
   if (matchRoute("/settings", path)) return <SettingsPage />;
   return <AppsPage />;
 }

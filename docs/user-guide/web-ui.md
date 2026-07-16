@@ -13,7 +13,7 @@ The Apps view is the home screen. Every row is one app: its release state, repos
 1. Open the Web UI; the Apps view lists every registered app.
 2. Check the release state badge: released apps have a worker-visible contract, registered apps do not yet.
 3. Compare repository source, last release commit, action count, and route tag per app.
-4. Use Publish Release directly from a row, or Open App for the full detail view.
+4. Select an app row or app name to open its full detail view, or publish a release from the row.
 
 ## Register an app
 
@@ -119,6 +119,47 @@ The sidebar collapses to an icon rail so wide tables get the full viewport. The 
 1. Click the collapse control beside the product title at the top of the sidebar.
 2. Navigate with the icon rail; hover shows each destination.
 3. Click the control again to expand the sidebar.
+
+## Manage release webhooks
+
+The Webhooks settings view shows each signed release receiver, its app scope, and the latest delivery outcome without exposing endpoint paths or secrets.
+
+![Manage release webhooks](../assets/ui/webhooks.png)
+
+1. Open Settings and choose Webhooks.
+2. Review each receiver's status, masked endpoint, app scope, latest delivery, and last operator update.
+3. Open a webhook name to manage its configuration and delivery history.
+
+## Configure a release webhook
+
+Webhook detail keeps receiver configuration, app scope, enablement, secret rotation, and deletion controls on a full page.
+
+![Configure a release webhook](../assets/ui/webhook-settings.png)
+
+1. Open a webhook from Settings.
+2. Review its masked receiver, event type, status, and last operator update.
+3. Change its name, replace the endpoint, enable or disable delivery, or narrow the app scope.
+4. Rotate the signing secret only when the receiver can be updated immediately.
+
+## Inspect a webhook delivery
+
+Delivery history exposes status, response, attempts, immutable event data, and a guarded retry action for failed deliveries.
+
+![Inspect a webhook delivery](../assets/ui/webhook-delivery.png)
+
+1. Open a webhook and switch to Deliveries.
+2. Select an event to inspect the attempt in a sheet without leaving the history table.
+3. Review the immutable event data and use Retry only when a delivery has failed.
+
+## Review webhooks on a narrow screen
+
+The webhook list remains usable on narrow screens through a stable navigation rail and horizontally scrollable operational table.
+
+![Review webhooks on a narrow screen](../assets/ui/webhook-mobile.png)
+
+1. Open Settings and choose Webhooks on a narrow screen.
+2. Scroll the table horizontally when all operational columns are needed.
+3. Open the webhook name to continue into its full detail page.
 
 ## Manage client input settings
 

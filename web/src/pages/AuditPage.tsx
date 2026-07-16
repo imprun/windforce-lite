@@ -50,7 +50,7 @@ export function AuditPage() {
   return (
     <Layout
       title="Audit"
-      subtitle="Workspace change history across repositories, releases, clients, and input settings."
+      subtitle="Workspace change history across repositories, releases, clients, input settings, and webhooks."
       actions={
         <button className="button" type="button" onClick={() => events.reload()}>
           Refresh
@@ -71,6 +71,7 @@ export function AuditPage() {
               <option value="release">Release</option>
               <option value="client">Client Registry</option>
               <option value="input_settings">Input Settings</option>
+              <option value="webhook">Webhooks</option>
             </select>
           </label>
           <label className="filterField">

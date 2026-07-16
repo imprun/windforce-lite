@@ -219,9 +219,101 @@ export type AuditEvent = {
   client_id?: string;
   client_name?: string;
   git_source_id?: number;
+  webhook_subscription_id?: string;
+  webhook_delivery_id?: string;
   actor: string;
   changes?: AuditChanges;
   created_at: string;
+};
+
+export type WebhookSubscription = {
+  id: string;
+  workspace_id: string;
+  name: string;
+  endpoint_summary: string;
+  has_signing_secret: boolean;
+  event_types: string[] | null;
+  app_keys: string[] | null;
+  enabled: boolean;
+  created_by: string;
+  updated_by: string;
+  created_at: string;
+  updated_at: string;
+  deleted_at?: string | null;
+};
+
+export type WebhookSubscriptionMutation = {
+  subscription: WebhookSubscription;
+  signing_secret?: string;
+};
+
+export type WebhookSubscriptionCreate = {
+  name: string;
+  endpoint: string;
+  event_types?: string[];
+  app_keys?: string[];
+  enabled?: boolean;
+};
+
+export type WebhookSubscriptionUpdate = {
+  name?: string;
+  endpoint?: string;
+  event_types?: string[];
+  app_keys?: string[];
+  enabled?: boolean;
+  rotate_signing_secret?: boolean;
+};
+
+export function webhookAppKeys(subscription: WebhookSubscription): string[] {
+  return subscription.app_keys || [];
+}
+
+export type ControlPlaneEvent = {
+  specversion: string;
+  id: string;
+  type: string;
+  source: string;
+  subject: string;
+  time: string;
+  datacontenttype: string;
+  data: Record<string, unknown>;
+};
+
+export type WebhookDeliveryState = "pending" | "delivering" | "retrying" | "succeeded" | "failed" | "canceled";
+
+export type WebhookDelivery = {
+  id: string;
+  workspace_id: string;
+  event_id: string;
+  subscription_id: string;
+  state: WebhookDeliveryState;
+  attempt: number;
+  next_attempt_at: string;
+  lease_owner?: string | null;
+  lease_expires_at?: string | null;
+  response_status?: number | null;
+  latency_ms?: number | null;
+  error_summary?: string | null;
+  created_at: string;
+  updated_at: string;
+  completed_at?: string | null;
+};
+
+export type WebhookDeliveryDetail = {
+  delivery: WebhookDelivery;
+  event: ControlPlaneEvent;
+  subscription_name: string;
+};
+
+export type WebhookDeliveryPage = {
+  items: WebhookDeliveryDetail[];
+  next_cursor?: string;
+};
+
+export type WebhookDeliveryQuery = {
+  state?: WebhookDeliveryState | "";
+  limit?: number;
+  cursor?: string;
 };
 
 export type AuditEventQuery = {
@@ -438,6 +530,48 @@ export class WindforceApi {
     if (query.limit) params.set("limit", String(query.limit));
     const suffix = params.size ? `?${params.toString()}` : "";
     return this.request(`/audit-events${suffix}`);
+  }
+
+  webhookSubscriptions(includeDeleted = false): Promise<WebhookSubscription[]> {
+    const suffix = includeDeleted ? "?include_deleted=true" : "";
+    return this.request(`/webhooks${suffix}`);
+  }
+
+  webhookSubscription(id: string): Promise<WebhookSubscription> {
+    return this.request(`/webhooks/${encodeURIComponent(id)}`);
+  }
+
+  createWebhookSubscription(payload: WebhookSubscriptionCreate): Promise<WebhookSubscriptionMutation> {
+    return this.request("/webhooks", { method: "POST", body: payload });
+  }
+
+  updateWebhookSubscription(id: string, payload: WebhookSubscriptionUpdate): Promise<WebhookSubscriptionMutation> {
+    return this.request(`/webhooks/${encodeURIComponent(id)}`, { method: "PATCH", body: payload });
+  }
+
+  async deleteWebhookSubscription(id: string): Promise<void> {
+    await this.request(`/webhooks/${encodeURIComponent(id)}`, { method: "DELETE" });
+  }
+
+  testWebhookSubscription(id: string): Promise<WebhookDeliveryDetail> {
+    return this.request(`/webhooks/${encodeURIComponent(id)}/test`, { method: "POST" });
+  }
+
+  webhookDeliveries(id: string, query: WebhookDeliveryQuery = {}): Promise<WebhookDeliveryPage> {
+    const params = new URLSearchParams();
+    if (query.state) params.set("state", query.state);
+    if (query.limit) params.set("limit", String(query.limit));
+    if (query.cursor) params.set("cursor", query.cursor);
+    const suffix = params.size ? `?${params.toString()}` : "";
+    return this.request(`/webhooks/${encodeURIComponent(id)}/deliveries${suffix}`);
+  }
+
+  webhookDelivery(id: string): Promise<WebhookDeliveryDetail> {
+    return this.request(`/webhook-deliveries/${encodeURIComponent(id)}`);
+  }
+
+  retryWebhookDelivery(id: string): Promise<WebhookDeliveryDetail> {
+    return this.request(`/webhook-deliveries/${encodeURIComponent(id)}/retry`, { method: "POST" });
   }
 
   private async request<T>(path: string, options: RequestOptions = {}): Promise<T> {

@@ -8,6 +8,7 @@ const categoryLabels: Record<string, string> = {
   release: "Release",
   client: "Client Registry",
   input_settings: "Input Settings",
+  webhook: "Webhook",
 };
 
 const changeLabels: Array<[keyof AuditChanges, string]> = [
@@ -44,10 +45,18 @@ function AuditScope({ event }: { event: AuditEvent }) {
         </Link>
       ) : null}
       {event.action_key ? <span className="cellSub mono">Action {event.action_key}</span> : null}
-      {!event.app_key && !event.client_id && !event.action_key && event.git_source_id ? (
+      {event.webhook_subscription_id ? (
+        <Link
+          className={event.app_key || event.client_id ? "cellSub" : "cellTitle"}
+          to={`/settings/webhooks/${event.webhook_subscription_id}/audit`}
+        >
+          Webhook {event.webhook_subscription_id.slice(0, 12)}…
+        </Link>
+      ) : null}
+      {!event.app_key && !event.client_id && !event.action_key && !event.webhook_subscription_id && event.git_source_id ? (
         <span className="cellTitle">Repository source #{event.git_source_id}</span>
       ) : null}
-      {!event.app_key && !event.client_id && !event.action_key && !event.git_source_id ? (
+      {!event.app_key && !event.client_id && !event.action_key && !event.git_source_id && !event.webhook_subscription_id ? (
         <span className="cellSub">Workspace</span>
       ) : null}
     </div>

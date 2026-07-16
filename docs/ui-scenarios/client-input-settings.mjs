@@ -12,9 +12,11 @@ export default {
     await page.goto();
     await page.clickText("Client Registry");
     await page.clickText("Example Retailer");
-    await page.waitForSelector("#clientInputSettings tbody tr");
-    await page.waitForSelector("#clientInputSettingsAudit tbody tr");
-    await page.click('#clientInputSettings button[aria-label="Edit input settings"]');
+    await page.clickText("Input Settings");
+    await page.waitForSelector("#clientInputSettingsSummary tbody tr");
+    await page.click("#clientInputSettingsSummary tbody a");
+    await page.waitForSelector("#clientInputSettings .inputSettingScope");
+    await page.click('#clientInputSettings button[aria-label^="Edit"]');
     await page.waitForSelector('input[value="response_mode"]');
     await page.waitForSelector('button[aria-label="Unlock input key"]');
     await capture("client-input-settings");

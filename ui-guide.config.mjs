@@ -1,8 +1,10 @@
 import { spawn } from "node:child_process";
 import { mkdir, rm } from "node:fs/promises";
+import { createServer as createHttpServer } from "node:http";
 import path from "node:path";
 
 const port = Number(process.env.WINDFORCE_LITE_UI_GUIDE_PORT || 18099);
+const external = process.env.WINDFORCE_LITE_UI_GUIDE_EXTERNAL === "true";
 const baseDir = path.resolve(".tmp/ui-guide");
 const binary = path.resolve(
   baseDir,
@@ -10,10 +12,15 @@ const binary = path.resolve(
 );
 
 let server = null;
+let receiver = null;
+let receiverUrl = "";
 
 function stopServer() {
   if (server && server.exitCode === null) server.kill();
   server = null;
+  if (receiver) receiver.close();
+  receiver = null;
+  receiverUrl = "";
 }
 
 export default {
@@ -31,10 +38,34 @@ export default {
   // The guide runs against the embedded Web UI of a standalone build so the
   // screenshots show exactly what `go build` ships. Requires bun and go.
   async start({ exec, waitForHttp }) {
+    if (external) {
+      await waitForHttp(this.baseUrl);
+      return;
+    }
     await rm(baseDir, { recursive: true, force: true });
     await mkdir(baseDir, { recursive: true });
     await exec("make", ["web-embed"]);
     await exec("go", ["build", "-o", binary, "./cmd/windforce-lite"]);
+    receiver = createHttpServer((request, response) => {
+      const signature = request.headers["x-windforce-signature"];
+      const eventID = request.headers["x-windforce-event"];
+      let body = "";
+      request.on("data", (chunk) => { body += chunk; });
+      request.on("end", () => {
+        if (request.method !== "POST" || !signature || !eventID || !body) {
+          response.writeHead(400).end();
+          return;
+        }
+        response.writeHead(204).end();
+      });
+    });
+    await new Promise((resolve, reject) => {
+      receiver.once("error", reject);
+      receiver.listen(0, "127.0.0.1", resolve);
+    });
+    receiver.unref();
+    const address = receiver.address();
+    receiverUrl = `http://127.0.0.1:${address.port}/windforce/releases`;
     server = spawn(
       binary,
       [
@@ -44,6 +75,7 @@ export default {
         "--catalog", path.join(baseDir, "catalog.json"),
         "--state", path.join(baseDir, "state.json"),
         "--cache", path.join(baseDir, "cache"),
+        "--webhook-allow-insecure-loopback",
       ],
       { cwd: baseDir, stdio: "ignore" },
     );
@@ -56,12 +88,14 @@ export default {
   },
 
   async seed({ api }) {
+    if (external) return;
     await api("/git_sources/sample", {
       method: "POST",
       body: { app_key: "echo" },
     });
     const sources = await api("/git_sources");
     const sample = sources.find((source) => source.name === "echo");
+    let webhook = null;
     if (sample) {
       // A settings change so the Audit tab has a record to show.
       await api(`/git_sources/${sample.id}`, {
@@ -69,11 +103,23 @@ export default {
         headers: { "x-windforce-actor": "ui-guide@example.test" },
         body: { name: "echo-service" },
       });
+      webhook = await api("/webhooks", {
+        method: "POST",
+        headers: { "x-windforce-actor": "ui-guide@example.test" },
+        body: {
+          name: "Release notifications",
+          endpoint: receiverUrl,
+          event_types: ["windforce.release.published"],
+          app_keys: ["echo"],
+          enabled: true,
+        },
+      });
       await api(`/git_sources/${sample.id}/deploy`, {
         method: "POST",
         headers: { "x-windforce-actor": "ui-guide@example.test" },
         body: { confirm: true, message: "UI guide release" },
       });
+      await waitForWebhookDelivery(api, webhook.subscription.id);
     }
     const client = await api("/clients", {
       method: "POST",
@@ -92,7 +138,24 @@ export default {
     });
     await waitForClientConfigRun();
   },
+
+  async stop() {
+    stopServer();
+  },
 };
+
+async function waitForWebhookDelivery(api, subscriptionID) {
+  for (let attempt = 0; attempt < 80; attempt += 1) {
+    const page = await api(`/webhooks/${encodeURIComponent(subscriptionID)}/deliveries?limit=5`);
+    const release = page.items.find((item) => item.event.type === "windforce.release.published");
+    if (release?.delivery.state === "succeeded") return;
+    if (release?.delivery.state === "failed") {
+      throw new Error(`UI guide webhook delivery failed: ${release.delivery.error_summary || "unknown error"}`);
+    }
+    await sleep(100);
+  }
+  throw new Error("UI guide webhook delivery did not succeed");
+}
 
 async function waitForClientConfigRun() {
   const runsURL = `http://127.0.0.1:${port}/execution/v1/workspaces/default/runs`;

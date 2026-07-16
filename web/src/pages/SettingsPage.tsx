@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Layout } from "../components/Layout";
+import { SettingsNav } from "../components/SettingsNav";
 import { DefinitionList, Field, Panel } from "../components/ui";
 import { useApp } from "../lib/app-context";
 
@@ -52,6 +53,7 @@ export function SettingsPage() {
         </button>
       }
     >
+      <SettingsNav />
       <Panel title="Control plane" subtitle="Workspace and API token for control-plane requests.">
         <div className="formGrid">
           <Field label="Workspace">

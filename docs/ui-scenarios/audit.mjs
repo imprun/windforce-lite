@@ -16,7 +16,7 @@ export default {
     await page.click("#appList .tableRow");
     await page.waitForSelector(".tabBar");
     await page.click(".tabBar .tab[href$='/audit']");
-    await page.waitForSelector("#auditTrail .cellTitle");
+    await page.waitForSelector("#auditEvents .cellTitle");
     await capture(this.id);
   },
 };
