@@ -25,8 +25,9 @@ const sourceOperationLeaseTTL = 2 * time.Minute
 
 var errGitSourceOperationBusy = errors.New("git source operation already in progress")
 
-type CandidatePreparer interface {
-	Prepare(ctx context.Context, deployment contract.Deployment) (string, error)
+type ExecutionBundleManager interface {
+	BuildExecutionBundle(ctx context.Context, deployment contract.Deployment) (contract.Deployment, error)
+	ValidateExecutionBundle(ctx context.Context, deployment contract.Deployment) error
 }
 
 func (h *Handler) stageGitSourceCandidate(w http.ResponseWriter, r *http.Request, workspaceID string, source gitsourcepkg.Source) (catalog.ReleaseCandidate, bool) {
@@ -55,12 +56,13 @@ func (h *Handler) stageGitSourceCandidate(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return catalog.ReleaseCandidate{}, false
 	}
-	if h.candidatePreparer == nil {
-		writeError(w, http.StatusServiceUnavailable, "release candidate runtime preparer is not configured")
+	if h.executionBundles == nil {
+		writeError(w, http.StatusServiceUnavailable, "execution bundle manager is not configured")
 		return catalog.ReleaseCandidate{}, false
 	}
-	if _, err := h.candidatePreparer.Prepare(operationCtx, deployment); err != nil {
-		writeError(w, http.StatusUnprocessableEntity, "release candidate preparation failed: "+err.Error())
+	deployment, err = h.executionBundles.BuildExecutionBundle(operationCtx, deployment)
+	if err != nil {
+		writeError(w, http.StatusUnprocessableEntity, "execution bundle build failed: "+err.Error())
 		return catalog.ReleaseCandidate{}, false
 	}
 	candidateStore, ok := h.catalog.(catalog.ReleaseCandidateStore)
@@ -93,6 +95,14 @@ func (h *Handler) publishGitSourceCandidate(w http.ResponseWriter, r *http.Reque
 	defer release()
 	if err := catalog.ValidateReleaseCandidate(candidate, workspaceID, source.ID, candidate.Deployment.Commit); err != nil {
 		writeError(w, http.StatusConflict, err.Error())
+		return contract.Deployment{}, false
+	}
+	if h.executionBundles == nil {
+		writeError(w, http.StatusServiceUnavailable, "execution bundle validator is not configured")
+		return contract.Deployment{}, false
+	}
+	if err := h.executionBundles.ValidateExecutionBundle(operationCtx, candidate.Deployment); err != nil {
+		writeError(w, http.StatusConflict, "release candidate is not ready: "+err.Error())
 		return contract.Deployment{}, false
 	}
 	deployment := candidate.Deployment

@@ -15,6 +15,7 @@ import (
 
 	"github.com/imprun/windforce-core/internal/bundle"
 	"github.com/imprun/windforce-core/internal/contract"
+	"github.com/imprun/windforce-core/internal/executionbundle"
 	actionruntime "github.com/imprun/windforce-core/internal/runtime"
 	"github.com/imprun/windforce-core/internal/state"
 )
@@ -232,9 +233,9 @@ func TestProcessorStoresFailedActionOutputAndLogsSeparately(t *testing.T) {
 	}
 }
 
-func TestProcessorStoresPrepareErrorResult(t *testing.T) {
+func TestProcessorStoresExecutionBundleFetchErrorResult(t *testing.T) {
 	processor, stateStore, run := newProcessorTestHarness(t, "echo")
-	processor.Runner.Store = bundle.NewLocalStore(filepath.Join(t.TempDir(), "empty-store"))
+	processor.Runner.ArtifactStore = executionbundle.NewLocalStore(filepath.Join(t.TempDir(), "empty-artifact-store"))
 
 	processed, err := processor.ProcessOne(context.Background())
 	if err != nil {
@@ -261,8 +262,8 @@ func TestProcessorStoresPrepareErrorResult(t *testing.T) {
 	if err := json.Unmarshal(completed.Result.Output, &output); err != nil {
 		t.Fatalf("prepare output is not JSON: %v", err)
 	}
-	if output.Name != "PrepareError" || !strings.Contains(output.Message, "not materialized in object cache") {
-		t.Fatalf("prepare output = %s", completed.Result.Output)
+	if output.Name != "BundleFetchError" || !strings.Contains(output.Message, "execution bundle") {
+		t.Fatalf("execution bundle output = %s", completed.Result.Output)
 	}
 }
 
@@ -363,6 +364,9 @@ func newProcessorTestHarness(t *testing.T, helperMode string) (Processor, *state
 	if err := os.WriteFile(filepath.Join(sourceDir, "windforce.json"), []byte(`{"app":"echo","entrypoint":"main.ts","actions":{"echo":{}}}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(sourceDir, "main.ts"), []byte("export async function main(input: unknown) { return input; }\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	bundleStore := bundle.NewLocalStore(filepath.Join(tempDir, "store"))
 	if err := bundleStore.Materialize(context.Background(), "workspace-a", "source-a", "commit-a", sourceDir); err != nil {
@@ -373,6 +377,8 @@ func newProcessorTestHarness(t *testing.T, helperMode string) (Processor, *state
 		GitSourceID: "source-a",
 		App:         "echo",
 		Commit:      "commit-a",
+		Entrypoint:  "main.ts",
+		ScriptLang:  "typescript",
 		Actions: map[string]contract.Action{
 			"echo": {
 				Action:  "echo",
@@ -380,6 +386,17 @@ func newProcessorTestHarness(t *testing.T, helperMode string) (Processor, *state
 			},
 		},
 	}
+	executionBundleStore := executionbundle.NewLocalStore(filepath.Join(tempDir, "artifacts"))
+	runner := actionruntime.Runner{
+		Store:         bundleStore,
+		ArtifactStore: executionBundleStore,
+		CacheRoot:     filepath.Join(tempDir, "cache"),
+	}
+	deployment, err := runner.BuildExecutionBundle(context.Background(), deployment)
+	if err != nil {
+		t.Fatalf("BuildExecutionBundle returned error: %v", err)
+	}
+	runner.Store = nil
 	run := state.NewRun("windforce", "run-"+helperMode, "echo", "echo", deployment, json.RawMessage(`{"message":"hello"}`))
 	job := state.NewActionJob(run, nil)
 	stateStore := state.NewLocalStore(filepath.Join(tempDir, "state.json"))
@@ -388,11 +405,8 @@ func newProcessorTestHarness(t *testing.T, helperMode string) (Processor, *state
 		t.Fatal(err)
 	}
 	return Processor{
-		Store: stateStore,
-		Runner: actionruntime.Runner{
-			Store:     bundleStore,
-			CacheRoot: filepath.Join(tempDir, "cache"),
-		},
+		Store:           stateStore,
+		Runner:          runner,
 		WorkerID:        "worker-a",
 		Group:           "test",
 		EgressProxyAddr: "proxy:18080",

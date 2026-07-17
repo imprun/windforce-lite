@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/imprun/windforce-core/internal/bundle"
 	"github.com/imprun/windforce-core/internal/catalog"
@@ -19,16 +20,28 @@ import (
 	"github.com/imprun/windforce-core/internal/syncer"
 )
 
-type candidatePreparerFunc func(context.Context, contract.Deployment) (string, error)
-
-func (f candidatePreparerFunc) Prepare(ctx context.Context, deployment contract.Deployment) (string, error) {
-	return f(ctx, deployment)
+type executionBundleManagerStub struct {
+	build    func(context.Context, contract.Deployment) (contract.Deployment, error)
+	validate func(context.Context, contract.Deployment) error
 }
 
-func allowCandidatePreparation() CandidatePreparer {
-	return candidatePreparerFunc(func(context.Context, contract.Deployment) (string, error) {
-		return "prepared", nil
-	})
+func (s executionBundleManagerStub) BuildExecutionBundle(ctx context.Context, deployment contract.Deployment) (contract.Deployment, error) {
+	return s.build(ctx, deployment)
+}
+
+func (s executionBundleManagerStub) ValidateExecutionBundle(ctx context.Context, deployment contract.Deployment) error {
+	if s.validate == nil {
+		return nil
+	}
+	return s.validate(ctx, deployment)
+}
+
+func readyExecutionBundleManager() ExecutionBundleManager {
+	return executionBundleManagerStub{build: func(_ context.Context, deployment contract.Deployment) (contract.Deployment, error) {
+		deployment.BundleDigest = "sha256:test-bundle"
+		deployment.BundleURI = "execution-bundle://sha256/test-bundle"
+		return deployment, nil
+	}}
 }
 
 func TestGitSourceSyncRejectsCandidateWhenRuntimePreparationFails(t *testing.T) {
@@ -47,17 +60,17 @@ func TestGitSourceSyncRejectsCandidateWhenRuntimePreparationFails(t *testing.T) 
 	}
 
 	var prepared contract.Deployment
-	preparer := candidatePreparerFunc(func(_ context.Context, deployment contract.Deployment) (string, error) {
+	preparer := executionBundleManagerStub{build: func(_ context.Context, deployment contract.Deployment) (contract.Deployment, error) {
 		prepared = deployment
-		return "", errors.New("dependency version is unavailable")
-	})
+		return contract.Deployment{}, errors.New("dependency version is unavailable")
+	}}
 	server := httptest.NewServer(New(Config{
-		Store:             state.NewLocalStore(filepath.Join(tempDir, "state.json")),
-		Catalog:           releaseCatalog,
-		Syncer:            &syncer.Syncer{Store: bundleStore, CloneRoot: tempDir},
-		CandidatePreparer: preparer,
-		GitSources:        registry,
-		EnableAPI:         true,
+		Store:            state.NewLocalStore(filepath.Join(tempDir, "state.json")),
+		Catalog:          releaseCatalog,
+		Syncer:           &syncer.Syncer{Store: bundleStore, CloneRoot: tempDir},
+		ExecutionBundles: preparer,
+		GitSources:       registry,
+		EnableAPI:        true,
 	}))
 	defer server.Close()
 
@@ -73,7 +86,7 @@ func TestGitSourceSyncRejectsCandidateWhenRuntimePreparationFails(t *testing.T) 
 	if response.StatusCode != http.StatusUnprocessableEntity {
 		t.Fatalf("sync status = %d, want %d: %s", response.StatusCode, http.StatusUnprocessableEntity, body)
 	}
-	if !strings.Contains(string(body), "release candidate preparation failed: dependency version is unavailable") {
+	if !strings.Contains(string(body), "execution bundle build failed: dependency version is unavailable") {
 		t.Fatalf("sync body = %s", body)
 	}
 	if prepared.Commit == "" || prepared.GitSourceID != "1" {
@@ -95,5 +108,79 @@ func TestGitSourceSyncRejectsCandidateWhenRuntimePreparationFails(t *testing.T) 
 	}
 	if source.LastSyncedCommit != nil || source.LastSyncedAt != nil {
 		t.Fatalf("failed source was marked synchronized: %#v", source)
+	}
+}
+
+func TestGitSourceDeployRejectsCandidateWhenExecutionBundleIsInvalid(t *testing.T) {
+	tempDir := t.TempDir()
+	ctx := context.Background()
+	releaseCatalog := catalog.NewFileCatalog(filepath.Join(tempDir, "catalog.json"))
+	registry := gitsource.NewFileRegistry(filepath.Join(tempDir, "git-sources.json"))
+	source, err := registry.Create(ctx, gitsource.Source{
+		Workspace: "ws-a",
+		Name:      "source-a",
+		RepoURL:   filepath.ToSlash(filepath.Join(tempDir, "repo")),
+		Branch:    "main",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	deployment := contract.Deployment{
+		Workspace:    "ws-a",
+		GitSourceID:  source.ID,
+		App:          "echo",
+		Commit:       "commit-a",
+		BundleDigest: "sha256:" + strings.Repeat("a", 64),
+		BundleURI:    "execution-bundle://sha256/" + strings.Repeat("a", 64),
+		Entrypoint:   "main.py",
+		ScriptLang:   "python",
+		Actions: map[string]contract.Action{
+			"echo": {Action: "echo"},
+		},
+	}
+	if _, err := releaseCatalog.SaveReleaseCandidate(ctx, deployment, time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	preparer := executionBundleManagerStub{
+		build: func(_ context.Context, deployment contract.Deployment) (contract.Deployment, error) {
+			return deployment, nil
+		},
+		validate: func(context.Context, contract.Deployment) error {
+			return errors.New("execution bundle digest mismatch")
+		},
+	}
+	httpServer := httptest.NewServer(New(Config{
+		Store:            state.NewLocalStore(filepath.Join(tempDir, "state.json")),
+		Catalog:          releaseCatalog,
+		ExecutionBundles: preparer,
+		GitSources:       registry,
+		EnableAPI:        true,
+	}))
+	defer httpServer.Close()
+
+	body := bytes.NewBufferString(`{"confirm":true,"commit":"commit-a"}`)
+	req, err := http.NewRequest(http.MethodPost, httpServer.URL+"/api/w/ws-a/git_sources/"+source.ID+"/deploy", body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Windforce-Actor", "operator@example.test")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	responseBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("deploy status = %d, want %d: %s", resp.StatusCode, http.StatusConflict, responseBody)
+	}
+	if !strings.Contains(string(responseBody), "release candidate is not ready: execution bundle digest mismatch") {
+		t.Fatalf("deploy body = %s", responseBody)
+	}
+	if _, err := releaseCatalog.GetDeploymentForWorkspace(ctx, "ws-a", "echo"); !errors.Is(err, catalog.ErrDeploymentNotFound) {
+		t.Fatalf("invalid candidate was activated: %v", err)
 	}
 }

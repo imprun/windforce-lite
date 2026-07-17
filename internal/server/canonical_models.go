@@ -143,14 +143,19 @@ func stringSliceContains(values []string, target string) bool {
 }
 
 type canonicalSyncResult struct {
-	Commit       string   `json:"commit"`
-	App          string   `json:"app"`
-	Actions      []string `json:"actions"`
-	Flows        []string `json:"flows,omitempty"`
-	Source       string   `json:"source,omitempty"`
-	DeploymentID *string  `json:"deployment_id,omitempty"`
-	CreatedBy    *string  `json:"created_by,omitempty"`
-	Message      *string  `json:"message,omitempty"`
+	Commit           string   `json:"commit"`
+	App              string   `json:"app"`
+	Actions          []string `json:"actions"`
+	Flows            []string `json:"flows,omitempty"`
+	Source           string   `json:"source,omitempty"`
+	DeploymentID     *string  `json:"deployment_id,omitempty"`
+	CreatedBy        *string  `json:"created_by,omitempty"`
+	Message          *string  `json:"message,omitempty"`
+	BundleStatus     string   `json:"bundle_status"`
+	BundleDigest     string   `json:"bundle_digest,omitempty"`
+	BundleURI        string   `json:"bundle_uri,omitempty"`
+	Runtime          string   `json:"runtime"`
+	ValidationChecks []string `json:"validation_checks"`
 }
 
 func newCanonicalSyncResult(deployment contract.Deployment) canonicalSyncResult {
@@ -160,13 +165,18 @@ func newCanonicalSyncResult(deployment contract.Deployment) canonicalSyncResult 
 	}
 	sort.Strings(actions)
 	return canonicalSyncResult{
-		Commit:       deployment.Commit,
-		App:          deployment.App,
-		Actions:      actions,
-		Source:       strings.TrimSpace(deployment.Source),
-		DeploymentID: cloneStringPtr(deployment.DeploymentID),
-		CreatedBy:    cloneStringPtr(deployment.CreatedBy),
-		Message:      cloneStringPtr(deployment.Message),
+		Commit:           deployment.Commit,
+		App:              deployment.App,
+		Actions:          actions,
+		Source:           strings.TrimSpace(deployment.Source),
+		DeploymentID:     cloneStringPtr(deployment.DeploymentID),
+		CreatedBy:        cloneStringPtr(deployment.CreatedBy),
+		Message:          cloneStringPtr(deployment.Message),
+		BundleStatus:     canonicalBundleStatus(deployment),
+		BundleDigest:     strings.TrimSpace(deployment.BundleDigest),
+		BundleURI:        strings.TrimSpace(deployment.BundleURI),
+		Runtime:          canonicalDeploymentScriptLang(deployment),
+		ValidationChecks: []string{"dependencies_prepared", "entrypoint_validated", "artifact_stored"},
 	}
 }
 
@@ -181,6 +191,9 @@ type canonicalAppModel struct {
 	TagOverride          *string   `json:"tag_override,omitempty"`
 	TimeoutS             int32     `json:"timeout_s"`
 	ScriptLang           string    `json:"script_lang"`
+	BundleStatus         string    `json:"bundle_status"`
+	BundleDigest         string    `json:"bundle_digest,omitempty"`
+	BundleURI            string    `json:"bundle_uri,omitempty"`
 	RequiredCapabilities []string  `json:"required_capabilities"`
 	MaxConcurrent        *int32    `json:"max_concurrent,omitempty"`
 	UpdatedAt            time.Time `json:"updated_at"`
@@ -298,10 +311,20 @@ func newCanonicalAppModel(deployment contract.Deployment) canonicalAppModel {
 		TagOverride:          cloneStringPtr(deployment.TagOverride),
 		TimeoutS:             canonicalDeploymentTimeoutSeconds(deployment),
 		ScriptLang:           canonicalDeploymentScriptLang(deployment),
+		BundleStatus:         canonicalBundleStatus(deployment),
+		BundleDigest:         strings.TrimSpace(deployment.BundleDigest),
+		BundleURI:            strings.TrimSpace(deployment.BundleURI),
 		RequiredCapabilities: cloneStringSlice(deployment.RequiredCapabilities),
 		MaxConcurrent:        cloneInt32Ptr(deployment.MaxConcurrent),
 		UpdatedAt:            canonicalDeploymentUpdatedAt(deployment),
 	}
+}
+
+func canonicalBundleStatus(deployment contract.Deployment) string {
+	if strings.TrimSpace(deployment.BundleDigest) == "" {
+		return "missing"
+	}
+	return "ready"
 }
 
 func newCanonicalAppView(deployment contract.Deployment) canonicalAppView {

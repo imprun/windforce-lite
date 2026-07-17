@@ -128,21 +128,23 @@ manifest shape. `entrypoint` and `scriptLang` are app-level; actions branch
 inside that entrypoint. `timeout` is the app default and an action may override
 it with its own `timeout` in seconds. Source manifests do not declare action
 commands or adapters; integration adapters live outside the app source contract.
-The core executor currently wires canonical `typescript`, `python`, and `go`
-entrypoints. Other `scriptLang` values are still accepted and pinned during sync
-so the manifest contract stays canonical; an unwired language fails at runtime
-with the executor's unsupported-language error.
+The execution bundle builder supports canonical `typescript`, `python`, and
+`go` entrypoints. Other `scriptLang` values use the Bun preparation path and
+must pass entrypoint validation before a release candidate is created.
 
-For TypeScript, Python, and Go entrypoints, the core worker prepares the fetched
-source like the canonical worker subset. TypeScript apps run
-`bun install --frozen-lockfile --no-progress` when `package.json` is present and
-receive the vendored `windforce-client` package in `node_modules`. Python apps
-run `pip install --target .windforce/site-packages` when `requirements.txt` is
-present and receive the vendored `windforce_client` package in the same vendor
-dir. Go apps receive the vendored `windforce-client` module through a `go.mod`
-`replace`, then the worker builds the generated wrapper plus author code into a
-cached binary. This keeps canonical bare imports working without baking app
-dependencies into the worker image.
+Source sync prepares a content-addressed execution bundle for TypeScript,
+Python, and Go entrypoints. It pins the repository commit, installs declared
+dependencies, injects the matching Windforce SDK, validates the entrypoint, and
+stores the complete prepared tree under its SHA-256 digest. TypeScript uses
+`bun install --frozen-lockfile --no-progress`, Python installs into
+`.windforce/site-packages`, and Go compiles the generated wrapper plus author
+code into `.windforce/bin`.
+
+Release publication only activates a synchronized candidate whose execution
+bundle still exists and matches its digest. A worker fetches that immutable
+bundle, verifies that its prepared runtime fingerprint matches the worker, and
+executes it. Job processing does not clone Git repositories, install packages,
+or compile app source.
 
 ## Entrypoint contract
 
@@ -196,11 +198,11 @@ Invoke-RestMethod `
   -Body '{"message":"hello"}'
 ```
 
-Separated local processes use the same state file:
+Separated local processes use the same state file and bundle store:
 
 ```powershell
-go run ./cmd/windforce-core control-plane --addr :8081 --state .tmp/state.json
-go run ./cmd/windforce-core execution-api --addr :8082 --state .tmp/state.json
+go run ./cmd/windforce-core control-plane --addr :8081 --state .tmp/state.json --store .tmp/store
+go run ./cmd/windforce-core execution-api --addr :8082 --state .tmp/state.json --store .tmp/store
 go run ./cmd/windforce-core worker --state .tmp/state.json --store .tmp/store
 ```
 

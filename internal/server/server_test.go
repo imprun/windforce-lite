@@ -1659,11 +1659,13 @@ func TestCanonicalControlPlaneOpenAPIExposesSchemaDiscovery(t *testing.T) {
 	})
 	assertSchemaFields("App", []string{
 		"id", "workspace_id", "app_key", "git_source_id", "commit_sha", "entrypoint", "tag",
-		"tag_override", "timeout_s", "script_lang", "required_capabilities", "max_concurrent", "updated_at",
+		"tag_override", "timeout_s", "script_lang", "bundle_status", "bundle_digest", "bundle_uri",
+		"required_capabilities", "max_concurrent", "updated_at",
 	})
 	assertSchemaFields("AppView", []string{
 		"id", "workspace_id", "app_key", "git_source_id", "commit_sha", "entrypoint", "tag",
-		"tag_override", "timeout_s", "script_lang", "required_capabilities", "max_concurrent", "updated_at",
+		"tag_override", "timeout_s", "script_lang", "bundle_status", "bundle_digest", "bundle_uri",
+		"required_capabilities", "max_concurrent", "updated_at",
 		"effective_route_tag",
 	})
 	assertSchemaFields("Action", []string{
@@ -1767,7 +1769,10 @@ func TestCanonicalControlPlaneOpenAPIExposesSchemaDiscovery(t *testing.T) {
 		t.Fatalf("sample sync response schema properties = %#v", sampleSyncProperties)
 	}
 	syncResultProperties := schemas["GitSourceSyncResult"].(map[string]any)["properties"].(map[string]any)
-	for _, field := range []string{"flows", "source", "deployment_id", "created_by", "message"} {
+	for _, field := range []string{
+		"flows", "source", "deployment_id", "created_by", "message", "bundle_status", "bundle_digest",
+		"bundle_uri", "runtime", "validation_checks",
+	} {
 		if syncResultProperties[field] == nil {
 			t.Fatalf("sync result schema missing %s: %#v", field, syncResultProperties)
 		}
@@ -1776,7 +1781,9 @@ func TestCanonicalControlPlaneOpenAPIExposesSchemaDiscovery(t *testing.T) {
 		t.Fatalf("sync result schema must preserve canonical optional flows field: %#v", syncResultProperties)
 	}
 	appSummary := schemas["AppSummary"].(map[string]any)["properties"].(map[string]any)
-	for _, field := range []string{"actions_count", "schedules_count", "flows_count"} {
+	for _, field := range []string{
+		"bundle_status", "bundle_digest", "bundle_uri", "actions_count", "schedules_count", "flows_count",
+	} {
 		if appSummary[field] == nil {
 			t.Fatalf("app summary schema missing %s: %#v", field, appSummary)
 		}
@@ -2265,13 +2272,13 @@ func TestCanonicalSampleGitSourceRegistersAndSyncs(t *testing.T) {
 	store := bundle.NewLocalStore(filepath.Join(tempDir, "store"))
 	fileCatalog := catalog.NewFileCatalog(filepath.Join(tempDir, "catalog.json"))
 	handler := New(Config{
-		Store:             state.NewLocalStore(filepath.Join(tempDir, "state.json")),
-		Catalog:           fileCatalog,
-		Syncer:            &syncer.Syncer{Store: store, CloneRoot: tempDir},
-		CandidatePreparer: allowCandidatePreparation(),
-		GitSources:        gitsource.NewFileRegistry(filepath.Join(tempDir, "git-sources.json")),
-		EnableAPI:         true,
-		SampleRoot:        filepath.Join(tempDir, "samples"),
+		Store:            state.NewLocalStore(filepath.Join(tempDir, "state.json")),
+		Catalog:          fileCatalog,
+		Syncer:           &syncer.Syncer{Store: store, CloneRoot: tempDir},
+		ExecutionBundles: readyExecutionBundleManager(),
+		GitSources:       gitsource.NewFileRegistry(filepath.Join(tempDir, "git-sources.json")),
+		EnableAPI:        true,
+		SampleRoot:       filepath.Join(tempDir, "samples"),
 	})
 	server := httptest.NewServer(handler)
 	defer server.Close()
@@ -2698,12 +2705,12 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 	fileCatalog := catalog.NewFileCatalog(filepath.Join(tempDir, "catalog.json"))
 	stateStore := state.NewLocalStore(filepath.Join(tempDir, "state.json"))
 	handler := New(Config{
-		Store:             stateStore,
-		Catalog:           fileCatalog,
-		Syncer:            &syncer.Syncer{Store: bundle.NewLocalStore(filepath.Join(tempDir, "store")), CloneRoot: tempDir},
-		CandidatePreparer: allowCandidatePreparation(),
-		GitSources:        gitsource.NewFileRegistry(filepath.Join(tempDir, "git-sources.json")),
-		EnableAPI:         true,
+		Store:            stateStore,
+		Catalog:          fileCatalog,
+		Syncer:           &syncer.Syncer{Store: bundle.NewLocalStore(filepath.Join(tempDir, "store")), CloneRoot: tempDir},
+		ExecutionBundles: readyExecutionBundleManager(),
+		GitSources:       gitsource.NewFileRegistry(filepath.Join(tempDir, "git-sources.json")),
+		EnableAPI:        true,
 	})
 	server := httptest.NewServer(handler)
 	defer server.Close()
@@ -2916,15 +2923,22 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 		t.Fatalf("sync status = %d, want %d: %s", stageResp.StatusCode, http.StatusOK, body)
 	}
 	var staged struct {
-		Commit  string   `json:"commit"`
-		App     string   `json:"app"`
-		Actions []string `json:"actions"`
+		Commit           string   `json:"commit"`
+		App              string   `json:"app"`
+		Actions          []string `json:"actions"`
+		BundleStatus     string   `json:"bundle_status"`
+		BundleDigest     string   `json:"bundle_digest"`
+		Runtime          string   `json:"runtime"`
+		ValidationChecks []string `json:"validation_checks"`
 	}
 	if err := json.NewDecoder(stageResp.Body).Decode(&staged); err != nil {
 		t.Fatal(err)
 	}
 	if staged.Commit == "" || staged.App != "echo" || len(staged.Actions) != 1 || staged.Actions[0] != "echo.echo" {
 		t.Fatalf("staged candidate = %#v", staged)
+	}
+	if staged.BundleStatus != "ready" || staged.BundleDigest == "" || staged.Runtime != "typescript" || len(staged.ValidationChecks) != 3 {
+		t.Fatalf("staged execution bundle = %#v", staged)
 	}
 	if _, err := fileCatalog.GetDeploymentForWorkspace(context.Background(), "ws-a", "echo"); !errors.Is(err, catalog.ErrDeploymentNotFound) {
 		t.Fatalf("sync activated deployment: %v", err)
@@ -4419,12 +4433,12 @@ func TestControlPlaneRegistersGitSourcePathAndSyncsIt(t *testing.T) {
 	store := bundle.NewLocalStore(filepath.Join(tempDir, "store"))
 	fileCatalog := catalog.NewFileCatalog(filepath.Join(tempDir, "catalog.json"))
 	handler := New(Config{
-		Store:             state.NewLocalStore(filepath.Join(tempDir, "state.json")),
-		Catalog:           fileCatalog,
-		Syncer:            &syncer.Syncer{Store: store, CloneRoot: tempDir},
-		CandidatePreparer: allowCandidatePreparation(),
-		GitSources:        gitsource.NewFileRegistry(filepath.Join(tempDir, "git-sources.json")),
-		EnableAPI:         true,
+		Store:            state.NewLocalStore(filepath.Join(tempDir, "state.json")),
+		Catalog:          fileCatalog,
+		Syncer:           &syncer.Syncer{Store: store, CloneRoot: tempDir},
+		ExecutionBundles: readyExecutionBundleManager(),
+		GitSources:       gitsource.NewFileRegistry(filepath.Join(tempDir, "git-sources.json")),
+		EnableAPI:        true,
 	})
 	server := httptest.NewServer(handler)
 	defer server.Close()

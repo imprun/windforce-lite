@@ -118,6 +118,7 @@ type JobPayload struct {
 	RequiredCapabilities  []string        `json:"requiredCapabilities,omitempty"`
 	DeploymentID          *string         `json:"deploymentId,omitempty"`
 	BundleDigest          string          `json:"bundleDigest,omitempty"`
+	BundleURI             string          `json:"bundleUri,omitempty"`
 	ObjectURI             string          `json:"objectUri,omitempty"`
 	TriggerKind           string          `json:"triggerKind,omitempty"`
 	TriggerHeaders        json.RawMessage `json:"triggerHeaders,omitempty"`
@@ -524,6 +525,7 @@ func NewActionJob(run Run, input json.RawMessage) Job {
 			RequiredCapabilities:  append([]string(nil), run.Deployment.RequiredCapabilities...),
 			DeploymentID:          cloneStringPointer(run.Deployment.DeploymentID),
 			BundleDigest:          run.Deployment.BundleDigest,
+			BundleURI:             run.Deployment.BundleURI,
 			ObjectURI:             run.Deployment.ObjectURI,
 			TriggerKind:           run.Adapter,
 			ActionSpec:            actionSpec,
@@ -630,6 +632,9 @@ func (p JobPayload) PinnedDeployment() contract.Deployment {
 	}
 	if deployment.BundleDigest == "" {
 		deployment.BundleDigest = p.BundleDigest
+	}
+	if deployment.BundleURI == "" {
+		deployment.BundleURI = p.BundleURI
 	}
 	if deployment.ObjectURI == "" {
 		deployment.ObjectURI = p.ObjectURI
