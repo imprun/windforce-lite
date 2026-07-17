@@ -116,6 +116,7 @@ type JobPayload struct {
 	TimeoutS              int32           `json:"timeout,omitempty"`
 	MaxConcurrent         *int32          `json:"maxConcurrent,omitempty"`
 	RequiredCapabilities  []string        `json:"requiredCapabilities,omitempty"`
+	RequiredLabels        []string        `json:"requiredLabels,omitempty"`
 	DeploymentID          *string         `json:"deploymentId,omitempty"`
 	BundleDigest          string          `json:"bundleDigest,omitempty"`
 	BundleURI             string          `json:"bundleUri,omitempty"`
@@ -428,7 +429,7 @@ type Store interface {
 	ResolveInput(ctx context.Context, workspaceID string, appKey string, actionKey string, clientID string, request json.RawMessage) (json.RawMessage, error)
 	DecryptInput(ctx context.Context, workspaceID string, input json.RawMessage) (json.RawMessage, error)
 	ClaimJob(ctx context.Context, workerID string, leaseTTL time.Duration) (Job, Lease, error)
-	ClaimJobForTags(ctx context.Context, workerID string, tags []string, leaseTTL time.Duration) (Job, Lease, error)
+	ClaimJobForWorker(ctx context.Context, workerID string, tags []string, labels []string, leaseTTL time.Duration) (Job, Lease, error)
 	HeartbeatJob(ctx context.Context, lease Lease, leaseTTL time.Duration) (HeartbeatResult, error)
 	CompleteJobSucceeded(ctx context.Context, lease Lease, result contract.JobResult) error
 	CompleteJobFailed(ctx context.Context, lease Lease, result contract.JobResult) error
@@ -523,6 +524,7 @@ func NewActionJob(run Run, input json.RawMessage) Job {
 			TimeoutS:              run.Deployment.TimeoutS,
 			MaxConcurrent:         cloneInt32Pointer(run.Deployment.MaxConcurrent),
 			RequiredCapabilities:  append([]string(nil), run.Deployment.RequiredCapabilities...),
+			RequiredLabels:        contract.EffectiveRequiredLabels(run.Deployment, actionSpec),
 			DeploymentID:          cloneStringPointer(run.Deployment.DeploymentID),
 			BundleDigest:          run.Deployment.BundleDigest,
 			BundleURI:             run.Deployment.BundleURI,
@@ -626,6 +628,9 @@ func (p JobPayload) PinnedDeployment() contract.Deployment {
 	}
 	if len(deployment.RequiredCapabilities) == 0 {
 		deployment.RequiredCapabilities = append([]string(nil), p.RequiredCapabilities...)
+	}
+	if len(deployment.RequiredLabels) == 0 {
+		deployment.RequiredLabels = append([]string(nil), p.RequiredLabels...)
 	}
 	if deployment.DeploymentID == nil {
 		deployment.DeploymentID = cloneStringPointer(p.DeploymentID)

@@ -472,10 +472,10 @@ func (s *LocalStore) GetResource(ctx context.Context, workspaceID string, path s
 }
 
 func (s *LocalStore) ClaimJob(ctx context.Context, workerID string, leaseTTL time.Duration) (Job, Lease, error) {
-	return s.ClaimJobForTags(ctx, workerID, nil, leaseTTL)
+	return s.ClaimJobForWorker(ctx, workerID, nil, nil, leaseTTL)
 }
 
-func (s *LocalStore) ClaimJobForTags(ctx context.Context, workerID string, tags []string, leaseTTL time.Duration) (Job, Lease, error) {
+func (s *LocalStore) ClaimJobForWorker(ctx context.Context, workerID string, tags []string, labels []string, leaseTTL time.Duration) (Job, Lease, error) {
 	if workerID == "" {
 		workerID = NewID("worker")
 	}
@@ -483,6 +483,7 @@ func (s *LocalStore) ClaimJobForTags(ctx context.Context, workerID string, tags 
 		leaseTTL = defaultLeaseTime
 	}
 	allowedTags := normalizeClaimTags(tags)
+	offeredLabels := normalizeClaimTags(labels)
 	var claimed Job
 	var lease Lease
 	err := s.update(ctx, func(snapshot *Snapshot, now time.Time) error {
@@ -492,7 +493,7 @@ func (s *LocalStore) ClaimJobForTags(ctx context.Context, workerID string, tags 
 
 		ids := make([]string, 0, len(snapshot.Jobs))
 		for id, job := range snapshot.Jobs {
-			if job.State == JobQueued && claimTagAllowed(job, allowedTags) {
+			if job.State == JobQueued && claimAllowed(job, allowedTags, offeredLabels) {
 				ids = append(ids, id)
 			}
 		}

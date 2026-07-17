@@ -14,11 +14,13 @@ import (
 )
 
 type Processor struct {
-	Store             state.Store
-	Runner            actionruntime.Runner
-	WorkerID          string
-	Group             string
-	Tags              []string
+	Store    state.Store
+	Runner   actionruntime.Runner
+	WorkerID string
+	Group    string
+	Tags     []string
+	// Labels is the capability label set this worker offers (ADR 0009).
+	Labels            []string
 	EgressProxyAddr   string
 	LeaseTTL          time.Duration
 	HeartbeatInterval time.Duration
@@ -35,7 +37,7 @@ func (p *Processor) ProcessOne(ctx context.Context) (bool, error) {
 	if workerID == "" {
 		workerID = state.NewID("worker")
 	}
-	job, lease, err := p.Store.ClaimJobForTags(ctx, workerID, p.Tags, p.LeaseTTL)
+	job, lease, err := p.Store.ClaimJobForWorker(ctx, workerID, p.Tags, p.Labels, p.LeaseTTL)
 	if errors.Is(err, state.ErrNoQueuedJob) {
 		return false, nil
 	}

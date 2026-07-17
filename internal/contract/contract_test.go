@@ -1,6 +1,7 @@
 package contract
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
 )
@@ -57,72 +58,57 @@ func TestEffectiveRouteTagPrecedence(t *testing.T) {
 	}
 }
 
-func TestCapabilitiesReduceRouteTag(t *testing.T) {
-	caps, err := NormalizeCapabilities([]string{"browser", "browser"})
+func TestNormalizeLabelsVocabulary(t *testing.T) {
+	labels, err := NormalizeLabels([]string{"browser", "browser", "linux-arm64"}, false)
 	if err != nil {
-		t.Fatalf("NormalizeCapabilities returned error: %v", err)
+		t.Fatalf("NormalizeLabels returned error: %v", err)
 	}
-	if !reflect.DeepEqual(caps, []string{"browser"}) {
-		t.Fatalf("capabilities = %#v, want [browser]", caps)
+	if !reflect.DeepEqual(labels, []string{"browser", "linux-arm64"}) {
+		t.Fatalf("labels = %#v", labels)
 	}
-
-	deployment := Deployment{Tag: "default", RequiredCapabilities: caps}
-	action := Action{}
-	if got := EffectiveRouteTagForAction(deployment, action); got != "browser" {
-		t.Fatalf("capability route tag = %q, want browser", got)
+	// Open vocabulary: anything well-formed is valid.
+	if _, err := NormalizeLabels([]string{"gpu"}, false); err != nil {
+		t.Fatalf("gpu must be a valid label now: %v", err)
 	}
-
-	clear := []string{}
-	action.Capabilities = &clear
-	if got := EffectiveRouteTagForAction(deployment, action); got != "default" {
-		t.Fatalf("cleared action capability route tag = %q, want default", got)
+	for _, invalid := range []string{"", "UPPER", "-lead", "trail-", "has space", "a..b!"} {
+		if _, err := NormalizeLabels([]string{invalid}, false); err == nil {
+			t.Fatalf("label %q must be rejected", invalid)
+		}
+	}
+	// sys/ is operator-reserved: rejected in manifests, allowed for workers.
+	if _, err := NormalizeLabels([]string{"sys/pool.dedicated"}, false); err == nil {
+		t.Fatal("sys/ labels must be rejected without allowReserved")
+	}
+	if _, err := NormalizeLabels([]string{"sys/pool.dedicated"}, true); err != nil {
+		t.Fatalf("sys/ labels must be allowed for operators: %v", err)
+	}
+	many := make([]string, MaxLabels+1)
+	for i := range many {
+		many[i] = fmt.Sprintf("label-%02d", i)
+	}
+	if _, err := NormalizeLabels(many, false); err == nil {
+		t.Fatalf("more than %d labels must be rejected", MaxLabels)
 	}
 }
 
-func TestCapabilityTagConflictMatchesCanonicalEnqueueRule(t *testing.T) {
-	caps := []string{"browser"}
-	appOverride := "app-blue"
-	actionTag := "action-main"
-	actionOverride := "action-fast"
-
-	for _, test := range []struct {
-		name           string
-		appTag         string
-		appOverride    *string
-		actionTag      *string
-		actionOverride *string
-		want           bool
-	}{
-		{name: "default tag", appTag: DefaultRouteTag, want: false},
-		{name: "empty tag", appTag: "", want: false},
-		{name: "manifest app tag", appTag: "app-main", want: true},
-		{name: "app override", appTag: DefaultRouteTag, appOverride: &appOverride, want: true},
-		{name: "action tag", appTag: DefaultRouteTag, actionTag: &actionTag, want: true},
-		{name: "action override", appTag: DefaultRouteTag, actionOverride: &actionOverride, want: true},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			got, err := CapabilityTagConflict(test.appTag, test.appOverride, test.actionTag, test.actionOverride, caps)
-			if err != nil {
-				t.Fatalf("CapabilityTagConflict returned error: %v", err)
-			}
-			if got != test.want {
-				t.Fatalf("CapabilityTagConflict = %v, want %v", got, test.want)
-			}
-		})
-	}
-
-	got, err := CapabilityTagConflict("app-main", &appOverride, &actionTag, &actionOverride, nil)
-	if err != nil {
-		t.Fatalf("CapabilityTagConflict without caps returned error: %v", err)
-	}
-	if got {
-		t.Fatalf("CapabilityTagConflict without capability route = true, want false")
+func TestLabelsDoNotInfluenceRouteTags(t *testing.T) {
+	deployment := Deployment{Tag: "default", RequiredCapabilities: []string{"browser"}, RequiredLabels: []string{"browser"}}
+	if got := EffectiveRouteTagForAction(deployment, Action{}); got != "default" {
+		t.Fatalf("route tag = %q, want default (labels are orthogonal)", got)
 	}
 }
 
-func TestNormalizeCapabilitiesRejectsUnsupported(t *testing.T) {
-	if _, err := NormalizeCapabilities([]string{"gpu"}); err == nil {
-		t.Fatalf("expected unsupported capability error")
+func TestEffectiveRequiredLabels(t *testing.T) {
+	deployment := Deployment{RequiredLabels: []string{"browser"}}
+	runsOn := []string{"kr"}
+	got := EffectiveRequiredLabels(deployment, Action{RunsOn: &runsOn})
+	if !reflect.DeepEqual(got, []string{"browser", "kr"}) {
+		t.Fatalf("effective labels = %#v, want union", got)
+	}
+	// Legacy deployments carry only requiredCapabilities.
+	legacy := Deployment{RequiredCapabilities: []string{"browser"}}
+	if got := EffectiveRequiredLabels(legacy, Action{}); !reflect.DeepEqual(got, []string{"browser"}) {
+		t.Fatalf("legacy effective labels = %#v", got)
 	}
 }
 

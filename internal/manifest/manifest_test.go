@@ -210,45 +210,36 @@ func TestParsePreservesCapabilities(t *testing.T) {
 	}
 }
 
-func TestParseRejectsCapabilityTagConflicts(t *testing.T) {
-	tests := []struct {
-		name string
-		body string
-		want string
-	}{
-		{
-			name: "app tag",
-			body: `{"app":"echo","entrypoint":"main.ts","tag":"default","capabilities":["browser"],"actions":{"run":{}}}`,
-			want: "declares both tag and capabilities",
-		},
-		{
-			name: "action tag",
-			body: `{"app":"echo","entrypoint":"main.ts","capabilities":["browser"],"actions":{"run":{"tag":"fast"}}}`,
-			want: "declares both tag and capabilities",
-		},
-		{
-			name: "app whitespace tag",
-			body: `{"app":"echo","entrypoint":"main.ts","tag":" ","capabilities":["browser"],"actions":{"run":{}}}`,
-			want: "declares both tag and capabilities",
-		},
-		{
-			name: "action whitespace tag",
-			body: `{"app":"echo","entrypoint":"main.ts","capabilities":["browser"],"actions":{"run":{"tag":" "}}}`,
-			want: "declares both tag and capabilities",
-		},
-		{
-			name: "unsupported",
-			body: `{"app":"echo","entrypoint":"main.ts","capabilities":["gpu"],"actions":{"run":{}}}`,
-			want: "unsupported capability",
-		},
+func TestParseAllowsTagAndLabelsTogether(t *testing.T) {
+	data := []byte(`{
+		"app": "demo",
+		"entrypoint": "main.ts",
+		"tag": "blue",
+		"capabilities": ["browser"],
+		"runsOn": ["kr"],
+		"actions": {"run": {}}
+	}`)
+	app, err := Parse(data)
+	if err != nil {
+		t.Fatalf("Parse returned error: %v", err)
 	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			_, err := Parse([]byte(test.body))
-			if err == nil || !strings.Contains(err.Error(), test.want) {
-				t.Fatalf("Parse error = %v, want %q", err, test.want)
-			}
-		})
+	if app.Tag != "blue" {
+		t.Fatalf("tag = %q, want blue (tags and labels coexist)", app.Tag)
+	}
+	if want := []string{"browser", "kr"}; !reflect.DeepEqual(app.RunsOn, want) {
+		t.Fatalf("runsOn = %#v, want %#v (capabilities merge as alias)", app.RunsOn, want)
+	}
+}
+
+func TestParseRejectsInvalidRunsOn(t *testing.T) {
+	for name, field := range map[string]string{
+		"reserved sys prefix": `"runsOn": ["sys/pool.dedicated"]`,
+		"invalid label":       `"runsOn": ["Not Valid"]`,
+	} {
+		data := []byte(`{"app": "demo", "entrypoint": "main.ts", ` + field + `, "actions": {"run": {}}}`)
+		if _, err := Parse(data); err == nil {
+			t.Fatalf("%s: Parse must reject", name)
+		}
 	}
 }
 

@@ -69,3 +69,11 @@ claim한다.
   집합으로 대체된다.
 - 원격 워커가 DB 대신 HTTP로 등록·claim·heartbeat하는 표면은 이 ADR 범위
   밖이며 후속 ADR 후보로 남긴다.
+
+## Amendment (2026-07-18) — 명시 route tag와의 공존 확정
+
+구현(#84)에서 확정한 사항:
+
+- 명시 `tag`(릴리스 라우팅)와 라벨(능력 요구)은 **직교하는 두 claim 차원**이다. 잡은 둘 다 가질 수 있고 claim은 둘 다 만족해야 한다. 이에 따라 manifest의 tag×capabilities 상호배제 규칙과 admission의 routing-conflict 검사는 제거되었다.
+- tag 차원은 기존 의미론을 유지한다(태그 없는 워커 = 모든 태그). 라벨 차원만 subset containment(라벨 없는 워커 = 요구 없는 잡만)를 따른다.
+- capabilities는 더 이상 route tag를 합성하지 않는다. **업그레이드 노트**: capability 풀 워커는 `--tags browser` 대신 `--labels browser`로 전환한다. 이미 큐에 있는 구 잡은 requiredCapabilities를 라벨 요구로 읽는 폴백으로 매칭된다.

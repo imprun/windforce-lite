@@ -99,6 +99,7 @@ func runServer(args []string, mode string) int {
 	workerGroup := flags.String("worker-group", "default", "worker group name exposed to action ctx")
 	egressProxy := flags.String("egress-proxy", "", "host:port of a co-located egress proxy sidecar")
 	workerTags := flags.String("tags", "", "comma-separated route tags this worker claims")
+	workerLabels := flags.String("labels", "", "comma-separated capability labels this worker offers; sys/ labels are operator-granted")
 	jobSuccessRetention := flags.Duration("job-success-retention", envDays("WINDFORCE_LITE_JOB_SUCCESS_RETENTION_DAYS", defaultJobSuccessRetention), "how long succeeded job records are kept; 0 keeps them forever")
 	jobFailureRetention := flags.Duration("job-failure-retention", envDays("WINDFORCE_LITE_JOB_FAILURE_RETENTION_DAYS", defaultJobFailureRetention), "how long failed/canceled/expired job records are kept; 0 keeps them forever")
 	jobStuckAfter := flags.Duration("job-stuck-after", envHours("WINDFORCE_LITE_JOB_STUCK_AFTER_HOURS", defaultJobStuckAfter), "expire queued/running jobs with no progress for this long; 0 disables")
@@ -206,6 +207,7 @@ func runServer(args []string, mode string) int {
 			WorkerID:         *workerID,
 			Group:            *workerGroup,
 			Tags:             parseTags(*workerTags),
+			Labels:           parseLabels(*workerLabels),
 			EgressProxyAddr:  strings.TrimSpace(*egressProxy),
 			LeaseTTL:         *leaseTTL,
 			LogFlushInterval: *logFlushInterval,
@@ -263,6 +265,7 @@ func runWorker(args []string) int {
 	workerGroup := flags.String("worker-group", "default", "worker group name exposed to action ctx")
 	egressProxy := flags.String("egress-proxy", "", "host:port of a co-located egress proxy sidecar")
 	workerTags := flags.String("tags", "", "comma-separated route tags this worker claims")
+	workerLabels := flags.String("labels", "", "comma-separated capability labels this worker offers; sys/ labels are operator-granted")
 	once := flags.Bool("once", false, "process at most one queued job and exit")
 	if err := flags.Parse(args); err != nil {
 		return 2
@@ -298,6 +301,7 @@ func runWorker(args []string) int {
 		WorkerID:         *workerID,
 		Group:            *workerGroup,
 		Tags:             parseTags(*workerTags),
+		Labels:           parseLabels(*workerLabels),
 		EgressProxyAddr:  strings.TrimSpace(*egressProxy),
 		LeaseTTL:         *leaseTTL,
 		LogFlushInterval: *logFlushInterval,
@@ -522,6 +526,15 @@ func localBaseURL(addr string) string {
 		return "http://127.0.0.1" + addr
 	}
 	return "http://" + strings.TrimRight(addr, "/")
+}
+
+func parseLabels(raw string) []string {
+	labels, err := contract.NormalizeLabels(parseTags(raw), true)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "invalid --labels: %v", err)
+		os.Exit(2)
+	}
+	return labels
 }
 
 func parseTags(value string) []string {

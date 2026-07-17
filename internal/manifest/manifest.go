@@ -60,9 +60,11 @@ func Parse(data []byte) (contract.App, error) {
 		return contract.App{}, fmt.Errorf("app %s capabilities: %w", app.App, err)
 	}
 	app.Capabilities = caps
-	if len(app.Capabilities) > 0 && app.Tag != "" {
-		return contract.App{}, fmt.Errorf("app %s declares both tag and capabilities in %s", app.App, FileName)
+	runsOn, err := contract.NormalizeLabels(append(append([]string{}, app.RunsOn...), app.Capabilities...), false)
+	if err != nil {
+		return contract.App{}, fmt.Errorf("app %s runsOn: %w", app.App, err)
 	}
+	app.RunsOn = runsOn
 
 	for name, action := range app.Actions {
 		if !contract.ValidActionKey(name) {
@@ -80,10 +82,22 @@ func Parse(data []byte) (contract.App, error) {
 			}
 			action.Capabilities = &caps
 		}
-		effectiveCaps := contract.EffectiveCapabilities(app.Capabilities, action.Capabilities)
-		actionTag := action.Tag != nil && *action.Tag != ""
-		if len(effectiveCaps) > 0 && (app.Tag != "" || actionTag) {
-			return contract.App{}, fmt.Errorf("action %s.%s declares both tag and capabilities in %s", app.App, name, FileName)
+		if action.RunsOn != nil || action.Capabilities != nil {
+			merged := []string{}
+			if action.RunsOn != nil {
+				merged = append(merged, *action.RunsOn...)
+			}
+			if action.Capabilities != nil {
+				merged = append(merged, *action.Capabilities...)
+			}
+			labels, err := contract.NormalizeLabels(merged, false)
+			if err != nil {
+				return contract.App{}, fmt.Errorf("action %s.%s runsOn: %w", app.App, name, err)
+			}
+			if labels == nil {
+				labels = []string{}
+			}
+			action.RunsOn = &labels
 		}
 		applyAppDefaults(app, &action)
 		if err := validateExecutableAction(app.App, name, action); err != nil {
@@ -91,7 +105,7 @@ func Parse(data []byte) (contract.App, error) {
 		}
 		app.Actions[name] = action
 	}
-	if len(app.Capabilities) == 0 && app.Tag == "" {
+	if app.Tag == "" {
 		app.Tag = contract.DefaultRouteTag
 	}
 	return app, nil

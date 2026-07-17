@@ -136,14 +136,6 @@ func (s *Service) CreateRun(ctx context.Context, request CreateRunRequest) (Admi
 			Message: "active release has no execution bundle; publish the synchronized source again",
 		}
 	}
-	effectiveCapabilities := contract.EffectiveCapabilities(deployment.RequiredCapabilities, actionSpec.Capabilities)
-	conflict, err := contract.CapabilityTagConflict(deployment.Tag, deployment.TagOverride, actionSpec.Tag, actionSpec.TagOverride, effectiveCapabilities)
-	if err != nil {
-		return Admission{}, &Fault{Kind: FaultInternal, Err: err}
-	}
-	if conflict {
-		return Admission{}, &Fault{Kind: FaultRoutingConflict, Message: "required worker capability conflicts with explicit tag routing"}
-	}
 	clientID := ""
 	if clientKey := strings.TrimSpace(request.ClientKey); clientKey != "" {
 		client, err := s.store.GetClientByExternalKey(ctx, request.Workspace, clientKey)

@@ -357,10 +357,10 @@ func (s *PostgresStore) GetHumanTask(ctx context.Context, taskID string) (HumanT
 }
 
 func (s *PostgresStore) ClaimJob(ctx context.Context, workerID string, leaseTTL time.Duration) (Job, Lease, error) {
-	return s.ClaimJobForTags(ctx, workerID, nil, leaseTTL)
+	return s.ClaimJobForWorker(ctx, workerID, nil, nil, leaseTTL)
 }
 
-func (s *PostgresStore) ClaimJobForTags(ctx context.Context, workerID string, tags []string, leaseTTL time.Duration) (Job, Lease, error) {
+func (s *PostgresStore) ClaimJobForWorker(ctx context.Context, workerID string, tags []string, labels []string, leaseTTL time.Duration) (Job, Lease, error) {
 	if workerID == "" {
 		workerID = NewID("worker")
 	}
@@ -368,6 +368,7 @@ func (s *PostgresStore) ClaimJobForTags(ctx context.Context, workerID string, ta
 		leaseTTL = defaultLeaseTime
 	}
 	allowedTags := normalizeClaimTags(tags)
+	offeredLabels := normalizeClaimTags(labels)
 	var claimed Job
 	var lease Lease
 	err := s.withTx(ctx, func(tx pgx.Tx) error {
@@ -417,7 +418,7 @@ WHERE state='running' AND lease_expires_at < $1 AND canceled_by IS NULL
 				rows.Close()
 				return err
 			}
-			if !claimTagAllowed(job, allowedTags) {
+			if !claimAllowed(job, allowedTags, offeredLabels) {
 				continue
 			}
 			candidates = append(candidates, job)
