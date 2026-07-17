@@ -345,10 +345,10 @@ func buildControlPlaneOpenAPI(baseURL string, workspaceID string) map[string]any
 			"get": map[string]any{
 				"operationId": "getActionSchema",
 				"summary":     "Get action JSON Schemas",
-				"description": "Schema discovery endpoint for protocol adapters and UI forms. Returns the materialized input_schema and output_schema as raw JSON Schema documents pinned by sync, while GET /actions/{action} keeps Windforce's canonical base64 catalog encoding.",
+				"description": "Schema discovery endpoint for protocol adapters and UI forms. Returns materialized request, result, and operator-settings JSON Schema documents pinned by sync, while GET /actions/{action} keeps Windforce's canonical base64 catalog encoding.",
 				"parameters":  []any{oapiWorkspaceParam(workspaceID), oapiPathParam("app", "App key."), oapiPathParam("action", "Action key.")},
 				"responses": withErrors(map[string]any{
-					"200": oapiResponse("Action input/output JSON Schemas.", oapiSchemaRef("ActionSchema")),
+					"200": oapiResponse("Action request, result, and operator-settings JSON Schemas.", oapiSchemaRef("ActionSchema")),
 				}, "400", "401", "403", "404"),
 			},
 		},
@@ -925,15 +925,16 @@ func controlPlaneSchemas() map[string]any {
 		},
 		"ActionSchema": map[string]any{
 			"type":        "object",
-			"description": "Raw materialized JSON Schema documents for one action.",
+			"description": "Raw materialized JSON Schema documents for one action. operator_settings_schema describes release-owned settings that are not public request fields.",
 			"properties": map[string]any{
-				"workspace_id":  oapiStringSchema(),
-				"app_key":       oapiStringSchema(),
-				"action_key":    oapiStringSchema(),
-				"input_schema":  jsonSchema,
-				"output_schema": jsonSchema,
+				"workspace_id":             oapiStringSchema(),
+				"app_key":                  oapiStringSchema(),
+				"action_key":               oapiStringSchema(),
+				"input_schema":             jsonSchema,
+				"output_schema":            jsonSchema,
+				"operator_settings_schema": jsonSchema,
 			},
-			"required": []any{"workspace_id", "app_key", "action_key", "input_schema", "output_schema"},
+			"required": []any{"workspace_id", "app_key", "action_key", "input_schema", "output_schema", "operator_settings_schema"},
 		},
 		"AppAction": map[string]any{
 			"type":        "object",

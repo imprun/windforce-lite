@@ -101,6 +101,7 @@ func clearRuntimeOwnedActionManifestFields(action *contract.Action) {
 	action.TagOverride = nil
 	action.InputSchemaBody = nil
 	action.OutputSchemaBody = nil
+	action.OperatorSettingsSchemaBody = nil
 	action.UpdatedAt = nil
 }
 

@@ -2116,6 +2116,7 @@ func TestCanonicalControlPlaneUsesMaterializedActionSchemas(t *testing.T) {
 	fileCatalog := catalog.NewFileCatalog(filepath.Join(tempDir, "catalog.json"))
 	inputSchema := json.RawMessage(`{"type":"object","properties":{"message":{"type":"string"}}}`)
 	outputSchema := json.RawMessage(`{"type":"object","properties":{"ok":{"type":"boolean"}}}`)
+	operatorSettingsSchema := json.RawMessage(`{"type":"object","properties":{"REGION":{"type":"string","enum":["kr","us"]}}}`)
 	if err := fileCatalog.UpsertDeployment(context.Background(), contract.Deployment{
 		Workspace:   "ws-a",
 		GitSourceID: "1",
@@ -2124,11 +2125,13 @@ func TestCanonicalControlPlaneUsesMaterializedActionSchemas(t *testing.T) {
 		Entrypoint:  "main.ts",
 		Actions: map[string]contract.Action{
 			"echo": {
-				Action:           "echo",
-				InputSchema:      "input.schema.json",
-				OutputSchema:     "output.schema.json",
-				InputSchemaBody:  inputSchema,
-				OutputSchemaBody: outputSchema,
+				Action:                     "echo",
+				InputSchema:                "input.schema.json",
+				OutputSchema:               "output.schema.json",
+				OperatorSettingsSchema:     "operator-settings.schema.json",
+				InputSchemaBody:            inputSchema,
+				OutputSchemaBody:           outputSchema,
+				OperatorSettingsSchemaBody: operatorSettingsSchema,
 			},
 		},
 	}); err != nil {
@@ -2173,11 +2176,12 @@ func TestCanonicalControlPlaneUsesMaterializedActionSchemas(t *testing.T) {
 		t.Fatalf("schema status = %d, want %d", schemaResp.StatusCode, http.StatusOK)
 	}
 	var schemaBody struct {
-		WorkspaceID  string          `json:"workspace_id"`
-		AppKey       string          `json:"app_key"`
-		ActionKey    string          `json:"action_key"`
-		InputSchema  json.RawMessage `json:"input_schema"`
-		OutputSchema json.RawMessage `json:"output_schema"`
+		WorkspaceID            string          `json:"workspace_id"`
+		AppKey                 string          `json:"app_key"`
+		ActionKey              string          `json:"action_key"`
+		InputSchema            json.RawMessage `json:"input_schema"`
+		OutputSchema           json.RawMessage `json:"output_schema"`
+		OperatorSettingsSchema json.RawMessage `json:"operator_settings_schema"`
 	}
 	if err := json.NewDecoder(schemaResp.Body).Decode(&schemaBody); err != nil {
 		t.Fatal(err)
@@ -2186,8 +2190,9 @@ func TestCanonicalControlPlaneUsesMaterializedActionSchemas(t *testing.T) {
 		t.Fatalf("schema identity = %#v", schemaBody)
 	}
 	if !bytes.Contains(schemaBody.InputSchema, []byte(`"message"`)) ||
-		!bytes.Contains(schemaBody.OutputSchema, []byte(`"ok"`)) {
-		t.Fatalf("raw action schemas = input:%s output:%s", schemaBody.InputSchema, schemaBody.OutputSchema)
+		!bytes.Contains(schemaBody.OutputSchema, []byte(`"ok"`)) ||
+		!bytes.Contains(schemaBody.OperatorSettingsSchema, []byte(`"REGION"`)) {
+		t.Fatalf("raw action schemas = input:%s output:%s operator settings:%s", schemaBody.InputSchema, schemaBody.OutputSchema, schemaBody.OperatorSettingsSchema)
 	}
 
 	openAPIResp, err := http.Get(server.URL + "/api/w/ws-a/apps/echo/openapi.json")

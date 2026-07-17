@@ -545,30 +545,163 @@ textarea {
 .inputConfigEditor {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
   padding-top: 4px;
 }
 
-.inputConfigHeader,
 .inputConfigRow {
   display: grid;
-  grid-template-columns: minmax(150px, 0.9fr) minmax(240px, 1.7fr) 34px 34px;
-  gap: 8px;
+  grid-template-columns: minmax(220px, 0.8fr) minmax(300px, 1.4fr) auto;
+  gap: 12px 16px;
   align-items: start;
-}
-
-.inputConfigHeader {
-  color: var(--text-secondary);
-  font-size: 11px;
-  font-weight: 650;
-  text-transform: uppercase;
-  padding: 0 2px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--surface-1);
 }
 
 .inputConfigRow textarea {
-  min-height: 36px;
+  min-height: 58px;
   resize: vertical;
   line-height: 1.45;
+}
+
+.inputConfigKeyField,
+.inputConfigValueField {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.inputConfigKeyField > label,
+.inputConfigValueField > label {
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.inputConfigCustomKey {
+  margin-top: 2px;
+}
+
+.inputConfigRowActions {
+  display: flex;
+  gap: 6px;
+  padding-top: 24px;
+}
+
+.inputConfigCatalogSummary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-secondary);
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--surface-2);
+}
+
+.inputConfigCatalogSummary svg {
+  color: var(--accent);
+  flex: 0 0 auto;
+}
+
+.inputConfigGuide,
+.inputConfigCustomHelp {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.inputConfigGuide {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.inputConfigGuideHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.inputConfigGuideHeading > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.inputConfigGuide > strong {
+  font-size: 14px;
+}
+
+.inputConfigGuide > p,
+.inputConfigCustomHelp {
+  color: var(--text-secondary);
+  line-height: 1.55;
+}
+
+.inputConfigFieldGuide {
+  border-top: 1px solid var(--border);
+}
+
+.inputConfigFieldGuideRow {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.45fr) minmax(240px, 1fr);
+  gap: 16px;
+  padding: 9px 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.inputConfigFieldGuideRow > span {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.inputConfigFieldGuideRow small {
+  color: var(--text-muted);
+}
+
+.inputConfigExample {
+  display: grid;
+  grid-template-columns: 80px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.inputConfigExample > span {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 650;
+  text-transform: uppercase;
+}
+
+.inputConfigExample pre {
+  overflow: auto;
+  max-height: 160px;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--surface-2);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.inputConfigBoolean {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+}
+
+.inputConfigBoolean input {
+  width: 16px;
+  height: 16px;
 }
 
 .inputConfigAdd {
@@ -1859,10 +1992,6 @@ textarea {
     padding: 8px;
   }
 
-  .inputConfigHeader {
-    display: none;
-  }
-
   .inputSettingScopeHeader {
     grid-template-columns: minmax(0, 1fr) 34px;
     gap: 12px;
@@ -1984,18 +2113,23 @@ textarea {
   }
 
   .inputConfigRow {
-    grid-template-columns: 1fr 34px 34px;
-    padding: 10px 0;
-    border-bottom: 1px solid var(--border);
+    grid-template-columns: minmax(0, 1fr);
+    padding: 14px;
   }
 
-  .inputConfigRow input,
-  .inputConfigRow textarea {
-    grid-column: 1 / -1;
+  .inputConfigRowActions {
+    padding-top: 0;
   }
 
-  .inputConfigRow .iconButton:first-of-type {
-    grid-column: 2;
+  .inputConfigGuide,
+  .inputConfigCustomHelp {
+    grid-column: 1;
+  }
+
+  .inputConfigFieldGuideRow,
+  .inputConfigExample {
+    grid-template-columns: 1fr;
+    gap: 6px;
   }
 
   .inlineActions {

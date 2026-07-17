@@ -366,6 +366,7 @@ func TestParsePreservesExecutionFieldsAndIgnoresRuntimeOwnedFields(t *testing.T)
 				"tagOverride": "operator-owned",
 				"inputSchemaBody": {"type": "string"},
 				"outputSchemaBody": {"type": "string"},
+				"operatorSettingsSchemaBody": {"type": "string"},
 				"updatedAt": "2025-01-01T00:00:00Z"
 			}
 		}
@@ -380,7 +381,7 @@ func TestParsePreservesExecutionFieldsAndIgnoresRuntimeOwnedFields(t *testing.T)
 	if run.Action != "run" || run.Entrypoint != "run.ts" || run.Runtime != "go" || run.TimeoutMs != 30000 {
 		t.Fatalf("run execution fields = %#v", run)
 	}
-	if run.TagOverride != nil || len(run.InputSchemaBody) != 0 || len(run.OutputSchemaBody) != 0 || run.UpdatedAt != nil {
+	if run.TagOverride != nil || len(run.InputSchemaBody) != 0 || len(run.OutputSchemaBody) != 0 || len(run.OperatorSettingsSchemaBody) != 0 || run.UpdatedAt != nil {
 		t.Fatalf("run non-canonical fields leaked = %#v; tagOverride input was %q", run, tagOverride)
 	}
 }

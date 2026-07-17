@@ -259,8 +259,13 @@ func materializeActionSchemas(root string, app *contract.App) error {
 		if err != nil {
 			return fmt.Errorf("action %s.%s output schema: %w", app.App, key, err)
 		}
+		operatorSettingsSchema, err := readSchemaFile(root, action.OperatorSettingsSchema)
+		if err != nil {
+			return fmt.Errorf("action %s.%s operator settings schema: %w", app.App, key, err)
+		}
 		action.InputSchemaBody = inputSchema
 		action.OutputSchemaBody = outputSchema
+		action.OperatorSettingsSchemaBody = operatorSettingsSchema
 		app.Actions[key] = action
 	}
 	return nil

@@ -225,11 +225,12 @@ type canonicalActionModel struct {
 }
 
 type canonicalActionSchemaView struct {
-	WorkspaceID  string          `json:"workspace_id"`
-	AppKey       string          `json:"app_key"`
-	ActionKey    string          `json:"action_key"`
-	InputSchema  json.RawMessage `json:"input_schema"`
-	OutputSchema json.RawMessage `json:"output_schema"`
+	WorkspaceID            string          `json:"workspace_id"`
+	AppKey                 string          `json:"app_key"`
+	ActionKey              string          `json:"action_key"`
+	InputSchema            json.RawMessage `json:"input_schema"`
+	OutputSchema           json.RawMessage `json:"output_schema"`
+	OperatorSettingsSchema json.RawMessage `json:"operator_settings_schema"`
 }
 
 type canonicalActionView struct {
@@ -380,12 +381,17 @@ func (h *Handler) newCanonicalActionSchemaView(schemaReader *canonicalSchemaRead
 	if err != nil {
 		return canonicalActionSchemaView{}, fmt.Errorf("action %s.%s output schema: %w", deployment.App, actionKey, err)
 	}
+	operatorSettingsSchema, err := schemaReader.Read(action.OperatorSettingsSchema, action.OperatorSettingsSchemaBody)
+	if err != nil {
+		return canonicalActionSchemaView{}, fmt.Errorf("action %s.%s operator settings schema: %w", deployment.App, actionKey, err)
+	}
 	return canonicalActionSchemaView{
-		WorkspaceID:  contract.NormalizeWorkspace(deployment.SourceWorkspace()),
-		AppKey:       deployment.App,
-		ActionKey:    actionKey,
-		InputSchema:  inputSchema,
-		OutputSchema: outputSchema,
+		WorkspaceID:            contract.NormalizeWorkspace(deployment.SourceWorkspace()),
+		AppKey:                 deployment.App,
+		ActionKey:              actionKey,
+		InputSchema:            inputSchema,
+		OutputSchema:           outputSchema,
+		OperatorSettingsSchema: operatorSettingsSchema,
 	}, nil
 }
 

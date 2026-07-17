@@ -107,7 +107,8 @@ func TestSyncMaterializesSourceBundle(t *testing.T) {
 			"echo": {
 				"tag": "action-fast",
 				"inputSchema": "input.schema.json",
-				"outputSchema": "output.schema.json"
+				"outputSchema": "output.schema.json",
+				"operatorSettingsSchema": "operator-settings.schema.json"
 			}
 		}
 	}`), 0o644); err != nil {
@@ -117,6 +118,9 @@ func TestSyncMaterializesSourceBundle(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(sourceDir, "output.schema.json"), []byte(`{"type":"object","properties":{"ok":{"type":"boolean"}}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sourceDir, "operator-settings.schema.json"), []byte(`{"type":"object","properties":{"REGION":{"type":"string"}}}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -159,8 +163,9 @@ func TestSyncMaterializesSourceBundle(t *testing.T) {
 		t.Fatalf("canonical app defaults were not pinned: %#v", deployment.Actions["echo"])
 	}
 	if !strings.Contains(string(deployment.Actions["echo"].InputSchemaBody), `"message"`) ||
-		!strings.Contains(string(deployment.Actions["echo"].OutputSchemaBody), `"ok"`) {
-		t.Fatalf("action schemas were not materialized: input=%s output=%s", deployment.Actions["echo"].InputSchemaBody, deployment.Actions["echo"].OutputSchemaBody)
+		!strings.Contains(string(deployment.Actions["echo"].OutputSchemaBody), `"ok"`) ||
+		!strings.Contains(string(deployment.Actions["echo"].OperatorSettingsSchemaBody), `"REGION"`) {
+		t.Fatalf("action schemas were not materialized: input=%s output=%s operator settings=%s", deployment.Actions["echo"].InputSchemaBody, deployment.Actions["echo"].OutputSchemaBody, deployment.Actions["echo"].OperatorSettingsSchemaBody)
 	}
 	if deployment.UpdatedAt == nil || deployment.Actions["echo"].UpdatedAt == nil ||
 		!deployment.Actions["echo"].UpdatedAt.Equal(*deployment.UpdatedAt) {
@@ -350,6 +355,15 @@ func TestSyncRejectsInvalidSchemaReferences(t *testing.T) {
 				"actions": {"echo": {"inputSchema": "../input.schema.json"}}
 			}`,
 			wantMessage: `schema path "../input.schema.json" must be a relative path inside the app`,
+		},
+		{
+			name: "missing operator settings schema",
+			manifest: `{
+				"app": "echo",
+				"entrypoint": "main.ts",
+				"actions": {"echo": {"operatorSettingsSchema": "operator-settings.schema.json"}}
+			}`,
+			wantMessage: `manifest references schema "operator-settings.schema.json" but the file is missing`,
 		},
 	}
 	for _, test := range tests {

@@ -53,13 +53,17 @@ type Action struct {
 	Adapter      *ActionAdapter `json:"adapter,omitempty"`
 	InputSchema  string         `json:"inputSchema,omitempty"`
 	OutputSchema string         `json:"outputSchema,omitempty"`
+	// OperatorSettingsSchema documents release-owned input settings that are
+	// not part of the public action request body.
+	OperatorSettingsSchema string `json:"operatorSettingsSchema,omitempty"`
 	// Materialized schema bodies are pinned during sync for control-plane reads.
-	InputSchemaBody  json.RawMessage `json:"inputSchemaBody,omitempty"`
-	OutputSchemaBody json.RawMessage `json:"outputSchemaBody,omitempty"`
-	TimeoutS         *int32          `json:"timeout,omitempty"`
-	TimeoutMs        int64           `json:"timeoutMs,omitempty"`
-	Capabilities     *[]string       `json:"capabilities,omitempty"`
-	UpdatedAt        *time.Time      `json:"updatedAt,omitempty"`
+	InputSchemaBody            json.RawMessage `json:"inputSchemaBody,omitempty"`
+	OutputSchemaBody           json.RawMessage `json:"outputSchemaBody,omitempty"`
+	OperatorSettingsSchemaBody json.RawMessage `json:"operatorSettingsSchemaBody,omitempty"`
+	TimeoutS                   *int32          `json:"timeout,omitempty"`
+	TimeoutMs                  int64           `json:"timeoutMs,omitempty"`
+	Capabilities               *[]string       `json:"capabilities,omitempty"`
+	UpdatedAt                  *time.Time      `json:"updatedAt,omitempty"`
 }
 
 // ActionAdapter is reserved for runtime integrations outside source manifests.

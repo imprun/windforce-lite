@@ -154,6 +154,7 @@ export type ActionSchemas = {
   action_key: string;
   input_schema: unknown;
   output_schema: unknown;
+  operator_settings_schema: unknown;
 };
 
 export type AppDocumentation = {
