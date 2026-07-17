@@ -115,7 +115,9 @@ A run request is admitted and executed as follows:
 4. Verify the bundle digest and preparation fingerprint, then execute the
    app-level entrypoint from the fetched bundle.
 5. Build the Windforce `ctx` object from `input.json` and `WF_*` environment.
-6. Store stdout/stderr as job logs and expose the action output through the
+6. Treat non-zero exit codes and action-declared failure payloads as failed
+   Jobs.
+7. Store stdout/stderr as job logs and expose the action output through the
    job result API.
 
 ## Manifest
@@ -166,6 +168,10 @@ The executor writes `input.json` in a per-job directory, builds `ctx` from
 `input.json` plus `WF_*`, imports the app entrypoint, calls `main(ctx)`, and
 expects `result.json`. A non-zero process exit is returned as an action result,
 not as a runner infrastructure error.
+
+An action can declare a domain failure without crashing its process by returning
+`{"$windforce":{"type":"action_failure","code":"...","message":"..."}}`. The
+worker records the Job as failed and keeps the output payload intact for callers.
 
 ## Try it locally
 

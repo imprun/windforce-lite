@@ -285,6 +285,38 @@ func TestProcessorStoresFailedActionOutputAndLogsSeparately(t *testing.T) {
 	}
 }
 
+func TestProcessorPromotesActionFailurePayload(t *testing.T) {
+	processor, stateStore, run := newProcessorTestHarness(t, "declared-fail")
+
+	processed, err := processor.ProcessOne(context.Background())
+	if err != nil {
+		t.Fatalf("ProcessOne returned error: %v", err)
+	}
+	if !processed {
+		t.Fatalf("ProcessOne processed no job")
+	}
+
+	completed, err := stateStore.GetRun(context.Background(), run.ID)
+	if err != nil {
+		t.Fatalf("GetRun returned error: %v", err)
+	}
+	if completed.State != state.RunFailed {
+		t.Fatalf("run state = %s, want %s", completed.State, state.RunFailed)
+	}
+	if completed.Result == nil {
+		t.Fatalf("completed result is nil")
+	}
+	if completed.Result.ExitCode != 0 {
+		t.Fatalf("exit code = %d, want 0", completed.Result.ExitCode)
+	}
+	if completed.Result.Error != "ERR_MLCOM_MSG10000" {
+		t.Fatalf("error = %q, want ECODE", completed.Result.Error)
+	}
+	if !strings.Contains(string(completed.Result.Output), `"RESULT":"FAIL"`) {
+		t.Fatalf("action output was not preserved: %s", completed.Result.Output)
+	}
+}
+
 func TestProcessorStoresExecutionBundleFetchErrorResult(t *testing.T) {
 	processor, stateStore, run := newProcessorTestHarness(t, "echo")
 	processor.Runner.ArtifactStore = executionbundle.NewLocalStore(filepath.Join(t.TempDir(), "empty-artifact-store"))
@@ -525,6 +557,12 @@ func TestWorkerHelperProcess(t *testing.T) {
 		fmt.Println("failure stdout")
 		fmt.Fprintln(os.Stderr, "failure stderr")
 		os.Exit(7)
+	case "declared-fail":
+		output := []byte(`{"RESULT":"FAIL","ECODE":"ERR_MLCOM_MSG10000","EMSG":"schema validation failed"}`)
+		if err := os.WriteFile(os.Getenv("WF_RESULT_JSON"), output, 0o644); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(2)
+		}
 	case "sleep":
 		time.Sleep(5 * time.Second)
 		if err := os.WriteFile(os.Getenv("WF_RESULT_JSON"), []byte(`{"ok":true}`), 0o644); err != nil {

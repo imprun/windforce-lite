@@ -172,6 +172,12 @@ func (p *Processor) ProcessOne(ctx context.Context) (bool, error) {
 		jobError = result.Error
 		return completeProcessed(p.Store.CompleteJobFailed(ctx, lease, result))
 	}
+	if message, failed := actionDeclaredFailure(result); failed {
+		result.Error = message
+		outcome = "failed"
+		jobError = result.Error
+		return completeProcessed(p.Store.CompleteJobFailed(ctx, lease, result))
+	}
 
 	task, ok, err := HumanTaskFromOutput(job.RunID, result.Output)
 	if err != nil {
