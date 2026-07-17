@@ -7,6 +7,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"time"
 
 	catalogpkg "github.com/imprun/windforce-core/internal/catalog"
 	"github.com/imprun/windforce-core/internal/contract"
@@ -322,7 +323,31 @@ func (h *Handler) handleCanonicalWorkerTags(w http.ResponseWriter, r *http.Reque
 			}
 		}
 	}
-	writeJSON(w, http.StatusOK, newCanonicalWorkerTagsView(tags))
+	var workers []state.WorkerRecord
+	if h.store != nil {
+		registered, err := h.store.ListWorkers(r.Context())
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		workers = registered
+	}
+	writeJSON(w, http.StatusOK, newCanonicalWorkerTagsView(tags, workers))
+}
+
+// handleCanonicalListWorkers serves the worker registry (ADR 0009 item 6):
+// the observable truth of which labels and slots are alive right now.
+func (h *Handler) handleCanonicalListWorkers(w http.ResponseWriter, r *http.Request) {
+	if h.store == nil {
+		writeJSON(w, http.StatusOK, map[string]any{"workers": []any{}})
+		return
+	}
+	workers, err := h.store.ListWorkers(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, newCanonicalWorkersView(workers, time.Now()))
 }
 
 func (h *Handler) loadGitSourceSnapshot(w http.ResponseWriter, r *http.Request) (gitsourcepkg.Snapshot, bool) {

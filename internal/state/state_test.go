@@ -459,14 +459,14 @@ func TestLocalStoreClaimJobForTags(t *testing.T) {
 		}
 	}
 
-	claimed, _, err := store.ClaimJobForTags(context.Background(), "worker-blue", []string{"blue"}, time.Minute)
+	claimed, _, err := store.ClaimJobForWorker(context.Background(), "worker-blue", []string{"blue"}, nil, time.Minute)
 	if err != nil {
 		t.Fatalf("ClaimJobForTags returned error: %v", err)
 	}
 	if claimed.Payload.Action != "blue" || claimed.Payload.Tag != "blue" {
 		t.Fatalf("claimed job = %#v", claimed.Payload)
 	}
-	if _, _, err := store.ClaimJobForTags(context.Background(), "worker-green", []string{"green"}, time.Minute); err != ErrNoQueuedJob {
+	if _, _, err := store.ClaimJobForWorker(context.Background(), "worker-green", []string{"green"}, nil, time.Minute); err != ErrNoQueuedJob {
 		t.Fatalf("green claim error = %v, want %v", err, ErrNoQueuedJob)
 	}
 }
@@ -738,7 +738,7 @@ func exerciseStoreMaxConcurrent(t *testing.T, store Store) {
 	secondEcho := enqueueMaxConcurrentJob(t, store, echoDeployment, "run-echo-2", base.Add(time.Second))
 	other := enqueueMaxConcurrentJob(t, store, otherDeployment, "run-other-1", base.Add(2*time.Second))
 
-	claimed, firstLease, err := store.ClaimJobForTags(ctx, "worker-first", []string{"default"}, time.Minute)
+	claimed, firstLease, err := store.ClaimJobForWorker(ctx, "worker-first", []string{"default"}, nil, time.Minute)
 	if err != nil {
 		t.Fatalf("first ClaimJobForTags returned error: %v", err)
 	}
@@ -746,7 +746,7 @@ func exerciseStoreMaxConcurrent(t *testing.T, store Store) {
 		t.Fatalf("first claimed job = %q, want %q", claimed.ID, firstEcho.ID)
 	}
 
-	claimed, _, err = store.ClaimJobForTags(ctx, "worker-other", []string{"default"}, time.Minute)
+	claimed, _, err = store.ClaimJobForWorker(ctx, "worker-other", []string{"default"}, nil, time.Minute)
 	if err != nil {
 		t.Fatalf("second ClaimJobForTags returned error: %v", err)
 	}
@@ -754,7 +754,7 @@ func exerciseStoreMaxConcurrent(t *testing.T, store Store) {
 		t.Fatalf("second claimed job = %q, want other app job %q", claimed.ID, other.ID)
 	}
 
-	if _, _, err := store.ClaimJobForTags(ctx, "worker-blocked", []string{"default"}, time.Minute); err != ErrNoQueuedJob {
+	if _, _, err := store.ClaimJobForWorker(ctx, "worker-blocked", []string{"default"}, nil, time.Minute); err != ErrNoQueuedJob {
 		t.Fatalf("blocked claim error = %v, want %v", err, ErrNoQueuedJob)
 	}
 
@@ -767,7 +767,7 @@ func exerciseStoreMaxConcurrent(t *testing.T, store Store) {
 		t.Fatalf("CompleteJobSucceeded returned error: %v", err)
 	}
 
-	claimed, _, err = store.ClaimJobForTags(ctx, "worker-next", []string{"default"}, time.Minute)
+	claimed, _, err = store.ClaimJobForWorker(ctx, "worker-next", []string{"default"}, nil, time.Minute)
 	if err != nil {
 		t.Fatalf("third ClaimJobForTags returned error: %v", err)
 	}
@@ -1199,5 +1199,116 @@ func exercisePruneSettledJobs(t *testing.T, store Store) {
 	}
 	if prunedExpired != 1 {
 		t.Fatalf("pruned expired = %d, want 1", prunedExpired)
+	}
+}
+
+func TestClaimJobForWorkerLabelSubset(t *testing.T) {
+	store := NewLocalStore(t.TempDir() + "/state.json")
+	plainDeployment := contract.Deployment{
+		Workspace: "ws-a",
+		App:       "plain",
+		Commit:    "commit-a",
+		Actions:   map[string]contract.Action{"run": {Action: "run", Command: []string{"helper"}}},
+	}
+	browserDeployment := contract.Deployment{
+		Workspace:      "ws-a",
+		App:            "browser-app",
+		Commit:         "commit-b",
+		RequiredLabels: []string{"browser", "kr"},
+		Actions:        map[string]contract.Action{"run": {Action: "run", Command: []string{"helper"}}},
+	}
+	for name, deployment := range map[string]contract.Deployment{
+		"plain": plainDeployment, "browser": browserDeployment,
+	} {
+		run := NewRun("windforce", "run-"+name, deployment.App, "run", deployment, json.RawMessage(`{}`))
+		job := NewActionJob(run, nil)
+		if err := store.CreateRunAndEnqueue(context.Background(), run, job); err != nil {
+			t.Fatalf("enqueue %s: %v", name, err)
+		}
+	}
+
+	// A worker with no labels claims only unconstrained jobs (ADR 0009 —
+	// the deliberate flip of the old claim-everything default).
+	claimed, _, err := store.ClaimJobForWorker(context.Background(), "worker-bare", nil, nil, time.Minute)
+	if err != nil {
+		t.Fatalf("bare claim: %v", err)
+	}
+	if claimed.Payload.App != "plain" {
+		t.Fatalf("bare worker claimed %q, want plain", claimed.Payload.App)
+	}
+	if _, _, err := store.ClaimJobForWorker(context.Background(), "worker-bare", nil, nil, time.Minute); err != ErrNoQueuedJob {
+		t.Fatalf("bare worker must not claim labeled jobs: %v", err)
+	}
+
+	// A partial label set is not enough; the superset claims it.
+	if _, _, err := store.ClaimJobForWorker(context.Background(), "worker-partial", nil, []string{"browser"}, time.Minute); err != ErrNoQueuedJob {
+		t.Fatalf("partial labels must not claim: %v", err)
+	}
+	claimed, _, err = store.ClaimJobForWorker(context.Background(), "worker-full", nil, []string{"browser", "kr", "extra"}, time.Minute)
+	if err != nil {
+		t.Fatalf("superset claim: %v", err)
+	}
+	if claimed.Payload.App != "browser-app" {
+		t.Fatalf("superset worker claimed %q", claimed.Payload.App)
+	}
+}
+
+func TestClaimHonorsLegacyCapabilityJobs(t *testing.T) {
+	store := NewLocalStore(t.TempDir() + "/state.json")
+	legacy := contract.Deployment{
+		Workspace:            "ws-a",
+		App:                  "legacy",
+		Commit:               "commit-a",
+		RequiredCapabilities: []string{"browser"},
+		Actions:              map[string]contract.Action{"run": {Action: "run", Command: []string{"helper"}}},
+	}
+	run := NewRun("windforce", "run-legacy", legacy.App, "run", legacy, json.RawMessage(`{}`))
+	job := NewActionJob(run, nil)
+	// Simulate a pre-labels job: capabilities pinned, labels absent.
+	job.Payload.RequiredLabels = nil
+	if err := store.CreateRunAndEnqueue(context.Background(), run, job); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := store.ClaimJobForWorker(context.Background(), "worker-bare", nil, nil, time.Minute); err != ErrNoQueuedJob {
+		t.Fatalf("bare worker must not claim legacy capability job: %v", err)
+	}
+	claimed, _, err := store.ClaimJobForWorker(context.Background(), "worker-browser", nil, []string{"browser"}, time.Minute)
+	if err != nil {
+		t.Fatalf("browser-label claim of legacy job: %v", err)
+	}
+	if claimed.Payload.App != "legacy" {
+		t.Fatalf("claimed %q", claimed.Payload.App)
+	}
+}
+
+func TestWorkerRegistryLifecycle(t *testing.T) {
+	store := NewLocalStore(t.TempDir() + "/state.json")
+	ctx := context.Background()
+	if err := store.RegisterWorker(ctx, WorkerRecord{ID: "w-1", Group: "default", Labels: []string{"browser"}, Tags: []string{"default"}}); err != nil {
+		t.Fatal(err)
+	}
+	workers, err := store.ListWorkers(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(workers) != 1 || workers[0].ID != "w-1" || workers[0].Slots != 1 ||
+		!workers[0].Live(time.Now()) {
+		t.Fatalf("workers = %#v", workers)
+	}
+	if err := store.HeartbeatWorker(ctx, "w-1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.HeartbeatWorker(ctx, "ghost"); err == nil {
+		t.Fatal("heartbeat for unknown worker must fail")
+	}
+	if err := store.DeregisterWorker(ctx, "w-1"); err != nil {
+		t.Fatal(err)
+	}
+	workers, err = store.ListWorkers(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(workers) != 0 {
+		t.Fatalf("workers after deregister = %#v", workers)
 	}
 }

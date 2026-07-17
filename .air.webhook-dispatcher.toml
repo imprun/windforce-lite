@@ -6,7 +6,7 @@ cmd = '''
 go build -buildvcs=false -o /tmp/windforce-core-air-webhook-dispatcher/windforce-core ./cmd/windforce-core
 cat > /tmp/windforce-core-air-webhook-dispatcher/run <<'EOF'
 #!/bin/sh
-exec /tmp/windforce-core-air-webhook-dispatcher/windforce-core webhook-dispatcher --state-backend postgres --database-url "$WINDFORCE_LITE_DATABASE_URL" --migrate
+exec /tmp/windforce-core-air-webhook-dispatcher/windforce-core webhook-dispatcher --dev --state-backend postgres --database-url "$WINDFORCE_LITE_DATABASE_URL" --migrate
 EOF
 chmod +x /tmp/windforce-core-air-webhook-dispatcher/run
 '''

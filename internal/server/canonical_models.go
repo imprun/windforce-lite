@@ -15,6 +15,7 @@ import (
 	"github.com/imprun/windforce-core/internal/contract"
 	executionpkg "github.com/imprun/windforce-core/internal/execution"
 	gitsourcepkg "github.com/imprun/windforce-core/internal/gitsource"
+	"github.com/imprun/windforce-core/internal/state"
 )
 
 type canonicalGitSourceView struct {
@@ -616,7 +617,7 @@ func cloneInt32Ptr(value *int32) *int32 {
 	return &clone
 }
 
-func newCanonicalWorkerTagsView(tags map[string]struct{}) canonicalWorkerTagsView {
+func newCanonicalWorkerTagsView(tags map[string]struct{}, workers []state.WorkerRecord) canonicalWorkerTagsView {
 	if tags == nil {
 		tags = map[string]struct{}{}
 	}
@@ -629,15 +630,77 @@ func newCanonicalWorkerTagsView(tags map[string]struct{}) canonicalWorkerTagsVie
 		keys = append(keys, tag)
 	}
 	sort.Strings(keys)
+	now := time.Now()
 	items := make([]canonicalTagLiveness, 0, len(keys))
 	for _, tag := range keys {
+		live := int64(0)
+		ids := []any{}
+		labels := map[string]struct{}{}
+		for _, worker := range workers {
+			if !worker.Live(now) || !workerServesTag(worker, tag) {
+				continue
+			}
+			live++
+			ids = append(ids, worker.ID)
+			for _, label := range worker.Labels {
+				labels[label] = struct{}{}
+			}
+		}
+		labelList := make([]string, 0, len(labels))
+		for label := range labels {
+			labelList = append(labelList, label)
+		}
+		sort.Strings(labelList)
 		items = append(items, canonicalTagLiveness{
 			Tag:          tag,
-			Capabilities: []string{},
-			Workers:      []any{},
+			LiveWorkers:  live,
+			Capabilities: labelList,
+			Workers:      ids,
 		})
 	}
 	return canonicalWorkerTagsView{
 		Tags: items,
 	}
+}
+
+// workerServesTag mirrors the claim's tag dimension: a worker with no tags
+// serves every tag.
+func workerServesTag(worker state.WorkerRecord, tag string) bool {
+	if len(worker.Tags) == 0 {
+		return true
+	}
+	for _, t := range worker.Tags {
+		if t == tag {
+			return true
+		}
+	}
+	return false
+}
+
+type canonicalWorkerView struct {
+	ID              string    `json:"id"`
+	Group           string    `json:"group,omitempty"`
+	Tags            []string  `json:"tags"`
+	Labels          []string  `json:"labels"`
+	Slots           int       `json:"slots"`
+	Live            bool      `json:"live"`
+	StartedAt       time.Time `json:"started_at"`
+	LastHeartbeatAt time.Time `json:"last_heartbeat_at"`
+}
+
+func newCanonicalWorkersView(workers []state.WorkerRecord, now time.Time) map[string]any {
+	views := make([]canonicalWorkerView, 0, len(workers))
+	for _, worker := range workers {
+		views = append(views, canonicalWorkerView{
+			ID:              worker.ID,
+			Group:           worker.Group,
+			Tags:            append([]string{}, worker.Tags...),
+			Labels:          append([]string{}, worker.Labels...),
+			Slots:           worker.Slots,
+			Live:            worker.Live(now),
+			StartedAt:       worker.StartedAt,
+			LastHeartbeatAt: worker.LastHeartbeatAt,
+		})
+	}
+	return map[string]any{"workers": views}
 }

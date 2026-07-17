@@ -472,10 +472,10 @@ func (s *LocalStore) GetResource(ctx context.Context, workspaceID string, path s
 }
 
 func (s *LocalStore) ClaimJob(ctx context.Context, workerID string, leaseTTL time.Duration) (Job, Lease, error) {
-	return s.ClaimJobForTags(ctx, workerID, nil, leaseTTL)
+	return s.ClaimJobForWorker(ctx, workerID, nil, nil, leaseTTL)
 }
 
-func (s *LocalStore) ClaimJobForTags(ctx context.Context, workerID string, tags []string, leaseTTL time.Duration) (Job, Lease, error) {
+func (s *LocalStore) ClaimJobForWorker(ctx context.Context, workerID string, tags []string, labels []string, leaseTTL time.Duration) (Job, Lease, error) {
 	if workerID == "" {
 		workerID = NewID("worker")
 	}
@@ -483,6 +483,7 @@ func (s *LocalStore) ClaimJobForTags(ctx context.Context, workerID string, tags 
 		leaseTTL = defaultLeaseTime
 	}
 	allowedTags := normalizeClaimTags(tags)
+	offeredLabels := normalizeClaimTags(labels)
 	var claimed Job
 	var lease Lease
 	err := s.update(ctx, func(snapshot *Snapshot, now time.Time) error {
@@ -492,7 +493,7 @@ func (s *LocalStore) ClaimJobForTags(ctx context.Context, workerID string, tags 
 
 		ids := make([]string, 0, len(snapshot.Jobs))
 		for id, job := range snapshot.Jobs {
-			if job.State == JobQueued && claimTagAllowed(job, allowedTags) {
+			if job.State == JobQueued && claimAllowed(job, allowedTags, offeredLabels) {
 				ids = append(ids, id)
 			}
 		}
@@ -1201,4 +1202,53 @@ func (s *LocalStore) ExpireStuckJobs(ctx context.Context, stuckBefore time.Time)
 		return 0, err
 	}
 	return expired, nil
+}
+
+func (s *LocalStore) RegisterWorker(ctx context.Context, record WorkerRecord) error {
+	return s.update(ctx, func(snapshot *Snapshot, now time.Time) error {
+		if snapshot.Workers == nil {
+			snapshot.Workers = map[string]WorkerRecord{}
+		}
+		if record.Slots <= 0 {
+			record.Slots = 1
+		}
+		if record.StartedAt.IsZero() {
+			record.StartedAt = now
+		}
+		record.LastHeartbeatAt = now
+		snapshot.Workers[record.ID] = record
+		return nil
+	})
+}
+
+func (s *LocalStore) HeartbeatWorker(ctx context.Context, workerID string) error {
+	return s.update(ctx, func(snapshot *Snapshot, now time.Time) error {
+		record, ok := snapshot.Workers[workerID]
+		if !ok {
+			return fmt.Errorf("%w: worker %q", ErrNotFound, workerID)
+		}
+		record.LastHeartbeatAt = now
+		snapshot.Workers[workerID] = record
+		return nil
+	})
+}
+
+func (s *LocalStore) DeregisterWorker(ctx context.Context, workerID string) error {
+	return s.update(ctx, func(snapshot *Snapshot, now time.Time) error {
+		delete(snapshot.Workers, workerID)
+		return nil
+	})
+}
+
+func (s *LocalStore) ListWorkers(ctx context.Context) ([]WorkerRecord, error) {
+	snapshot, err := s.Load(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]WorkerRecord, 0, len(snapshot.Workers))
+	for _, record := range snapshot.Workers {
+		out = append(out, record)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out, nil
 }

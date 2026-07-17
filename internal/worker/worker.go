@@ -14,11 +14,15 @@ import (
 )
 
 type Processor struct {
-	Store             state.Store
-	Runner            actionruntime.Runner
-	WorkerID          string
-	Group             string
-	Tags              []string
+	Store    state.Store
+	Runner   actionruntime.Runner
+	WorkerID string
+	Group    string
+	Tags     []string
+	// Labels is the capability label set this worker offers (ADR 0009).
+	Labels []string
+	// Slots is the worker concurrency cap advertised to the registry.
+	Slots             int
 	EgressProxyAddr   string
 	LeaseTTL          time.Duration
 	HeartbeatInterval time.Duration
@@ -27,15 +31,21 @@ type Processor struct {
 	LogJobPayloads    bool
 }
 
+// workerID resolves a stable identity for both the claim path and the
+// registry lifecycle.
+func (p *Processor) workerID() string {
+	if p.WorkerID == "" {
+		p.WorkerID = state.NewID("worker")
+	}
+	return p.WorkerID
+}
+
 func (p *Processor) ProcessOne(ctx context.Context) (bool, error) {
 	if p.Store == nil {
 		return false, errors.New("state store is required")
 	}
-	workerID := p.WorkerID
-	if workerID == "" {
-		workerID = state.NewID("worker")
-	}
-	job, lease, err := p.Store.ClaimJobForTags(ctx, workerID, p.Tags, p.LeaseTTL)
+	workerID := p.workerID()
+	job, lease, err := p.Store.ClaimJobForWorker(ctx, workerID, p.Tags, p.Labels, p.LeaseTTL)
 	if errors.Is(err, state.ErrNoQueuedJob) {
 		return false, nil
 	}
@@ -234,11 +244,39 @@ func namedErrorResult(err error, message string) json.RawMessage {
 	return actionruntime.ErrorResult(name, message)
 }
 
+// heartbeatInterval keeps the registry entry fresh well inside
+// state.WorkerLiveTTL.
+const heartbeatInterval = 15 * time.Second
+
 func (p *Processor) RunLoop(ctx context.Context, pollInterval time.Duration) error {
 	if pollInterval <= 0 {
 		pollInterval = 500 * time.Millisecond
 	}
+	workerID := p.workerID()
+	if err := p.Store.RegisterWorker(ctx, state.WorkerRecord{
+		ID:     workerID,
+		Group:  p.Group,
+		Tags:   append([]string(nil), p.Tags...),
+		Labels: append([]string(nil), p.Labels...),
+		Slots:  p.Slots,
+	}); err != nil {
+		return fmt.Errorf("register worker: %w", err)
+	}
+	defer func() {
+		if err := p.Store.DeregisterWorker(context.Background(), workerID); err != nil {
+			log.Printf("deregister worker %s: %v", workerID, err)
+		}
+	}()
+	heartbeat := time.NewTicker(heartbeatInterval)
+	defer heartbeat.Stop()
 	for {
+		select {
+		case <-heartbeat.C:
+			if err := p.Store.HeartbeatWorker(ctx, workerID); err != nil {
+				log.Printf("worker heartbeat %s: %v", workerID, err)
+			}
+		default:
+		}
 		processed, err := p.ProcessOne(ctx)
 		if err != nil {
 			return err

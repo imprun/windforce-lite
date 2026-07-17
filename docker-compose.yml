@@ -60,6 +60,7 @@ services:
       PIP_CLIENT_CERT: ${PIP_CLIENT_CERT:-}
     command:
       - control-plane
+      - --dev
       - --addr
       - :8080
       - --state-backend
@@ -98,6 +99,7 @@ services:
       <<: *windforce-core-secret-env
     command:
       - execution-api
+      - --dev
       - --addr
       - :8080
       - --state-backend
@@ -152,6 +154,7 @@ services:
         condition: service_started
     command:
       - worker
+      - --dev
       - --state-backend
       - postgres
       - --database-url
@@ -190,6 +193,7 @@ services:
       - "127.0.0.1:${WINDFORCE_LITE_WEBHOOK_METRICS_PORT:-18093}:9090"
     command:
       - webhook-dispatcher
+      - --dev
       - --state-backend
       - postgres
       - --database-url

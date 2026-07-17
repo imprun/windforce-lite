@@ -6,7 +6,7 @@ cmd = '''
 go build -buildvcs=false -o /tmp/windforce-core-air-execution-api/windforce-core ./cmd/windforce-core
 cat > /tmp/windforce-core-air-execution-api/run <<'EOF'
 #!/bin/sh
-exec /tmp/windforce-core-air-execution-api/windforce-core execution-api --addr :8080 --state-backend postgres --database-url "$WINDFORCE_LITE_DATABASE_URL" --migrate --store /data/store --catalog /data/catalog.json
+exec /tmp/windforce-core-air-execution-api/windforce-core execution-api --dev --addr :8080 --state-backend postgres --database-url "$WINDFORCE_LITE_DATABASE_URL" --migrate --store /data/store --catalog /data/catalog.json
 EOF
 chmod +x /tmp/windforce-core-air-execution-api/run
 '''

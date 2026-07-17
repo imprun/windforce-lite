@@ -6,7 +6,7 @@ cmd = '''
 go build -buildvcs=false -o /tmp/windforce-core-air-control-plane/windforce-core ./cmd/windforce-core
 cat > /tmp/windforce-core-air-control-plane/run <<'EOF'
 #!/bin/sh
-exec /tmp/windforce-core-air-control-plane/windforce-core control-plane --addr :8080 --state-backend postgres --database-url "$WINDFORCE_LITE_DATABASE_URL" --migrate --store /data/store --cache /data/cache --catalog /data/catalog.json --git-sources /data/git-sources.json
+exec /tmp/windforce-core-air-control-plane/windforce-core control-plane --dev --addr :8080 --state-backend postgres --database-url "$WINDFORCE_LITE_DATABASE_URL" --migrate --store /data/store --cache /data/cache --catalog /data/catalog.json --git-sources /data/git-sources.json
 EOF
 chmod +x /tmp/windforce-core-air-control-plane/run
 '''

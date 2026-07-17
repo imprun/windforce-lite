@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -23,9 +24,15 @@ const (
 	CapabilityBrowser = "browser"
 )
 
-var capabilityRouteTags = map[string]string{
-	CapabilityBrowser: "browser",
-}
+// Labels are the open worker-matching vocabulary (ADR 0009). The sys/
+// prefix is reserved for operator-granted placement labels and is
+// rejected in author manifests.
+const (
+	MaxLabels           = 16
+	ReservedLabelPrefix = "sys/"
+)
+
+var labelPattern = regexp.MustCompile(`^[a-z0-9]([a-z0-9._-]{0,62}[a-z0-9])?$`)
 
 // App is the deployable source bundle described by windforce.json.
 type App struct {
@@ -37,9 +44,12 @@ type App struct {
 	TimeoutS   int32  `json:"timeout,omitempty"`
 	Tag        string `json:"tag,omitempty"`
 	// MaxConcurrent caps concurrently running jobs for this app. Nil means unlimited.
-	MaxConcurrent *int32            `json:"maxConcurrent,omitempty"`
-	Capabilities  []string          `json:"capabilities,omitempty"`
-	Actions       map[string]Action `json:"actions"`
+	MaxConcurrent *int32   `json:"maxConcurrent,omitempty"`
+	Capabilities  []string `json:"capabilities,omitempty"`
+	// RunsOn is the required worker label set (ADR 0009); capabilities
+	// merge into it as an alias during manifest parsing.
+	RunsOn  []string          `json:"runsOn,omitempty"`
+	Actions map[string]Action `json:"actions"`
 }
 
 // Action is one executable unit inside an app.
@@ -63,6 +73,7 @@ type Action struct {
 	TimeoutS                   *int32          `json:"timeout,omitempty"`
 	TimeoutMs                  int64           `json:"timeoutMs,omitempty"`
 	Capabilities               *[]string       `json:"capabilities,omitempty"`
+	RunsOn                     *[]string       `json:"runsOn,omitempty"`
 	UpdatedAt                  *time.Time      `json:"updatedAt,omitempty"`
 }
 
@@ -89,6 +100,7 @@ type Deployment struct {
 	TimeoutS             int32             `json:"timeout,omitempty"`
 	MaxConcurrent        *int32            `json:"maxConcurrent,omitempty"`
 	RequiredCapabilities []string          `json:"requiredCapabilities,omitempty"`
+	RequiredLabels       []string          `json:"requiredLabels,omitempty"`
 	Commit               string            `json:"commit"`
 	Message              *string           `json:"message,omitempty"`
 	Source               string            `json:"source,omitempty"`
@@ -106,6 +118,7 @@ type Deployment struct {
 func PinExecutionDeployment(deployment Deployment, actionKey string) Deployment {
 	pinned := deployment
 	pinned.RequiredCapabilities = append([]string(nil), deployment.RequiredCapabilities...)
+	pinned.RequiredLabels = append([]string(nil), deployment.RequiredLabels...)
 	pinned.Actions = make(map[string]Action, 1)
 	if action, ok := deployment.Actions[actionKey]; ok {
 		action.Command = append([]string(nil), action.Command...)
@@ -166,57 +179,52 @@ func EffectiveRouteTag(appTag string, appTagOverride *string, actionTag *string,
 	return DefaultRouteTag
 }
 
-func NormalizeCapabilities(caps []string) ([]string, error) {
-	if len(caps) == 0 {
+// NormalizeLabels validates and canonicalizes a worker label set: lowercase
+// tokens matching the label pattern, at most MaxLabels, deduplicated and
+// sorted. Reserved sys/ labels are rejected unless allowReserved (worker
+// startup configuration, which the operator owns).
+func NormalizeLabels(labels []string, allowReserved bool) ([]string, error) {
+	if len(labels) == 0 {
 		return nil, nil
 	}
 	seen := map[string]bool{}
-	out := make([]string, 0, len(caps))
-	for _, raw := range caps {
-		capability := strings.TrimSpace(raw)
-		if capability == "" {
-			return nil, fmt.Errorf("capability must not be empty")
+	out := make([]string, 0, len(labels))
+	for _, raw := range labels {
+		label := strings.TrimSpace(raw)
+		if label == "" {
+			return nil, fmt.Errorf("label must not be empty")
 		}
-		if _, ok := capabilityRouteTags[capability]; !ok {
-			return nil, fmt.Errorf("unsupported capability %q", capability)
+		body, reserved := strings.CutPrefix(label, ReservedLabelPrefix)
+		if reserved && !allowReserved {
+			return nil, fmt.Errorf("label %q uses the reserved %s prefix", label, ReservedLabelPrefix)
 		}
-		if !seen[capability] {
-			seen[capability] = true
-			out = append(out, capability)
+		if !labelPattern.MatchString(body) {
+			return nil, fmt.Errorf("invalid label %q", label)
 		}
+		if !seen[label] {
+			seen[label] = true
+			out = append(out, label)
+		}
+	}
+	if len(out) > MaxLabels {
+		return nil, fmt.Errorf("at most %d labels are allowed", MaxLabels)
 	}
 	sort.Strings(out)
 	return out, nil
 }
 
-func CapabilityRouteTag(caps []string) (string, bool, error) {
-	normalized, err := NormalizeCapabilities(caps)
+// NormalizeCapabilities is the requiredCapabilities alias of NormalizeLabels:
+// the vocabulary is open, capabilities are labels by their manifest name.
+func NormalizeCapabilities(caps []string) ([]string, error) {
+	normalized, err := NormalizeLabels(caps, false)
 	if err != nil {
-		return "", false, err
+		return nil, fmt.Errorf("capability: %w", err)
 	}
-	if len(normalized) == 0 {
-		return "", false, nil
-	}
-	if len(normalized) > 1 {
-		return "", false, fmt.Errorf("capability combination %v is not supported", normalized)
-	}
-	return capabilityRouteTags[normalized[0]], true, nil
+	return normalized, nil
 }
 
-func CapabilityTagConflict(appTag string, appTagOverride *string, actionTag *string, actionTagOverride *string, effectiveCaps []string) (bool, error) {
-	_, hasCapabilityRoute, err := CapabilityRouteTag(effectiveCaps)
-	if err != nil {
-		return false, err
-	}
-	if !hasCapabilityRoute {
-		return false, nil
-	}
-	return appTagOverride != nil ||
-		actionTag != nil ||
-		actionTagOverride != nil ||
-		(appTag != "" && appTag != DefaultRouteTag), nil
-}
-
+// EffectiveCapabilities resolves the action-level capability override for
+// display surfaces: nil inherits the app set, non-nil replaces it.
 func EffectiveCapabilities(appCaps []string, actionCaps *[]string) []string {
 	if actionCaps != nil {
 		return *actionCaps
@@ -224,32 +232,48 @@ func EffectiveCapabilities(appCaps []string, actionCaps *[]string) []string {
 	return appCaps
 }
 
-func EffectiveRouteTagWithCapabilities(appTag string, appTagOverride *string, actionTag *string, actionTagOverride *string, effectiveCaps []string) (string, error) {
-	capabilityTag, ok, err := CapabilityRouteTag(effectiveCaps)
-	if err != nil {
-		return "", err
+// EffectiveRequiredLabels resolves the label set pinned onto a job: the
+// deployment (app-level) labels unioned with the action's contribution.
+// Legacy deployments that only carry requiredCapabilities are honored.
+func EffectiveRequiredLabels(deployment Deployment, action Action) []string {
+	base := deployment.RequiredLabels
+	if base == nil {
+		base = deployment.RequiredCapabilities
 	}
-	if ok {
-		return capabilityTag, nil
+	merged := append([]string(nil), base...)
+	if action.RunsOn != nil {
+		merged = append(merged, *action.RunsOn...)
+	} else if action.Capabilities != nil {
+		merged = append(merged, *action.Capabilities...)
 	}
-	return EffectiveRouteTag(appTag, appTagOverride, actionTag, actionTagOverride), nil
+	if len(merged) == 0 {
+		return nil
+	}
+	seen := map[string]bool{}
+	out := make([]string, 0, len(merged))
+	for _, label := range merged {
+		label = strings.TrimSpace(label)
+		if label == "" || seen[label] {
+			continue
+		}
+		seen[label] = true
+		out = append(out, label)
+	}
+	sort.Strings(out)
+	return out
 }
 
+// EffectiveRouteTagForApp resolves the app's explicit release-routing tag.
+// Labels do not influence route tags (ADR 0009: tags and labels are
+// orthogonal claim dimensions).
 func EffectiveRouteTagForApp(deployment Deployment) string {
-	tag, err := EffectiveRouteTagWithCapabilities(deployment.Tag, deployment.TagOverride, nil, nil, deployment.RequiredCapabilities)
-	if err != nil {
-		return EffectiveRouteTag(deployment.Tag, deployment.TagOverride, nil, nil)
-	}
-	return tag
+	return EffectiveRouteTag(deployment.Tag, deployment.TagOverride, nil, nil)
 }
 
+// EffectiveRouteTagForAction resolves the action's explicit release-routing
+// tag; labels are matched separately at claim time.
 func EffectiveRouteTagForAction(deployment Deployment, action Action) string {
-	caps := EffectiveCapabilities(deployment.RequiredCapabilities, action.Capabilities)
-	tag, err := EffectiveRouteTagWithCapabilities(deployment.Tag, deployment.TagOverride, action.Tag, action.TagOverride, caps)
-	if err != nil {
-		return EffectiveRouteTag(deployment.Tag, deployment.TagOverride, action.Tag, action.TagOverride)
-	}
-	return tag
+	return EffectiveRouteTag(deployment.Tag, deployment.TagOverride, action.Tag, action.TagOverride)
 }
 
 func NormalizeWorkspace(value string) string {

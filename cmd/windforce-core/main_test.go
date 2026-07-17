@@ -63,3 +63,21 @@ func TestImportReleaseCatalogMigratesFileStateIdempotently(t *testing.T) {
 		t.Fatalf("imported marker = %#v", marker)
 	}
 }
+
+func TestRequireProductionSecrets(t *testing.T) {
+	if err := requireProductionSecrets(true, true, "", ""); err != nil {
+		t.Fatalf("dev mode must allow empty secrets: %v", err)
+	}
+	if err := requireProductionSecrets(false, true, "", "secret"); err == nil {
+		t.Fatal("missing admin token must fail closed")
+	}
+	if err := requireProductionSecrets(false, true, "token", ""); err == nil {
+		t.Fatal("missing secret key must fail closed")
+	}
+	if err := requireProductionSecrets(false, false, "", "secret"); err != nil {
+		t.Fatalf("worker-style check must not need an admin token: %v", err)
+	}
+	if err := requireProductionSecrets(false, true, "token", "secret"); err != nil {
+		t.Fatalf("full secrets must pass: %v", err)
+	}
+}

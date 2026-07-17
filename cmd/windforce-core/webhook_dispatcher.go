@@ -71,6 +71,7 @@ func runWebhookDispatcher(args []string) int {
 	migrate := flags.Bool("migrate", false, "run state backend schema migration before starting")
 	secretKeyEnv := flags.String("secret-key-env", "SECRET_KEY", "environment variable that contains the instance secret used for webhook encryption")
 	secretKeyPreviousEnv := flags.String("secret-key-previous-env", "SECRET_KEY_PREVIOUS", "environment variable that contains the previous instance secret during rotation")
+	devMode := flags.Bool("dev", false, "development mode: allow starting with the built-in insecure secret key")
 	dispatcherFlags := bindWebhookDispatcherFlags(flags, "")
 	metricsAddr := flags.String("metrics-addr", firstNonEmpty(strings.TrimSpace(os.Getenv("WINDFORCE_LITE_WEBHOOK_METRICS_ADDR")), defaultWebhookMetricsAddr), "webhook dispatcher metrics listen address; empty disables metrics")
 	once := flags.Bool("once", false, "process at most one pending webhook delivery and exit")
@@ -86,7 +87,12 @@ func runWebhookDispatcher(args []string) int {
 		return 1
 	}
 	defer closeState()
-	configureInputCrypto(stateStore, effectiveSecretKey(tokenFromEnv(*secretKeyEnv)), tokenFromEnv(*secretKeyPreviousEnv))
+	rawSecretKey := tokenFromEnv(*secretKeyEnv)
+	if err := requireProductionSecrets(*devMode, false, "", rawSecretKey); err != nil {
+		fmt.Fprintf(os.Stderr, "webhook-dispatcher: %v\n", err)
+		return 1
+	}
+	configureInputCrypto(stateStore, effectiveSecretKey(rawSecretKey), tokenFromEnv(*secretKeyPreviousEnv))
 	metrics := webhook.NewMetrics()
 	dispatcher, err := newWebhookDispatcher(stateStore, dispatcherFlags, metrics)
 	if err != nil {

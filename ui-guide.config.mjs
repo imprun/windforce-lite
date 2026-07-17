@@ -70,6 +70,7 @@ export default {
       binary,
       [
         "standalone",
+        "--dev",
         "--addr", `127.0.0.1:${port}`,
         "--store", path.join(baseDir, "store"),
         "--catalog", path.join(baseDir, "catalog.json"),

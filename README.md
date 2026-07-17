@@ -172,7 +172,7 @@ not as a runner infrastructure error.
 Run the combined local control-plane and worker:
 
 ```powershell
-go run ./cmd/windforce-core standalone `
+go run ./cmd/windforce-core standalone --dev `
   --addr 127.0.0.1:8080 `
   --store .tmp/store `
   --state .tmp/state.json
@@ -196,7 +196,7 @@ Invoke-RestMethod `
 The runtime process model is available through local file-backed state:
 
 ```powershell
-go run ./cmd/windforce-core standalone `
+go run ./cmd/windforce-core standalone --dev `
   --addr :8080 `
   --store .tmp/store `
   --state .tmp/state.json
@@ -327,7 +327,7 @@ control plane and used by `make windforce-sync`. `WF_GIT_CREDS_REF` defaults to
 For local development without the Web UI, `tools/windforce_control.py` calls
 the same control-plane API. The examples below target the Docker Compose and
 Makefile default API URL, `http://127.0.0.1:18091`. Use a custom URL only when
-running `go run ./cmd/windforce-core standalone --addr <addr>` directly.
+running `go run ./cmd/windforce-core standalone --dev --addr <addr>` directly.
 
 ```powershell
 python tools/windforce_control.py --api-url http://127.0.0.1:18091 register `

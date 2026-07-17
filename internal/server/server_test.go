@@ -3073,7 +3073,7 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 	}
 	if len(summary.Apps) != 1 || summary.Apps[0].AppKey != "echo" ||
 		summary.Apps[0].GitSourceID != registered.ID || summary.Apps[0].ActionsCount != 1 ||
-		summary.Apps[0].EffectiveRouteTag != "browser" || !reflect.DeepEqual(summary.Apps[0].Capabilities, []string{"browser"}) {
+		summary.Apps[0].EffectiveRouteTag != "default" || !reflect.DeepEqual(summary.Apps[0].Capabilities, []string{"browser"}) {
 		t.Fatalf("summary = %#v", summary)
 	}
 
@@ -3148,10 +3148,10 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 	if appBody.App.AppKey != "echo" || appBody.App.GitSourceID != registered.ID ||
 		appBody.App.Entrypoint != "main.ts" || appBody.App.ScriptLang != "typescript" ||
 		appBody.App.TimeoutS != 120 || appBody.App.MaxConcurrent == nil || *appBody.App.MaxConcurrent != 2 ||
-		!reflect.DeepEqual(appBody.App.RequiredCapabilities, []string{"browser"}) || appBody.App.EffectiveRouteTag != "browser" ||
+		!reflect.DeepEqual(appBody.App.RequiredCapabilities, []string{"browser"}) || appBody.App.EffectiveRouteTag != "default" ||
 		appBody.App.UpdatedAt.IsZero() ||
 		len(appBody.Actions) != 1 || appBody.Actions[0].ActionKey != "echo" || appBody.Actions[0].DisplayName != "Echo message" ||
-		!reflect.DeepEqual(appBody.Actions[0].EffectiveCapabilities, []string{"browser"}) || appBody.Actions[0].EffectiveRouteTag != "browser" {
+		!reflect.DeepEqual(appBody.Actions[0].EffectiveCapabilities, []string{"browser"}) || appBody.Actions[0].EffectiveRouteTag != "default" {
 		t.Fatalf("app body = %#v", appBody)
 	}
 	appActionInputSchema := decodeCatalogSchema(t, appBody.Actions[0].InputSchema)
@@ -3179,8 +3179,10 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 	for _, item := range workerTags.Tags {
 		seenTags[item.Tag] = true
 	}
-	if len(workerTags.Tags) != 1 || !seenTags["browser"] || seenTags["default"] {
-		t.Fatalf("worker tags = %#v, want only browser", workerTags.Tags)
+	// Labels no longer synthesize route tags: the capability app routes on
+	// its default tag and its labels are matched separately at claim time.
+	if len(workerTags.Tags) != 1 || !seenTags["default"] || seenTags["browser"] {
+		t.Fatalf("worker tags = %#v, want only default", workerTags.Tags)
 	}
 
 	runReq, err := http.NewRequest(http.MethodPost, server.URL+"/api/w/ws-a/jobs/run/echo/echo", bytes.NewBufferString(`{"message":"hello"}`))
@@ -3229,7 +3231,7 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 		!bytes.Contains(statusBody.Input, []byte(`"hello"`)) ||
 		statusBody.CommitSha != syncBody.Commit ||
 		statusBody.Entrypoint != "main.ts" ||
-		statusBody.Tag != "browser" ||
+		statusBody.Tag != "default" ||
 		statusBody.CreatedBy != "runner@example.test" ||
 		statusBody.PermissionedAs != "runner@example.test" {
 		t.Fatalf("status body = %#v input_schema:%s output_schema:%s input:%s", statusBody, statusBody.InputSchema, statusBody.OutputSchema, statusBody.Input)
@@ -3463,7 +3465,7 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 	}
 	if pinned.CommitSha != syncBody.Commit ||
 		pinned.Entrypoint != "main.ts" ||
-		pinned.Tag != "browser" ||
+		pinned.Tag != "default" ||
 		!bytes.Contains(pinned.InputSchema, []byte(`"message"`)) ||
 		bytes.Contains(pinned.InputSchema, []byte(`"changed"`)) {
 		t.Fatalf("queued job pins changed after resync: %#v input_schema=%s", pinned, pinned.InputSchema)
@@ -4156,7 +4158,7 @@ func TestCanonicalAppAndActionTagOverrideAPI(t *testing.T) {
 	}
 }
 
-func TestCanonicalJobRunRejectsCapabilityTagOverrideConflict(t *testing.T) {
+func TestCanonicalJobRunAllowsTagOverrideWithLabels(t *testing.T) {
 	tempDir := t.TempDir()
 	fileCatalog := catalog.NewFileCatalog(filepath.Join(tempDir, "catalog.json"))
 	if err := fileCatalog.UpsertDeployment(context.Background(), contract.Deployment{
@@ -4203,20 +4205,15 @@ func TestCanonicalJobRunRejectsCapabilityTagOverrideConflict(t *testing.T) {
 		t.Fatalf("patch status = %d, want %d", patchResp.StatusCode, http.StatusOK)
 	}
 
-	conflictResp, err := http.Post(server.URL+"/api/w/ws-a/jobs/run/echo/echo", "application/json", bytes.NewBufferString(`{}`))
+	secondResp, err := http.Post(server.URL+"/api/w/ws-a/jobs/run/echo/echo", "application/json", bytes.NewBufferString(`{}`))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer conflictResp.Body.Close()
-	var body struct {
-		Error string `json:"error"`
-	}
-	if err := json.NewDecoder(conflictResp.Body).Decode(&body); err != nil {
-		t.Fatal(err)
-	}
-	if conflictResp.StatusCode != http.StatusConflict ||
-		body.Error != "required worker capability conflicts with explicit tag routing" {
-		t.Fatalf("conflict response = %d %#v, want 409 capability conflict", conflictResp.StatusCode, body)
+	_ = secondResp.Body.Close()
+	// Tags and labels are orthogonal claim dimensions (ADR 0009): an explicit
+	// tag override no longer conflicts with capability labels.
+	if secondResp.StatusCode != http.StatusCreated {
+		t.Fatalf("run with tag override and labels = %d, want %d", secondResp.StatusCode, http.StatusCreated)
 	}
 }
 
@@ -4641,4 +4638,42 @@ func createTestGitSourceRepo(t *testing.T, parent string, name string, subpath s
 	runTestGit(t, repoDir, "add", ".")
 	runTestGit(t, repoDir, "commit", "-m", "initial")
 	return repoDir
+}
+
+func TestCanonicalWorkersEndpointServesRegistry(t *testing.T) {
+	tempDir := t.TempDir()
+	store := state.NewLocalStore(filepath.Join(tempDir, "state.json"))
+	if err := store.RegisterWorker(context.Background(), state.WorkerRecord{
+		ID: "w-live", Group: "default", Labels: []string{"browser", "kr"}, Slots: 4,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(New(Config{
+		Store:     store,
+		Catalog:   catalog.NewFileCatalog(filepath.Join(tempDir, "catalog.json")),
+		EnableAPI: true,
+	}))
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/api/w/ws-a/workers")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var body struct {
+		Workers []struct {
+			ID     string   `json:"id"`
+			Labels []string `json:"labels"`
+			Slots  int      `json:"slots"`
+			Live   bool     `json:"live"`
+		} `json:"workers"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Workers) != 1 || body.Workers[0].ID != "w-live" ||
+		!reflect.DeepEqual(body.Workers[0].Labels, []string{"browser", "kr"}) ||
+		body.Workers[0].Slots != 4 || !body.Workers[0].Live {
+		t.Fatalf("workers body = %#v", body)
+	}
 }

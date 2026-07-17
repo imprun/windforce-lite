@@ -371,6 +371,16 @@ CREATE INDEX IF NOT EXISTS webhook_delivery_retention_idx
     ON webhook_delivery (state, completed_at, updated_at, id)
     WHERE state IN ('succeeded', 'failed', 'canceled');
 
+CREATE TABLE IF NOT EXISTS worker_registry (
+    id                text PRIMARY KEY,
+    worker_group      text NOT NULL DEFAULT '',
+    tags              jsonb NOT NULL DEFAULT '[]'::jsonb,
+    labels            jsonb NOT NULL DEFAULT '[]'::jsonb,
+    slots             integer NOT NULL DEFAULT 1,
+    started_at        timestamptz NOT NULL,
+    last_heartbeat_at timestamptz NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS webhook_audit_workspace_idx
     ON webhook_audit (workspace_id, created_at DESC, id DESC);
 `); err != nil {

@@ -314,12 +314,34 @@ func normalizeClaimTags(tags []string) map[string]struct{} {
 	return normalized
 }
 
-func claimTagAllowed(job Job, tags map[string]struct{}) bool {
-	if len(tags) == 0 {
-		return true
+// jobRequiredLabels resolves a job's pinned label requirements. Legacy jobs
+// that predate labels carry only requiredCapabilities, which are labels by
+// their old manifest name (ADR 0009).
+func jobRequiredLabels(job Job) []string {
+	if job.Payload.RequiredLabels != nil {
+		return job.Payload.RequiredLabels
 	}
-	_, ok := tags[jobTag(job)]
-	return ok
+	return job.Payload.RequiredCapabilities
+}
+
+// claimAllowed enforces both claim dimensions (ADR 0009):
+//   - explicit route tags keep their legacy semantics — a worker with no
+//     tags serves every tag, otherwise the job's tag must be in the set;
+//   - labels use subset containment — the worker's label set must cover the
+//     job's required labels, so a worker with no labels claims only
+//     unconstrained jobs.
+func claimAllowed(job Job, tags map[string]struct{}, labels map[string]struct{}) bool {
+	if len(tags) > 0 {
+		if _, ok := tags[jobTag(job)]; !ok {
+			return false
+		}
+	}
+	for _, required := range jobRequiredLabels(job) {
+		if _, ok := labels[required]; !ok {
+			return false
+		}
+	}
+	return true
 }
 
 func canceledReason(run Run) *string {

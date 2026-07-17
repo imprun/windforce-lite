@@ -17,6 +17,7 @@ import (
 
 	"github.com/imprun/windforce-core/internal/contract"
 	executionpkg "github.com/imprun/windforce-core/internal/execution"
+	"github.com/imprun/windforce-core/internal/executionbundle"
 	gitsourcepkg "github.com/imprun/windforce-core/internal/gitsource"
 	"github.com/imprun/windforce-core/internal/state"
 	"github.com/imprun/windforce-core/internal/syncer"
@@ -34,6 +35,10 @@ type GitSourceRegistry interface {
 
 const DefaultSecretKey = "dev-insecure-change-me-0000000000000000000000000000"
 
+type ArtifactStore interface {
+	FetchTo(ctx context.Context, destinationDir string, digest string) (executionbundle.Descriptor, error)
+}
+
 type Config struct {
 	Store              state.Store
 	Catalog            Catalog
@@ -45,12 +50,14 @@ type Config struct {
 	EnableExecutionAPI bool
 	EnableWebUI        bool
 	AdminToken         string
+	WorkerToken        string
 	JobTokenSecret     string
 	SecretKey          string
 	SecretKeyPrevious  string
 	SampleRoot         string
 	Wait               time.Duration
 	MetricsHandler     http.Handler
+	ArtifactStore      ArtifactStore
 }
 
 type Handler struct {
@@ -63,6 +70,8 @@ type Handler struct {
 	enableExecutionAPI bool
 	enableWebUI        bool
 	adminToken         string
+	workerToken        string
+	artifactStore      ArtifactStore
 	jobTokenSecret     string
 	secretKey          string
 	secretKeyPrevious  string
@@ -132,6 +141,8 @@ func New(config Config) http.Handler {
 		enableExecutionAPI: enableExecutionAPI,
 		enableWebUI:        enableWebUI,
 		adminToken:         config.AdminToken,
+		workerToken:        config.WorkerToken,
+		artifactStore:      config.ArtifactStore,
 		jobTokenSecret:     config.JobTokenSecret,
 		secretKey:          secretKey,
 		secretKeyPrevious:  config.SecretKeyPrevious,
@@ -145,6 +156,10 @@ func New(config Config) http.Handler {
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path == "/healthz" {
 		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+		return
+	}
+	if strings.HasPrefix(r.URL.Path, "/worker/v1/") {
+		h.handleWorkerPlane(w, r)
 		return
 	}
 	if r.URL.Path == "/readyz" {
@@ -374,6 +389,10 @@ func (h *Handler) handleAPI(w http.ResponseWriter, r *http.Request) bool {
 	}
 	if len(parts) == 6 && parts[0] == "api" && parts[1] == "w" && parts[3] == "apps" && parts[5] == "requeue" && r.Method == http.MethodPost {
 		h.handleCanonicalRequeueApp(w, r, parts[2], parts[4])
+		return true
+	}
+	if len(parts) == 4 && parts[0] == "api" && parts[1] == "w" && parts[3] == "workers" && r.Method == http.MethodGet {
+		h.handleCanonicalListWorkers(w, r)
 		return true
 	}
 	if len(parts) == 4 && parts[0] == "api" && parts[1] == "w" && parts[3] == "worker-tags" && r.Method == http.MethodGet {
