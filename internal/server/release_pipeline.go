@@ -25,6 +25,10 @@ const sourceOperationLeaseTTL = 2 * time.Minute
 
 var errGitSourceOperationBusy = errors.New("git source operation already in progress")
 
+type CandidatePreparer interface {
+	Prepare(ctx context.Context, deployment contract.Deployment) (string, error)
+}
+
 func (h *Handler) stageGitSourceCandidate(w http.ResponseWriter, r *http.Request, workspaceID string, source gitsourcepkg.Source) (catalog.ReleaseCandidate, bool) {
 	operationCtx, release, err := h.acquireGitSourceOperation(r.Context(), workspaceID, source)
 	if err != nil {
@@ -49,6 +53,14 @@ func (h *Handler) stageGitSourceCandidate(w http.ResponseWriter, r *http.Request
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
+		return catalog.ReleaseCandidate{}, false
+	}
+	if h.candidatePreparer == nil {
+		writeError(w, http.StatusServiceUnavailable, "release candidate runtime preparer is not configured")
+		return catalog.ReleaseCandidate{}, false
+	}
+	if _, err := h.candidatePreparer.Prepare(operationCtx, deployment); err != nil {
+		writeError(w, http.StatusUnprocessableEntity, "release candidate preparation failed: "+err.Error())
 		return catalog.ReleaseCandidate{}, false
 	}
 	candidateStore, ok := h.catalog.(catalog.ReleaseCandidateStore)

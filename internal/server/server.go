@@ -38,6 +38,7 @@ type Config struct {
 	Store              state.Store
 	Catalog            Catalog
 	Syncer             *syncer.Syncer
+	CandidatePreparer  CandidatePreparer
 	GitSources         GitSourceRegistry
 	EnableAPI          bool
 	EnableControlAPI   bool
@@ -56,6 +57,7 @@ type Handler struct {
 	store              state.Store
 	catalog            Catalog
 	syncer             *syncer.Syncer
+	candidatePreparer  CandidatePreparer
 	gitSources         GitSourceRegistry
 	enableControlAPI   bool
 	enableExecutionAPI bool
@@ -124,6 +126,7 @@ func New(config Config) http.Handler {
 		store:              config.Store,
 		catalog:            config.Catalog,
 		syncer:             config.Syncer,
+		candidatePreparer:  config.CandidatePreparer,
 		gitSources:         config.GitSources,
 		enableControlAPI:   enableControlAPI,
 		enableExecutionAPI: enableExecutionAPI,

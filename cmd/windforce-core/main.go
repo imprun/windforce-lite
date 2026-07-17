@@ -130,6 +130,17 @@ func runServer(args []string, mode string) int {
 	if runtimeBaseURL == "" && mode == "standalone" {
 		runtimeBaseURL = localBaseURL(*addr)
 	}
+	bundleStore := bundle.NewLocalStore(*storeDir)
+	runtimeRunner := runtime.Runner{
+		Store:          bundleStore,
+		CacheRoot:      *cacheRoot,
+		BaseURL:        runtimeBaseURL,
+		JobTokenSecret: jobTokenSecret,
+		BunPath:        *bunPath,
+		PythonPath:     *pythonPath,
+		GoPath:         *goPath,
+		PrepareTimeout: *prepareTimeout,
+	}
 	combinedMode := mode == "standalone"
 	var webhookMetrics *webhook.Metrics
 	var webhookMetricsHandler http.Handler
@@ -145,7 +156,8 @@ func runServer(args []string, mode string) int {
 	handler := server.New(server.Config{
 		Store:              stateStore,
 		Catalog:            releaseCatalog,
-		Syncer:             &syncer.Syncer{Store: bundle.NewLocalStore(*storeDir)},
+		Syncer:             &syncer.Syncer{Store: bundleStore},
+		CandidatePreparer:  &runtimeRunner,
 		GitSources:         gitSources,
 		EnableControlAPI:   mode == "control-plane" || combinedMode,
 		EnableExecutionAPI: mode == "execution-api" || combinedMode,
@@ -179,17 +191,8 @@ func runServer(args []string, mode string) int {
 			return 1
 		}
 		processor := worker.Processor{
-			Store: stateStore,
-			Runner: runtime.Runner{
-				Store:          bundle.NewLocalStore(*storeDir),
-				CacheRoot:      *cacheRoot,
-				BaseURL:        runtimeBaseURL,
-				JobTokenSecret: jobTokenSecret,
-				BunPath:        *bunPath,
-				PythonPath:     *pythonPath,
-				GoPath:         *goPath,
-				PrepareTimeout: *prepareTimeout,
-			},
+			Store:            stateStore,
+			Runner:           runtimeRunner,
 			WorkerID:         *workerID,
 			Group:            *workerGroup,
 			Tags:             parseTags(*workerTags),

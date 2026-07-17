@@ -198,18 +198,31 @@ main = create_app(actions={"echo": echo})
 
 	cacheRoot := filepath.Join(tempDir, "cache")
 	runner := Runner{Store: store, CacheRoot: cacheRoot}
-	result, err := runner.Run(context.Background(), RunRequest{
-		Deployment: contract.Deployment{
-			Workspace:   "workspace-a",
-			GitSourceID: "source-a",
-			App:         "echo",
-			Commit:      "commit-py",
-			Entrypoint:  "main.py",
-			ScriptLang:  "python",
-			Actions: map[string]contract.Action{
-				"echo": {Action: "echo"},
-			},
+	deployment := contract.Deployment{
+		Workspace:   "workspace-a",
+		GitSourceID: "source-a",
+		App:         "echo",
+		Commit:      "commit-py",
+		Entrypoint:  "main.py",
+		ScriptLang:  "python",
+		Actions: map[string]contract.Action{
+			"echo": {Action: "echo"},
 		},
+	}
+	preparedDir, err := runner.Prepare(context.Background(), deployment)
+	if err != nil {
+		t.Fatalf("Prepare returned error: %v", err)
+	}
+	readyPath := filepath.Join(preparedDir, sourceReadyFile)
+	if _, err := os.Stat(readyPath); err != nil {
+		t.Fatalf("prepared source marker missing: %v", err)
+	}
+	sentinelPath := filepath.Join(preparedDir, ".preflight-sentinel")
+	if err := os.WriteFile(sentinelPath, []byte("reuse"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := runner.Run(context.Background(), RunRequest{
+		Deployment:  deployment,
 		JobID:       "job-py",
 		WorkspaceID: "workspace-a",
 		Action:      "echo",
@@ -218,6 +231,9 @@ main = create_app(actions={"echo": echo})
 	})
 	if err != nil {
 		t.Fatalf("Run returned error: %v", err)
+	}
+	if _, err := os.Stat(sentinelPath); err != nil {
+		t.Fatalf("Run rebuilt a matching prepared source: %v", err)
 	}
 	if result.ExitCode != 0 {
 		t.Fatalf("exit code = %d, stdout=%s, error=%s", result.ExitCode, result.Stdout, result.Error)

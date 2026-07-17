@@ -40,14 +40,18 @@ as the active release used by new jobs.
 4. Load `windforce.json`.
 5. Materialize the source tree into the bundle store under
    `{workspace}/{gitSourceId}/{commit}`.
-6. Save the validated deployment metadata and materialized bundle as an
-   immutable release candidate. This does not change the active release.
-7. Publish the selected candidate. The active release, release history, source
+6. Prepare the exact source with the runtime contract used by workers. Python
+   dependencies, Bun lockfiles, and Go builds must resolve before Sync succeeds.
+   A matching worker reuses the fingerprinted prepared-source cache.
+7. Save the validated deployment metadata and prepared bundle as an immutable
+   release candidate. This does not change the active release.
+8. Publish the selected candidate. The active release, release history, source
    release marker, audit record, Control Plane event, and matching Webhook
    deliveries are written in one state-store transaction.
 
-The ordering is intentional: a catalog entry must not point at a bundle that a
-worker cannot fetch. Webhook HTTP requests are not made in this transaction.
+The ordering is intentional: a release candidate must not point at a bundle
+that the configured runtime cannot prepare. Webhook HTTP requests are not made
+in this transaction.
 
 The state backend is the source of truth for the active release catalog. Local
 mode stores it in the state JSON file; PostgreSQL mode stores it in control-plane

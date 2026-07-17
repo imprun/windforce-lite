@@ -182,11 +182,11 @@ func buildControlPlaneOpenAPI(baseURL string, workspaceID string) map[string]any
 			"post": map[string]any{
 				"operationId": "syncGitSource",
 				"summary":     "Create an immutable release candidate",
-				"description": "Resolves the source commit, validates its manifest and schemas, materializes the source bundle, and stores a release candidate. The active release is not changed.",
+				"description": "Resolves the source commit, validates its manifest and schemas, materializes the source bundle, prepares runtime dependencies, and stores a release candidate. The active release is not changed.",
 				"parameters":  []any{oapiWorkspaceParam(workspaceID), oapiPathParam("gitSourceId", "Numeric git source id returned by register/list.")},
 				"responses": withErrors(map[string]any{
 					"200": oapiResponse("Materialized release candidate and discovered actions.", oapiSchemaRef("GitSourceSyncResult")),
-				}, "400", "401", "403", "404", "409"),
+				}, "400", "401", "403", "404", "409", "422"),
 			},
 		},
 		"/api/w/{workspace}/git_sources/{gitSourceId}/deploy": map[string]any{

@@ -2265,12 +2265,13 @@ func TestCanonicalSampleGitSourceRegistersAndSyncs(t *testing.T) {
 	store := bundle.NewLocalStore(filepath.Join(tempDir, "store"))
 	fileCatalog := catalog.NewFileCatalog(filepath.Join(tempDir, "catalog.json"))
 	handler := New(Config{
-		Store:      state.NewLocalStore(filepath.Join(tempDir, "state.json")),
-		Catalog:    fileCatalog,
-		Syncer:     &syncer.Syncer{Store: store, CloneRoot: tempDir},
-		GitSources: gitsource.NewFileRegistry(filepath.Join(tempDir, "git-sources.json")),
-		EnableAPI:  true,
-		SampleRoot: filepath.Join(tempDir, "samples"),
+		Store:             state.NewLocalStore(filepath.Join(tempDir, "state.json")),
+		Catalog:           fileCatalog,
+		Syncer:            &syncer.Syncer{Store: store, CloneRoot: tempDir},
+		CandidatePreparer: allowCandidatePreparation(),
+		GitSources:        gitsource.NewFileRegistry(filepath.Join(tempDir, "git-sources.json")),
+		EnableAPI:         true,
+		SampleRoot:        filepath.Join(tempDir, "samples"),
 	})
 	server := httptest.NewServer(handler)
 	defer server.Close()
@@ -2697,11 +2698,12 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 	fileCatalog := catalog.NewFileCatalog(filepath.Join(tempDir, "catalog.json"))
 	stateStore := state.NewLocalStore(filepath.Join(tempDir, "state.json"))
 	handler := New(Config{
-		Store:      stateStore,
-		Catalog:    fileCatalog,
-		Syncer:     &syncer.Syncer{Store: bundle.NewLocalStore(filepath.Join(tempDir, "store")), CloneRoot: tempDir},
-		GitSources: gitsource.NewFileRegistry(filepath.Join(tempDir, "git-sources.json")),
-		EnableAPI:  true,
+		Store:             stateStore,
+		Catalog:           fileCatalog,
+		Syncer:            &syncer.Syncer{Store: bundle.NewLocalStore(filepath.Join(tempDir, "store")), CloneRoot: tempDir},
+		CandidatePreparer: allowCandidatePreparation(),
+		GitSources:        gitsource.NewFileRegistry(filepath.Join(tempDir, "git-sources.json")),
+		EnableAPI:         true,
 	})
 	server := httptest.NewServer(handler)
 	defer server.Close()
@@ -4417,11 +4419,12 @@ func TestControlPlaneRegistersGitSourcePathAndSyncsIt(t *testing.T) {
 	store := bundle.NewLocalStore(filepath.Join(tempDir, "store"))
 	fileCatalog := catalog.NewFileCatalog(filepath.Join(tempDir, "catalog.json"))
 	handler := New(Config{
-		Store:      state.NewLocalStore(filepath.Join(tempDir, "state.json")),
-		Catalog:    fileCatalog,
-		Syncer:     &syncer.Syncer{Store: store, CloneRoot: tempDir},
-		GitSources: gitsource.NewFileRegistry(filepath.Join(tempDir, "git-sources.json")),
-		EnableAPI:  true,
+		Store:             state.NewLocalStore(filepath.Join(tempDir, "state.json")),
+		Catalog:           fileCatalog,
+		Syncer:            &syncer.Syncer{Store: store, CloneRoot: tempDir},
+		CandidatePreparer: allowCandidatePreparation(),
+		GitSources:        gitsource.NewFileRegistry(filepath.Join(tempDir, "git-sources.json")),
+		EnableAPI:         true,
 	})
 	server := httptest.NewServer(handler)
 	defer server.Close()

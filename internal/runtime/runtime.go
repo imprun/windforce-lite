@@ -71,6 +71,28 @@ type actionAdapterRequest struct {
 	Options        map[string]json.RawMessage `json:"options,omitempty"`
 }
 
+// Prepare materializes and prepares the exact source revision using the same
+// runtime contract used immediately before execution.
+func (r *Runner) Prepare(ctx context.Context, deployment contract.Deployment) (string, error) {
+	if r.Store == nil {
+		return "", errors.New("bundle store is required")
+	}
+	if deployment.App == "" {
+		return "", errors.New("deployment app is required")
+	}
+	if deployment.Commit == "" {
+		return "", errors.New("deployment commit is required")
+	}
+	return r.ensureSource(
+		ctx,
+		deployment.SourceWorkspace(),
+		deployment.SourceGitSourceID(),
+		deployment.Commit,
+		firstNonEmpty(deployment.ScriptLang, "typescript"),
+		deployment.Entrypoint,
+	)
+}
+
 func (r *Runner) Run(ctx context.Context, req RunRequest) (contract.JobResult, error) {
 	if r.Store == nil {
 		return contract.JobResult{}, errors.New("bundle store is required")
@@ -81,9 +103,6 @@ func (r *Runner) Run(ctx context.Context, req RunRequest) (contract.JobResult, e
 	if req.Deployment.Commit == "" {
 		return contract.JobResult{}, errors.New("deployment commit is required")
 	}
-	workspace := req.Deployment.SourceWorkspace()
-	gitSourceID := req.Deployment.SourceGitSourceID()
-
 	action, ok := req.Deployment.Actions[req.Action]
 	if !ok {
 		return contract.JobResult{}, fmt.Errorf("action %q not found in app %q", req.Action, req.Deployment.App)
@@ -94,7 +113,7 @@ func (r *Runner) Run(ctx context.Context, req RunRequest) (contract.JobResult, e
 	}
 
 	scriptLang := firstNonEmpty(req.Deployment.ScriptLang, "typescript")
-	sourceDir, err := r.ensureSource(ctx, workspace, gitSourceID, req.Deployment.Commit, scriptLang, req.Deployment.Entrypoint)
+	sourceDir, err := r.Prepare(ctx, req.Deployment)
 	if err != nil {
 		return contract.JobResult{}, err
 	}
