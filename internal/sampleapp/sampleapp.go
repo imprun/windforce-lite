@@ -50,6 +50,12 @@ func EnsureRepository(ctx context.Context, root, workspaceID, appKey string) (*R
 	if _, err := runGit(ctx, base, "init", "--bare", remote); err != nil {
 		return nil, err
 	}
+	// The bare repo's HEAD must point at the branch we push; otherwise a
+	// plain clone on a host whose init.defaultBranch differs checks out
+	// nothing.
+	if _, err := runGit(ctx, remote, "symbolic-ref", "HEAD", "refs/heads/"+DefaultBranch); err != nil {
+		return nil, err
+	}
 	if err := initWorktree(ctx, work); err != nil {
 		return nil, err
 	}
