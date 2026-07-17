@@ -31,6 +31,12 @@ The Control Plane owns repository registration, source validation, release
 publication, active release selection, configuration, and audit history. Its
 API is rooted at `/api/w/{workspace}`.
 
+A workspace is an organizational scoping partition inside one engine instance
+— it is **not** a tenant isolation boundary. Authentication, the worker pool,
+bundle storage, and the encryption root are instance-wide. Operators who need
+isolation between mutually untrusting tenants should run one engine instance
+per tenant.
+
 Publishing a release materializes the source bundle and action schemas before
 the catalog points at that release. Workers and protocol adapters never clone a
 repository or read repository credentials.

@@ -38,6 +38,10 @@ Workspace. Do not introduce product or brand vocabulary into engine code,
 APIs, or docs. Adapters may map external vocabulary onto App/Action, never the
 other way around.
 
+Workspace is an organizational scoping partition inside one engine instance,
+not a tenant isolation boundary — do not design features that treat it as one.
+Tenant isolation is obtained by running one engine instance per tenant.
+
 ## Decisions
 
 Engine contract decisions are recorded as public ADRs in
