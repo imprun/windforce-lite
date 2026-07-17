@@ -23,6 +23,7 @@ type FileCatalog struct {
 
 type Snapshot struct {
 	Deployments   map[string]contract.Deployment `json:"deployments"`
+	Candidates    map[string]ReleaseCandidate    `json:"releaseCandidates,omitempty"`
 	History       []DeploymentHistory            `json:"history,omitempty"`
 	Audit         []AuditRecord                  `json:"audit,omitempty"`
 	SourceMarkers map[string]SourceReleaseMarker `json:"sourceReleaseMarkers,omitempty"`
@@ -381,6 +382,7 @@ func NewReleaseAudit(history DeploymentHistory) AuditRecord {
 func NewSnapshot() Snapshot {
 	return Snapshot{
 		Deployments:   map[string]contract.Deployment{},
+		Candidates:    map[string]ReleaseCandidate{},
 		History:       []DeploymentHistory{},
 		Audit:         []AuditRecord{},
 		SourceMarkers: map[string]SourceReleaseMarker{},
@@ -402,6 +404,9 @@ func NormalizeSnapshot(snapshot *Snapshot) {
 		snapshot.Deployments = map[string]contract.Deployment{}
 	}
 	snapshot.Deployments = normalizeDeploymentMap(snapshot.Deployments)
+	if snapshot.Candidates == nil {
+		snapshot.Candidates = map[string]ReleaseCandidate{}
+	}
 	if snapshot.History == nil {
 		snapshot.History = []DeploymentHistory{}
 	}
@@ -419,6 +424,11 @@ func MergeSnapshot(target *Snapshot, imported Snapshot) {
 	for key, deployment := range imported.Deployments {
 		if _, exists := target.Deployments[key]; !exists {
 			target.Deployments[key] = deployment
+		}
+	}
+	for key, candidate := range imported.Candidates {
+		if _, exists := target.Candidates[key]; !exists {
+			target.Candidates[key] = candidate
 		}
 	}
 	historyIDs := make(map[string]struct{}, len(target.History))

@@ -27,6 +27,86 @@ func TestNewIDUsesCanonicalUUIDsForRuntimeEntities(t *testing.T) {
 	}
 }
 
+func TestActionJobUsesCompactExecutionPin(t *testing.T) {
+	maxConcurrent := int32(3)
+	tagOverride := "browser"
+	deploymentID := "release-a"
+	deployment := contract.Deployment{
+		Workspace:            "ws-a",
+		GitSourceID:          "source-a",
+		App:                  "echo",
+		Version:              "1.2.3",
+		Tag:                  "default",
+		TagOverride:          &tagOverride,
+		Entrypoint:           "main.py",
+		Runtime:              "python",
+		ScriptLang:           "python",
+		TimeoutS:             90,
+		MaxConcurrent:        &maxConcurrent,
+		RequiredCapabilities: []string{"browser"},
+		Commit:               "commit-a",
+		DeploymentID:         &deploymentID,
+		BundleDigest:         "sha256:bundle-a",
+		ObjectURI:            "bundle://ws-a/source-a/commit-a",
+		Actions: map[string]contract.Action{
+			"selected": {
+				Action:           "selected",
+				InputSchemaBody:  json.RawMessage(`{"type":"object","required":["message"]}`),
+				OutputSchemaBody: json.RawMessage(`{"type":"object","required":["ok"]}`),
+			},
+			"unrelated": {Action: "unrelated"},
+		},
+	}
+
+	run := NewRun("http", "run-a", "echo", "selected", deployment, json.RawMessage(`{"message":"hello"}`))
+	if len(run.Deployment.Actions) != 1 || run.Deployment.Actions["selected"].Action != "selected" {
+		t.Fatalf("run deployment actions = %#v", run.Deployment.Actions)
+	}
+	if len(deployment.Actions) != 2 {
+		t.Fatalf("source deployment was mutated: %#v", deployment.Actions)
+	}
+
+	job := NewActionJob(run, nil)
+	if job.Payload.Deployment != nil {
+		t.Fatalf("new job retained legacy deployment: %#v", job.Payload.Deployment)
+	}
+	if len(job.Payload.ActionSpec.InputSchemaBody) != 0 || len(job.Payload.ActionSpec.OutputSchemaBody) != 0 {
+		t.Fatalf("job action duplicated schema bodies: %#v", job.Payload.ActionSpec)
+	}
+	if !strings.Contains(string(job.Payload.InputSchema), `"message"`) || !strings.Contains(string(job.Payload.OutputSchema), `"ok"`) {
+		t.Fatalf("job schemas = input:%s output:%s", job.Payload.InputSchema, job.Payload.OutputSchema)
+	}
+	encoded, err := json.Marshal(job.Payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), `"deployment":`) || strings.Contains(string(encoded), `"unrelated"`) {
+		t.Fatalf("compact job payload contains full deployment: %s", encoded)
+	}
+	pinned := job.Payload.PinnedDeployment()
+	if pinned.Commit != deployment.Commit || pinned.Entrypoint != deployment.Entrypoint || pinned.ScriptLang != deployment.ScriptLang ||
+		pinned.MaxConcurrent == nil || *pinned.MaxConcurrent != maxConcurrent || pinned.DeploymentID == nil || *pinned.DeploymentID != deploymentID ||
+		len(pinned.Actions) != 1 || pinned.Actions["selected"].Action != "selected" {
+		t.Fatalf("reconstructed deployment = %#v", pinned)
+	}
+
+	legacyJSON, err := json.Marshal(map[string]any{
+		"app":        "echo",
+		"action":     "selected",
+		"deployment": deployment,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var legacy JobPayload
+	if err := json.Unmarshal(legacyJSON, &legacy); err != nil {
+		t.Fatal(err)
+	}
+	if legacy.Deployment == nil || legacy.PinnedDeployment().Actions["unrelated"].Action != "unrelated" {
+		t.Fatalf("legacy deployment was not restored: %#v", legacy.PinnedDeployment())
+	}
+}
+
 func TestLocalStoreClaimCompleteAndResumeLifecycle(t *testing.T) {
 	store := NewLocalStore(t.TempDir() + "/state.json")
 	exerciseStoreLifecycle(t, store)

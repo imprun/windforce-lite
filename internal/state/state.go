@@ -101,28 +101,41 @@ type Run struct {
 }
 
 type JobPayload struct {
-	Workspace      string              `json:"workspace,omitempty"`
-	GitSourceID    string              `json:"gitSourceId,omitempty"`
-	Commit         string              `json:"commit,omitempty"`
-	App            string              `json:"app"`
-	Action         string              `json:"action"`
-	Tag            string              `json:"tag,omitempty"`
-	TriggerKind    string              `json:"triggerKind,omitempty"`
-	TriggerHeaders json.RawMessage     `json:"triggerHeaders,omitempty"`
-	ActionSpec     contract.Action     `json:"actionSpec,omitempty"`
-	InputSchema    json.RawMessage     `json:"inputSchema,omitempty"`
-	OutputSchema   json.RawMessage     `json:"outputSchema,omitempty"`
-	Input          json.RawMessage     `json:"input,omitempty"`
-	Deployment     contract.Deployment `json:"deployment"`
-	CorrelationID  string              `json:"correlationId,omitempty"`
-	Env            []string            `json:"env,omitempty"`
-	CreatedBy      string              `json:"createdBy,omitempty"`
-	PermissionedAs string              `json:"permissionedAs,omitempty"`
-	ClientID       string              `json:"clientId,omitempty"`
-	FlowRunID      string              `json:"flowRunId,omitempty"`
-	FlowStepID     string              `json:"flowStepId,omitempty"`
-	FlowKey        string              `json:"flowKey,omitempty"`
-	FlowStepKey    string              `json:"flowStepKey,omitempty"`
+	Workspace             string          `json:"workspace,omitempty"`
+	GitSourceID           string          `json:"gitSourceId,omitempty"`
+	Commit                string          `json:"commit,omitempty"`
+	App                   string          `json:"app"`
+	Action                string          `json:"action"`
+	Version               string          `json:"version,omitempty"`
+	Tag                   string          `json:"tag,omitempty"`
+	DeploymentTag         string          `json:"deploymentTag,omitempty"`
+	DeploymentTagOverride *string         `json:"deploymentTagOverride,omitempty"`
+	Entrypoint            string          `json:"entrypoint,omitempty"`
+	Runtime               string          `json:"runtime,omitempty"`
+	ScriptLang            string          `json:"scriptLang,omitempty"`
+	TimeoutS              int32           `json:"timeout,omitempty"`
+	MaxConcurrent         *int32          `json:"maxConcurrent,omitempty"`
+	RequiredCapabilities  []string        `json:"requiredCapabilities,omitempty"`
+	DeploymentID          *string         `json:"deploymentId,omitempty"`
+	BundleDigest          string          `json:"bundleDigest,omitempty"`
+	ObjectURI             string          `json:"objectUri,omitempty"`
+	TriggerKind           string          `json:"triggerKind,omitempty"`
+	TriggerHeaders        json.RawMessage `json:"triggerHeaders,omitempty"`
+	ActionSpec            contract.Action `json:"actionSpec,omitempty"`
+	InputSchema           json.RawMessage `json:"inputSchema,omitempty"`
+	OutputSchema          json.RawMessage `json:"outputSchema,omitempty"`
+	Input                 json.RawMessage `json:"input,omitempty"`
+	// Deployment is retained only to decode jobs created before compact pins.
+	Deployment     *contract.Deployment `json:"deployment,omitempty"`
+	CorrelationID  string               `json:"correlationId,omitempty"`
+	Env            []string             `json:"env,omitempty"`
+	CreatedBy      string               `json:"createdBy,omitempty"`
+	PermissionedAs string               `json:"permissionedAs,omitempty"`
+	ClientID       string               `json:"clientId,omitempty"`
+	FlowRunID      string               `json:"flowRunId,omitempty"`
+	FlowStepID     string               `json:"flowStepId,omitempty"`
+	FlowKey        string               `json:"flowKey,omitempty"`
+	FlowStepKey    string               `json:"flowStepKey,omitempty"`
 }
 
 type Job struct {
@@ -465,7 +478,7 @@ func NewRun(adapter string, id string, app string, action string, deployment con
 		App:            app,
 		Action:         action,
 		State:          RunQueued,
-		Deployment:     deployment,
+		Deployment:     contract.PinExecutionDeployment(deployment, action),
 		Input:          cloneRaw(input),
 		CreatedBy:      defaultActorSubject,
 		PermissionedAs: defaultActorSubject,
@@ -479,6 +492,11 @@ func NewActionJob(run Run, input json.RawMessage) Job {
 		input = run.Input
 	}
 	actionSpec := run.Deployment.Actions[run.Action]
+	inputSchema := cloneRaw(actionSpec.InputSchemaBody)
+	outputSchema := cloneRaw(actionSpec.OutputSchemaBody)
+	actionSpec.InputSchemaBody = nil
+	actionSpec.OutputSchemaBody = nil
+	actionSpec.OperatorSettingsSchemaBody = nil
 	now := time.Now().UTC()
 	return Job{
 		ID:        NewID("job"),
@@ -489,21 +507,34 @@ func NewActionJob(run Run, input json.RawMessage) Job {
 		CreatedAt: now,
 		UpdatedAt: now,
 		Payload: JobPayload{
-			Workspace:      run.Deployment.SourceWorkspace(),
-			GitSourceID:    run.Deployment.SourceGitSourceID(),
-			Commit:         run.Deployment.Commit,
-			App:            run.App,
-			Action:         run.Action,
-			Tag:            contract.EffectiveRouteTagForAction(run.Deployment, actionSpec),
-			TriggerKind:    run.Adapter,
-			ActionSpec:     actionSpec,
-			Input:          cloneRaw(input),
-			Deployment:     run.Deployment,
-			CorrelationID:  run.CorrelationID,
-			Env:            append([]string(nil), run.Env...),
-			CreatedBy:      actorCreatedBy(run),
-			PermissionedAs: actorPermissionedAs(run),
-			ClientID:       run.ClientID,
+			Workspace:             run.Deployment.SourceWorkspace(),
+			GitSourceID:           run.Deployment.SourceGitSourceID(),
+			Commit:                run.Deployment.Commit,
+			App:                   run.App,
+			Action:                run.Action,
+			Version:               run.Deployment.Version,
+			Tag:                   contract.EffectiveRouteTagForAction(run.Deployment, actionSpec),
+			DeploymentTag:         run.Deployment.Tag,
+			DeploymentTagOverride: cloneStringPointer(run.Deployment.TagOverride),
+			Entrypoint:            run.Deployment.Entrypoint,
+			Runtime:               run.Deployment.Runtime,
+			ScriptLang:            run.Deployment.ScriptLang,
+			TimeoutS:              run.Deployment.TimeoutS,
+			MaxConcurrent:         cloneInt32Pointer(run.Deployment.MaxConcurrent),
+			RequiredCapabilities:  append([]string(nil), run.Deployment.RequiredCapabilities...),
+			DeploymentID:          cloneStringPointer(run.Deployment.DeploymentID),
+			BundleDigest:          run.Deployment.BundleDigest,
+			ObjectURI:             run.Deployment.ObjectURI,
+			TriggerKind:           run.Adapter,
+			ActionSpec:            actionSpec,
+			InputSchema:           inputSchema,
+			OutputSchema:          outputSchema,
+			Input:                 cloneRaw(input),
+			CorrelationID:         run.CorrelationID,
+			Env:                   append([]string(nil), run.Env...),
+			CreatedBy:             actorCreatedBy(run),
+			PermissionedAs:        actorPermissionedAs(run),
+			ClientID:              run.ClientID,
 		},
 	}
 }
@@ -551,7 +582,10 @@ func firstNonEmpty(values ...string) string {
 }
 
 func (p JobPayload) PinnedDeployment() contract.Deployment {
-	deployment := p.Deployment
+	deployment := contract.Deployment{}
+	if p.Deployment != nil {
+		deployment = *p.Deployment
+	}
 	if deployment.Workspace == "" {
 		deployment.Workspace = p.Workspace
 	}
@@ -564,10 +598,62 @@ func (p JobPayload) PinnedDeployment() contract.Deployment {
 	if deployment.App == "" {
 		deployment.App = p.App
 	}
+	if deployment.Version == "" {
+		deployment.Version = p.Version
+	}
+	if deployment.Tag == "" {
+		deployment.Tag = p.DeploymentTag
+	}
+	if deployment.TagOverride == nil {
+		deployment.TagOverride = cloneStringPointer(p.DeploymentTagOverride)
+	}
+	if deployment.Entrypoint == "" {
+		deployment.Entrypoint = p.Entrypoint
+	}
+	if deployment.Runtime == "" {
+		deployment.Runtime = p.Runtime
+	}
+	if deployment.ScriptLang == "" {
+		deployment.ScriptLang = p.ScriptLang
+	}
+	if deployment.TimeoutS == 0 {
+		deployment.TimeoutS = p.TimeoutS
+	}
+	if deployment.MaxConcurrent == nil {
+		deployment.MaxConcurrent = cloneInt32Pointer(p.MaxConcurrent)
+	}
+	if len(deployment.RequiredCapabilities) == 0 {
+		deployment.RequiredCapabilities = append([]string(nil), p.RequiredCapabilities...)
+	}
+	if deployment.DeploymentID == nil {
+		deployment.DeploymentID = cloneStringPointer(p.DeploymentID)
+	}
+	if deployment.BundleDigest == "" {
+		deployment.BundleDigest = p.BundleDigest
+	}
+	if deployment.ObjectURI == "" {
+		deployment.ObjectURI = p.ObjectURI
+	}
 	if deployment.Actions == nil && p.Action != "" {
 		deployment.Actions = map[string]contract.Action{p.Action: p.ActionSpec}
 	}
 	return deployment
+}
+
+func cloneStringPointer(value *string) *string {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
+}
+
+func cloneInt32Pointer(value *int32) *int32 {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
 }
 
 func nonZeroTime(value time.Time, fallback time.Time) time.Time {

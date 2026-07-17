@@ -336,7 +336,7 @@ func newJobStatus(workspaceID string, job state.Job, run state.Run) jobStatusRes
 	commit := job.Payload.Commit
 	tag := strings.TrimSpace(job.Payload.Tag)
 	if tag == "" {
-		tag = contract.EffectiveRouteTagForAction(job.Payload.Deployment, job.Payload.ActionSpec)
+		tag = contract.EffectiveRouteTagForAction(job.Payload.PinnedDeployment(), job.Payload.ActionSpec)
 	}
 	response := jobStatusResponse{
 		ID:             job.ID,
@@ -374,7 +374,7 @@ func newJobStatus(workspaceID string, job state.Job, run state.Run) jobStatusRes
 }
 
 func jobStatusEntrypoint(job state.Job) string {
-	if entrypoint := strings.TrimSpace(job.Payload.Deployment.Entrypoint); entrypoint != "" {
+	if entrypoint := strings.TrimSpace(job.Payload.PinnedDeployment().Entrypoint); entrypoint != "" {
 		return entrypoint
 	}
 	return strings.TrimSpace(job.Payload.ActionSpec.Entrypoint)

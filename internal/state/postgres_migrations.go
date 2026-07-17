@@ -4,8 +4,18 @@ import (
 	"context"
 )
 
+const postgresMigrationAdvisoryLockID int64 = 0x57464c4d49475241
+
 func (s *PostgresStore) Migrate(ctx context.Context) error {
-	_, err := s.pool.Exec(ctx, `
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, postgresMigrationAdvisoryLockID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `
 CREATE TABLE IF NOT EXISTS runs (
     id TEXT PRIMARY KEY,
     adapter TEXT NOT NULL,
@@ -219,6 +229,25 @@ CREATE TABLE IF NOT EXISTS control_source_release_marker (
     PRIMARY KEY (workspace_id, git_source_id)
 );
 
+CREATE TABLE IF NOT EXISTS control_release_candidate (
+    workspace_id TEXT NOT NULL,
+    git_source_id TEXT NOT NULL,
+    commit_sha TEXT NOT NULL,
+    app_key TEXT NOT NULL,
+    deployment JSONB NOT NULL,
+    synced_at TIMESTAMPTZ NOT NULL,
+    PRIMARY KEY (workspace_id, git_source_id, commit_sha)
+);
+
+CREATE TABLE IF NOT EXISTS control_source_operation_lease (
+    workspace_id TEXT NOT NULL,
+    git_source_id TEXT NOT NULL,
+    holder TEXT NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL,
+    PRIMARY KEY (workspace_id, git_source_id)
+);
+
 CREATE TABLE IF NOT EXISTS control_plane_event (
     id TEXT PRIMARY KEY,
     workspace_id TEXT NOT NULL,
@@ -319,6 +348,9 @@ CREATE INDEX IF NOT EXISTS control_release_history_source_idx
 CREATE INDEX IF NOT EXISTS control_release_history_app_idx
     ON control_release_history (workspace_id, app_key, created_at DESC);
 
+CREATE INDEX IF NOT EXISTS control_release_candidate_latest_idx
+    ON control_release_candidate (workspace_id, git_source_id, synced_at DESC);
+
 CREATE INDEX IF NOT EXISTS control_audit_source_idx
     ON control_audit (workspace_id, git_source_id, created_at DESC);
 
@@ -341,6 +373,8 @@ CREATE INDEX IF NOT EXISTS webhook_delivery_retention_idx
 
 CREATE INDEX IF NOT EXISTS webhook_audit_workspace_idx
     ON webhook_audit (workspace_id, created_at DESC, id DESC);
-`)
-	return err
+`); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }

@@ -29,6 +29,44 @@ describe("setActorHeaders", () => {
   });
 });
 
+describe("WindforceApi release flow", () => {
+  test("syncs without publishing and publishes the exact candidate commit", async () => {
+    const requests: Array<{ url: string; method: string; body: string }> = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (input, init) => {
+      requests.push({
+        url: String(input),
+        method: init?.method || "GET",
+        body: String(init?.body || ""),
+      });
+      return new Response(JSON.stringify({ app: "echo", commit: "commit-a", actions: [] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }) as typeof fetch;
+    try {
+      const api = new WindforceApi({ workspace: "default", token: "", actor: "operator" });
+      await api.syncGitSource(7);
+      await api.deployGitSource(7, "commit-a", "Release note");
+
+      expect(requests).toEqual([
+        {
+          url: "/api/w/default/git_sources/7/sync",
+          method: "POST",
+          body: "",
+        },
+        {
+          url: "/api/w/default/git_sources/7/deploy",
+          method: "POST",
+          body: JSON.stringify({ confirm: true, commit: "commit-a", message: "Release note" }),
+        },
+      ]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+});
+
 describe("WindforceApi webhooks", () => {
   test("treats a null app scope from the API as all apps", () => {
     expect(webhookAppKeys({ app_keys: null } as WebhookSubscription)).toEqual([]);

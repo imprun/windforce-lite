@@ -208,7 +208,7 @@ func newJobListItem(workspaceID string, job Job, run Run) JobListItem {
 }
 
 func jobEntrypoint(job Job) string {
-	if entrypoint := strings.TrimSpace(job.Payload.Deployment.Entrypoint); entrypoint != "" {
+	if entrypoint := strings.TrimSpace(job.Payload.PinnedDeployment().Entrypoint); entrypoint != "" {
 		return entrypoint
 	}
 	return strings.TrimSpace(job.Payload.ActionSpec.Entrypoint)
@@ -259,21 +259,22 @@ func jobTag(job Job) string {
 	if strings.TrimSpace(job.Payload.Tag) != "" {
 		return strings.TrimSpace(job.Payload.Tag)
 	}
-	return contract.EffectiveRouteTagForAction(job.Payload.Deployment, job.Payload.ActionSpec)
+	return contract.EffectiveRouteTagForAction(job.Payload.PinnedDeployment(), job.Payload.ActionSpec)
 }
 
 func jobAppKey(job Job) string {
 	if app := strings.TrimSpace(job.Payload.App); app != "" {
 		return app
 	}
-	return strings.TrimSpace(job.Payload.Deployment.App)
+	return strings.TrimSpace(job.Payload.PinnedDeployment().App)
 }
 
 func jobMaxConcurrent(job Job) (int, bool) {
-	if job.Payload.Deployment.MaxConcurrent == nil || *job.Payload.Deployment.MaxConcurrent <= 0 {
+	deployment := job.Payload.PinnedDeployment()
+	if deployment.MaxConcurrent == nil || *deployment.MaxConcurrent <= 0 {
 		return 0, false
 	}
-	return int(*job.Payload.Deployment.MaxConcurrent), true
+	return int(*deployment.MaxConcurrent), true
 }
 
 func maxConcurrentReached(snapshot *Snapshot, candidate Job) bool {
@@ -504,7 +505,7 @@ func normalizedJobWorkspace(workspaceID string, job Job) string {
 		workspaceID = job.Payload.Workspace
 	}
 	if workspaceID == "" {
-		workspaceID = job.Payload.Deployment.SourceWorkspace()
+		workspaceID = job.Payload.PinnedDeployment().SourceWorkspace()
 	}
 	return contract.NormalizeWorkspace(workspaceID)
 }

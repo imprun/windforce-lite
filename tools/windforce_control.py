@@ -78,13 +78,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     sync.set_defaults(func=cmd_sync)
 
-    deploy = sub.add_parser("deploy", help="deploy the current commit of a registered git source")
+    deploy = sub.add_parser("deploy", help="publish a synchronized release candidate")
     deploy.add_argument(
         "--git-source-id",
         dest="git_source_id",
         required=True,
         help="numeric git source id returned by register/list",
     )
+    deploy.add_argument("--commit", default="", help="candidate commit returned by sync (latest candidate when omitted)")
     deploy.add_argument("--message", default="", help="optional audit note for deployment history")
     deploy.set_defaults(func=cmd_deploy)
 
@@ -443,6 +444,8 @@ def cmd_sync(args: argparse.Namespace) -> Any:
 
 def cmd_deploy(args: argparse.Namespace) -> Any:
     body = {"confirm": True}
+    if args.commit:
+        body["commit"] = args.commit
     if args.message:
         body["message"] = args.message
     return request(

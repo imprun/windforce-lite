@@ -100,6 +100,22 @@ type Deployment struct {
 	UpdatedAt            *time.Time        `json:"updatedAt,omitempty"`
 }
 
+// PinExecutionDeployment keeps only the selected action while preserving the
+// release coordinates and defaults required to retry the same execution.
+func PinExecutionDeployment(deployment Deployment, actionKey string) Deployment {
+	pinned := deployment
+	pinned.RequiredCapabilities = append([]string(nil), deployment.RequiredCapabilities...)
+	pinned.Actions = make(map[string]Action, 1)
+	if action, ok := deployment.Actions[actionKey]; ok {
+		action.Command = append([]string(nil), action.Command...)
+		action.InputSchemaBody = append(json.RawMessage(nil), action.InputSchemaBody...)
+		action.OutputSchemaBody = append(json.RawMessage(nil), action.OutputSchemaBody...)
+		action.OperatorSettingsSchemaBody = append(json.RawMessage(nil), action.OperatorSettingsSchemaBody...)
+		pinned.Actions[actionKey] = action
+	}
+	return pinned
+}
+
 // JobRequest is the runtime request passed into windforce-lite.
 type JobRequest struct {
 	JobID      string          `json:"jobId"`

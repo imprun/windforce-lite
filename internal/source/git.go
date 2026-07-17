@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
@@ -232,8 +233,9 @@ func (c GitClient) run(ctx context.Context, dir string, args ...string) (string,
 func (GitCommandRunner) Run(ctx context.Context, dir string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, "git", args...)
 	hideGitCommandWindow(cmd)
-	if dir != "" {
-		cmd.Dir = dir
+	cmd.Dir = dir
+	if cmd.Dir == "" {
+		cmd.Dir = os.TempDir()
 	}
 	cmd.Env = append(cmd.Environ(), "GIT_TERMINAL_PROMPT=0")
 	out, err := cmd.CombinedOutput()

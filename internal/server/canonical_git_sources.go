@@ -9,9 +9,9 @@ import (
 	"net/http"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
+	"github.com/imprun/windforce-lite/internal/catalog"
 	"github.com/imprun/windforce-lite/internal/contract"
 	gitsourcepkg "github.com/imprun/windforce-lite/internal/gitsource"
 	"github.com/imprun/windforce-lite/internal/sampleapp"
@@ -33,14 +33,8 @@ type canonicalGitSourceDeployRequest struct {
 	ConfirmedCamel bool    `json:"Confirmed"`
 	Message        *string `json:"message"`
 	MessageCamel   *string `json:"Message"`
-}
-
-type gitSourceOperationAudit struct {
-	Source       string
-	Commit       string
-	DeploymentID *string
-	Message      *string
-	CreatedBy    *string
+	Commit         string  `json:"commit"`
+	CommitCamel    string  `json:"Commit"`
 }
 
 const sourceValidationTimeout = 2 * time.Minute
@@ -279,7 +273,13 @@ func (h *Handler) handleCanonicalSampleGitSource(w http.ResponseWriter, r *http.
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	deployment, ok := h.syncGitSource(w, r, workspaceID, source, gitSourceOperationAudit{})
+	candidate, ok := h.stageGitSourceCandidate(w, r, workspaceID, source)
+	if !ok {
+		return
+	}
+	deployment, ok := h.publishGitSourceCandidate(w, r, workspaceID, source, candidate, gitSourceOperationAudit{
+		Source: "external_sync",
+	})
 	if !ok {
 		return
 	}
@@ -438,11 +438,11 @@ func (h *Handler) handleCanonicalGitSourceSync(w http.ResponseWriter, r *http.Re
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	deployment, ok := h.syncGitSource(w, r, workspaceID, source, gitSourceOperationAudit{})
+	candidate, ok := h.stageGitSourceCandidate(w, r, workspaceID, source)
 	if !ok {
 		return
 	}
-	writeJSON(w, http.StatusOK, newCanonicalSyncResult(deployment))
+	writeJSON(w, http.StatusOK, newCanonicalSyncResult(candidate.Deployment))
 }
 
 func (h *Handler) handleCanonicalGitSourceDeploy(w http.ResponseWriter, r *http.Request, workspaceID string, sourceID string) {
@@ -465,10 +465,6 @@ func (h *Handler) handleCanonicalGitSourceDeploy(w http.ResponseWriter, r *http.
 		writeError(w, http.StatusBadRequest, "deploy actor is required")
 		return
 	}
-	if h.syncer == nil {
-		writeError(w, http.StatusServiceUnavailable, "deploy API is not configured")
-		return
-	}
 	if h.gitSources == nil {
 		writeError(w, http.StatusServiceUnavailable, "git source registry is not configured")
 		return
@@ -484,7 +480,27 @@ func (h *Handler) handleCanonicalGitSourceDeploy(w http.ResponseWriter, r *http.
 	}
 	deploymentID := newDeploymentOperationID()
 	message := deployRequestMessage(request)
-	deployment, ok := h.syncGitSource(w, r, workspaceID, source, gitSourceOperationAudit{
+	candidateStore, ok := h.catalog.(catalog.ReleaseCandidateStore)
+	if !ok {
+		writeError(w, http.StatusServiceUnavailable, "release candidate store is not configured")
+		return
+	}
+	commit := firstNonEmpty(strings.TrimSpace(request.Commit), strings.TrimSpace(request.CommitCamel))
+	var candidate catalog.ReleaseCandidate
+	if commit != "" {
+		candidate, err = candidateStore.GetReleaseCandidate(r.Context(), workspaceID, source.ID, commit)
+	} else {
+		candidate, err = candidateStore.GetLatestReleaseCandidate(r.Context(), workspaceID, source.ID)
+	}
+	if err != nil {
+		if errors.Is(err, catalog.ErrReleaseCandidateNotFound) {
+			writeError(w, http.StatusConflict, "sync source before publishing a release")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	deployment, ok := h.publishGitSourceCandidate(w, r, workspaceID, source, candidate, gitSourceOperationAudit{
 		Source:       "deploy",
 		DeploymentID: &deploymentID,
 		Message:      message,
@@ -494,52 +510,6 @@ func (h *Handler) handleCanonicalGitSourceDeploy(w http.ResponseWriter, r *http.
 		return
 	}
 	writeJSON(w, http.StatusOK, newCanonicalSyncResult(deployment))
-}
-
-func (h *Handler) syncGitSource(w http.ResponseWriter, r *http.Request, workspaceID string, source gitsourcepkg.Source, audit gitSourceOperationAudit) (contract.Deployment, bool) {
-	release, ok := h.acquireGitSourceOperation(workspaceID, source)
-	if !ok {
-		writeError(w, http.StatusConflict, "git source operation already in progress")
-		return contract.Deployment{}, false
-	}
-	defer release()
-
-	token, err := h.resolveGitSourceCreds(r.Context(), workspaceID, source.TokenEnv)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return contract.Deployment{}, false
-	}
-	s := *h.syncer
-	deployment, err := s.Sync(r.Context(), syncer.Source{
-		Workspace:    workspaceID,
-		GitSourceID:  source.ID,
-		RepoURL:      source.RepoURL,
-		Branch:       source.Branch,
-		Commit:       audit.Commit,
-		Subpath:      source.Subpath,
-		Token:        token,
-		Source:       audit.Source,
-		DeploymentID: audit.DeploymentID,
-		Message:      audit.Message,
-		CreatedBy:    audit.CreatedBy,
-	})
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return contract.Deployment{}, false
-	}
-	publisher, ok := h.catalog.(interface {
-		PublishRelease(context.Context, contract.Deployment, time.Time) (contract.Deployment, error)
-	})
-	if !ok {
-		writeError(w, http.StatusServiceUnavailable, "transactional release catalog is not configured")
-		return contract.Deployment{}, false
-	}
-	deployment, err = publisher.PublishRelease(r.Context(), deployment, time.Now().UTC())
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return contract.Deployment{}, false
-	}
-	return deployment, true
 }
 
 func deployRequestConfirmed(request canonicalGitSourceDeployRequest) bool {
@@ -602,21 +572,6 @@ func (h *Handler) validateGitSourceContract(w http.ResponseWriter, r *http.Reque
 		return contract.Deployment{}, false
 	}
 	return deployment, true
-}
-
-func (h *Handler) acquireGitSourceOperation(workspaceID string, source gitsourcepkg.Source) (func(), bool) {
-	workspaceID = contract.NormalizeWorkspace(workspaceID)
-	sourceID := strings.TrimSpace(source.ID)
-	if sourceID == "" {
-		sourceID = strings.TrimSpace(source.Name)
-	}
-	key := workspaceID + "\x00" + sourceID
-	value, _ := h.syncLocks.LoadOrStore(key, &sync.Mutex{})
-	lock := value.(*sync.Mutex)
-	if !lock.TryLock() {
-		return nil, false
-	}
-	return lock.Unlock, true
 }
 
 func (h *Handler) resolveGitSourceCreds(ctx context.Context, workspaceID string, credsRef string) (string, error) {

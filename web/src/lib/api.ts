@@ -483,8 +483,12 @@ export class WindforceApi {
     await this.request(`/git_sources/${id}`, { method: "DELETE" });
   }
 
-  deployGitSource(id: number, message: string): Promise<SyncResult> {
-    const body: Record<string, unknown> = { confirm: true };
+  syncGitSource(id: number): Promise<SyncResult> {
+    return this.request(`/git_sources/${id}/sync`, { method: "POST" });
+  }
+
+  deployGitSource(id: number, commit: string, message: string): Promise<SyncResult> {
+    const body: Record<string, unknown> = { confirm: true, commit };
     if (message) body.message = message;
     return this.request(`/git_sources/${id}/deploy`, { method: "POST", body });
   }

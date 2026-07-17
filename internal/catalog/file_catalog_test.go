@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"testing"
+	"time"
 
 	"github.com/imprun/windforce-lite/internal/contract"
 )
@@ -58,6 +59,48 @@ func TestFileCatalogUpsertAndGet(t *testing.T) {
 	}
 	if !regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`).MatchString(snapshot.History[0].ID) {
 		t.Fatalf("history id = %q, want UUID app version id", snapshot.History[0].ID)
+	}
+}
+
+func TestFileCatalogReleaseCandidatesAreImmutable(t *testing.T) {
+	store := NewFileCatalog(filepath.Join(t.TempDir(), "catalog.json"))
+	ctx := context.Background()
+	firstSyncedAt := time.Date(2026, 7, 17, 1, 0, 0, 0, time.UTC)
+	first := contract.Deployment{
+		Workspace:   "ws-a",
+		GitSourceID: "source-a",
+		App:         "echo",
+		Commit:      "commit-a",
+		Entrypoint:  "main.py",
+		Actions:     map[string]contract.Action{"run": {Action: "run"}},
+	}
+	saved, err := store.SaveReleaseCandidate(ctx, first, firstSyncedAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	changed := first
+	changed.Entrypoint = "changed.py"
+	unchanged, err := store.SaveReleaseCandidate(ctx, changed, firstSyncedAt.Add(time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unchanged.Deployment.Entrypoint != "main.py" || !unchanged.SyncedAt.Equal(saved.SyncedAt) {
+		t.Fatalf("candidate was mutated: %#v", unchanged)
+	}
+
+	second := first
+	second.Commit = "commit-b"
+	second.Entrypoint = "next.py"
+	secondSyncedAt := firstSyncedAt.Add(2 * time.Minute)
+	if _, err := store.SaveReleaseCandidate(ctx, second, secondSyncedAt); err != nil {
+		t.Fatal(err)
+	}
+	latest, err := store.GetLatestReleaseCandidate(ctx, "ws-a", "source-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if latest.Deployment.Commit != "commit-b" || latest.Deployment.Entrypoint != "next.py" || !latest.SyncedAt.Equal(secondSyncedAt) {
+		t.Fatalf("latest candidate = %#v", latest)
 	}
 }
 

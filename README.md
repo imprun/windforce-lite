@@ -23,27 +23,28 @@ in scope.
 - Deployment: the selected app commit/digest and its action metadata
 - Catalog: the active deployment index stored in the selected state backend
 - Bundle store: source-only object cache keyed by workspace/git-source/commit
-- Deployment history: an audit trail of source syncs and deployment changes
+- Release candidate: an immutable, validated, materialized source revision
+- Deployment history: an audit trail of published releases
 
 ## Deploy
 
-`deploy` turns a validated git source into an active deployment through the
-control-plane API. `sync` remains as a compatibility endpoint for automation
-that already calls it.
+`sync` creates an immutable release candidate. `deploy` publishes a candidate
+as the active release used by new jobs.
 
 1. Register a git source through the control-plane API. Registration validates
    repository access, branch existence, subpath containment, `windforce.json`,
    action schemas, and lockfile reproducibility before saving the source.
-2. Resolve the source version.
-   - git source: resolve the branch or commit
+2. Sync the source to resolve an exact commit.
 3. If the git source has a `subpath`, use that repo directory as the app root
    and try sparse checkout before falling back to a full clone.
 4. Load `windforce.json`.
 5. Materialize the source tree into the bundle store under
    `{workspace}/{gitSourceId}/{commit}`.
-6. Publish the active release, release history, source release marker, audit
-   record, Control Plane event, and matching Webhook deliveries in one
-   state-store transaction after the bundle is complete.
+6. Save the validated deployment metadata and materialized bundle as an
+   immutable release candidate. This does not change the active release.
+7. Publish the selected candidate. The active release, release history, source
+   release marker, audit record, Control Plane event, and matching Webhook
+   deliveries are written in one state-store transaction.
 
 The ordering is intentional: a catalog entry must not point at a bundle that a
 worker cannot fetch. Webhook HTTP requests are not made in this transaction.

@@ -2888,7 +2888,50 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 		t.Fatalf("missing actor deploy error = %#v", missingActorBody)
 	}
 
-	deployBody := bytes.NewBufferString(`{"confirm":true,"message":"audit note"}`)
+	missingCandidateReq, err := http.NewRequest(http.MethodPost, server.URL+"/api/w/ws-a/git_sources/"+registeredID+"/deploy", bytes.NewBufferString(`{"confirm":true}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	missingCandidateReq.Header.Set("Content-Type", "application/json")
+	missingCandidateReq.Header.Set("X-Windforce-Actor", "deployer@example.test")
+	missingCandidateResp, err := http.DefaultClient.Do(missingCandidateReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer missingCandidateResp.Body.Close()
+	if missingCandidateResp.StatusCode != http.StatusConflict {
+		body, _ := io.ReadAll(missingCandidateResp.Body)
+		t.Fatalf("deploy before sync status = %d, want %d: %s", missingCandidateResp.StatusCode, http.StatusConflict, body)
+	}
+
+	stageResp, err := http.Post(server.URL+"/api/w/ws-a/git_sources/"+registeredID+"/sync", "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stageResp.Body.Close()
+	if stageResp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(stageResp.Body)
+		t.Fatalf("sync status = %d, want %d: %s", stageResp.StatusCode, http.StatusOK, body)
+	}
+	var staged struct {
+		Commit  string   `json:"commit"`
+		App     string   `json:"app"`
+		Actions []string `json:"actions"`
+	}
+	if err := json.NewDecoder(stageResp.Body).Decode(&staged); err != nil {
+		t.Fatal(err)
+	}
+	if staged.Commit == "" || staged.App != "echo" || len(staged.Actions) != 1 || staged.Actions[0] != "echo.echo" {
+		t.Fatalf("staged candidate = %#v", staged)
+	}
+	if _, err := fileCatalog.GetDeploymentForWorkspace(context.Background(), "ws-a", "echo"); !errors.Is(err, catalog.ErrDeploymentNotFound) {
+		t.Fatalf("sync activated deployment: %v", err)
+	}
+	if candidate, err := fileCatalog.GetReleaseCandidate(context.Background(), "ws-a", registeredID, staged.Commit); err != nil || candidate.Deployment.Commit != staged.Commit {
+		t.Fatalf("staged candidate lookup = %#v, err=%v", candidate, err)
+	}
+
+	deployBody := bytes.NewBufferString(`{"confirm":true,"message":"audit note","commit":"` + staged.Commit + `"}`)
 	deployReq, err := http.NewRequest(http.MethodPost, server.URL+"/api/w/ws-a/git_sources/"+registeredID+"/deploy", deployBody)
 	if err != nil {
 		t.Fatal(err)
@@ -3440,9 +3483,9 @@ func TestCanonicalGitSourceSyncReturnsConflictWhenOperationInProgress(t *testing
 		GitSources: registry,
 		EnableAPI:  true,
 	}).(*Handler)
-	release, ok := handler.acquireGitSourceOperation("ws-a", source)
-	if !ok {
-		t.Fatal("initial operation lock was not acquired")
+	_, release, err := handler.acquireGitSourceOperation(context.Background(), "ws-a", source)
+	if err != nil {
+		t.Fatalf("initial operation lock was not acquired: %v", err)
 	}
 	defer release()
 	server := httptest.NewServer(handler)
@@ -4426,13 +4469,16 @@ func TestControlPlaneRegistersGitSourcePathAndSyncsIt(t *testing.T) {
 	if syncBody.App != "echo" || syncBody.Commit == "" || len(syncBody.Actions) != 1 || syncBody.Actions[0] != "echo.echo" {
 		t.Fatalf("sync body = %#v", syncBody)
 	}
-	deployment, err := fileCatalog.GetDeploymentForWorkspace(context.Background(), "ws-a", "echo")
+	if _, err := fileCatalog.GetDeploymentForWorkspace(context.Background(), "ws-a", "echo"); !errors.Is(err, catalog.ErrDeploymentNotFound) {
+		t.Fatalf("sync activated deployment: %v", err)
+	}
+	deployment, err := fileCatalog.GetReleaseCandidate(context.Background(), "ws-a", fmt.Sprint(registered.ID), syncBody.Commit)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	fetchDir := filepath.Join(tempDir, "fetch")
-	if err := store.FetchTo(context.Background(), fetchDir, deployment.SourceWorkspace(), deployment.SourceGitSourceID(), deployment.Commit); err != nil {
+	if err := store.FetchTo(context.Background(), fetchDir, deployment.Deployment.SourceWorkspace(), deployment.Deployment.SourceGitSourceID(), deployment.Deployment.Commit); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(fetchDir, "windforce.json")); err != nil {

@@ -150,12 +150,12 @@ func buildControlPlaneOpenAPI(baseURL string, workspaceID string) map[string]any
 		"/api/w/{workspace}/git_sources/sample": map[string]any{
 			"post": map[string]any{
 				"operationId": "createSampleGitSource",
-				"summary":     "Create and sync a managed sample git source",
+				"summary":     "Create, synchronize, and publish a managed sample git source",
 				"parameters":  []any{oapiWorkspaceParam(workspaceID)},
 				"requestBody": oapiJSONBody(oapiSchemaRef("SampleGitSourceRequest"), false),
 				"responses": withErrors(map[string]any{
-					"200": oapiResponse("Existing sample source synced.", oapiSchemaRef("SampleSyncResponse")),
-					"201": oapiResponse("Sample source created and synced.", oapiSchemaRef("SampleSyncResponse")),
+					"200": oapiResponse("Existing sample source synchronized and published.", oapiSchemaRef("SampleSyncResponse")),
+					"201": oapiResponse("Sample source created, synchronized, and published.", oapiSchemaRef("SampleSyncResponse")),
 				}, "400", "401", "403"),
 			},
 		},
@@ -181,22 +181,24 @@ func buildControlPlaneOpenAPI(baseURL string, workspaceID string) map[string]any
 		"/api/w/{workspace}/git_sources/{gitSourceId}/sync": map[string]any{
 			"post": map[string]any{
 				"operationId": "syncGitSource",
-				"summary":     "Sync a registered git source",
+				"summary":     "Create an immutable release candidate",
+				"description": "Resolves the source commit, validates its manifest and schemas, materializes the source bundle, and stores a release candidate. The active release is not changed.",
 				"parameters":  []any{oapiWorkspaceParam(workspaceID), oapiPathParam("gitSourceId", "Numeric git source id returned by register/list.")},
 				"responses": withErrors(map[string]any{
-					"200": oapiResponse("Sync result and discovered actions.", oapiSchemaRef("GitSourceSyncResult")),
-				}, "400", "401", "403", "404"),
+					"200": oapiResponse("Materialized release candidate and discovered actions.", oapiSchemaRef("GitSourceSyncResult")),
+				}, "400", "401", "403", "404", "409"),
 			},
 		},
 		"/api/w/{workspace}/git_sources/{gitSourceId}/deploy": map[string]any{
 			"post": map[string]any{
 				"operationId": "deployGitSource",
-				"summary":     "Deploy the current commit of a registered git source",
+				"summary":     "Publish a synchronized release candidate",
+				"description": "Atomically makes an existing release candidate visible to new jobs and records release history, audit, and Control Plane events. When commit is omitted, the latest candidate for the source is selected.",
 				"parameters":  []any{oapiWorkspaceParam(workspaceID), oapiPathParam("gitSourceId", "Numeric git source id returned by register/list.")},
 				"requestBody": oapiJSONBody(oapiSchemaRef("DeployGitSourceRequest"), true),
 				"responses": withErrors(map[string]any{
-					"200": oapiResponse("Deployment result and discovered actions.", oapiSchemaRef("GitSourceSyncResult")),
-				}, "400", "401", "403", "404", "422"),
+					"200": oapiResponse("Published release and discovered actions.", oapiSchemaRef("GitSourceSyncResult")),
+				}, "400", "401", "403", "404", "409", "422"),
 			},
 		},
 		"/api/w/{workspace}/apps": map[string]any{
@@ -345,7 +347,7 @@ func buildControlPlaneOpenAPI(baseURL string, workspaceID string) map[string]any
 			"get": map[string]any{
 				"operationId": "getActionSchema",
 				"summary":     "Get action JSON Schemas",
-				"description": "Schema discovery endpoint for protocol adapters and UI forms. Returns materialized request, result, and operator-settings JSON Schema documents pinned by sync, while GET /actions/{action} keeps Windforce's canonical base64 catalog encoding.",
+				"description": "Schema discovery endpoint for protocol adapters and UI forms. Returns request, result, and operator-settings JSON Schema documents pinned by the active release, while GET /actions/{action} keeps Windforce's canonical base64 catalog encoding.",
 				"parameters":  []any{oapiWorkspaceParam(workspaceID), oapiPathParam("app", "App key."), oapiPathParam("action", "Action key.")},
 				"responses": withErrors(map[string]any{
 					"200": oapiResponse("Action request, result, and operator-settings JSON Schemas.", oapiSchemaRef("ActionSchema")),
@@ -601,7 +603,7 @@ func buildControlPlaneOpenAPI(baseURL string, workspaceID string) map[string]any
 		"info": map[string]any{
 			"title":       "Windforce Lite Control Plane API",
 			"version":     "current",
-			"description": "Workspace control-plane API for registering git sources, syncing windforce.json apps, inspecting app/action metadata, and discovering materialized action input/output schemas.",
+			"description": "Workspace control-plane API for registering git sources, materializing immutable release candidates, publishing active app releases, inspecting app/action metadata, and discovering action input/output schemas.",
 		},
 		"servers":  []any{map[string]any{"url": baseURL}},
 		"security": []any{map[string]any{"bearerAuth": []any{}}},
@@ -828,6 +830,7 @@ func controlPlaneSchemas() map[string]any {
 			"type": "object",
 			"properties": map[string]any{
 				"confirm": oapiBooleanSchema(),
+				"commit":  oapiStringSchema(),
 				"message": nullableString,
 			},
 			"required": []any{"confirm"},

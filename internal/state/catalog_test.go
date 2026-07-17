@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -147,6 +148,117 @@ func TestPostgresReleaseCatalogContract(t *testing.T) {
 	}
 	if len(got.Deployments) != 1 || len(got.History) != 1 || len(got.Audit) != 1 || len(got.SourceMarkers) != 1 {
 		t.Fatalf("idempotent import counts = deployments:%d history:%d audit:%d markers:%d", len(got.Deployments), len(got.History), len(got.Audit), len(got.SourceMarkers))
+	}
+}
+
+func TestPostgresReleaseCandidateAndSourceOperationLeaseContract(t *testing.T) {
+	dsn := os.Getenv("WINDFORCE_LITE_POSTGRES_TEST_DSN")
+	if dsn == "" {
+		t.Skip("WINDFORCE_LITE_POSTGRES_TEST_DSN is not set")
+	}
+	ctx := context.Background()
+	store := openIsolatedPostgresCatalogStore(t, dsn)
+	first := releaseCatalogDeployment("workspace-a", "source-a", "echo", "commit-a")
+	firstSyncedAt := time.Date(2026, 7, 17, 2, 0, 0, 0, time.UTC)
+	if _, err := store.SaveReleaseCandidate(ctx, first, firstSyncedAt); err != nil {
+		t.Fatal(err)
+	}
+	changed := first
+	changed.Entrypoint = "changed.py"
+	saved, err := store.SaveReleaseCandidate(ctx, changed, firstSyncedAt.Add(time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.Deployment.Entrypoint != first.Entrypoint || !saved.SyncedAt.Equal(firstSyncedAt) {
+		t.Fatalf("immutable candidate = %#v", saved)
+	}
+
+	second := releaseCatalogDeployment("workspace-a", "source-a", "echo", "commit-b")
+	if _, err := store.SaveReleaseCandidate(ctx, second, firstSyncedAt.Add(2*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	latest, err := store.GetLatestReleaseCandidate(ctx, "workspace-a", "source-a")
+	if err != nil || latest.Deployment.Commit != "commit-b" {
+		t.Fatalf("latest candidate = %#v, err=%v", latest, err)
+	}
+
+	acquired, err := store.AcquireSourceOperationLease(ctx, "workspace-a", "source-a", "holder-a", time.Minute)
+	if err != nil || !acquired {
+		t.Fatalf("holder-a acquire = %t, err=%v", acquired, err)
+	}
+	acquired, err = store.AcquireSourceOperationLease(ctx, "workspace-a", "source-a", "holder-b", time.Minute)
+	if err != nil || acquired {
+		t.Fatalf("holder-b competing acquire = %t, err=%v", acquired, err)
+	}
+	renewed, err := store.RenewSourceOperationLease(ctx, "workspace-a", "source-a", "holder-a", time.Minute)
+	if err != nil || !renewed {
+		t.Fatalf("holder-a renew = %t, err=%v", renewed, err)
+	}
+	if err := store.ReleaseSourceOperationLease(ctx, "workspace-a", "source-a", "holder-a"); err != nil {
+		t.Fatal(err)
+	}
+	acquired, err = store.AcquireSourceOperationLease(ctx, "workspace-a", "source-a", "holder-b", time.Minute)
+	if err != nil || !acquired {
+		t.Fatalf("holder-b acquire after release = %t, err=%v", acquired, err)
+	}
+}
+
+func TestPostgresMigrateSerializesConcurrentProcesses(t *testing.T) {
+	dsn := os.Getenv("WINDFORCE_LITE_POSTGRES_TEST_DSN")
+	if dsn == "" {
+		t.Skip("WINDFORCE_LITE_POSTGRES_TEST_DSN is not set")
+	}
+	ctx := context.Background()
+	admin, err := OpenPostgresStore(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	schema := "concurrent_migration_" + strings.ReplaceAll(time.Now().UTC().Format("20060102150405_000000000"), ".", "")
+	if _, err := admin.pool.Exec(ctx, `CREATE SCHEMA `+schema); err != nil {
+		admin.Close()
+		t.Fatal(err)
+	}
+	separator := "?"
+	if strings.Contains(dsn, "?") {
+		separator = "&"
+	}
+	stores := make([]*PostgresStore, 3)
+	for index := range stores {
+		stores[index], err = OpenPostgresStore(ctx, dsn+separator+"search_path="+schema)
+		if err != nil {
+			for _, store := range stores {
+				if store != nil {
+					store.Close()
+				}
+			}
+			_, _ = admin.pool.Exec(ctx, `DROP SCHEMA `+schema+` CASCADE`)
+			admin.Close()
+			t.Fatal(err)
+		}
+	}
+	t.Cleanup(func() {
+		for _, store := range stores {
+			store.Close()
+		}
+		_, _ = admin.pool.Exec(context.Background(), `DROP SCHEMA `+schema+` CASCADE`)
+		admin.Close()
+	})
+
+	errorsCh := make(chan error, len(stores))
+	var group sync.WaitGroup
+	for _, store := range stores {
+		group.Add(1)
+		go func(store *PostgresStore) {
+			defer group.Done()
+			errorsCh <- store.Migrate(ctx)
+		}(store)
+	}
+	group.Wait()
+	close(errorsCh)
+	for err := range errorsCh {
+		if err != nil {
+			t.Fatalf("concurrent migrate: %v", err)
+		}
 	}
 }
 
