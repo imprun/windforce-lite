@@ -87,7 +87,7 @@ export default {
     }
   },
 
-  async seed({ api }) {
+  async seed({ api, exec }) {
     if (external) return;
     await api("/git_sources/sample", {
       method: "POST",
@@ -120,6 +120,7 @@ export default {
         body: { confirm: true, message: "UI guide release" },
       });
       await waitForWebhookDelivery(api, webhook.subscription.id);
+      await advanceSampleRepository(exec);
     }
     const client = await api("/clients", {
       method: "POST",
@@ -143,6 +144,14 @@ export default {
     stopServer();
   },
 };
+
+async function advanceSampleRepository(exec) {
+  const sampleBase = path.join(baseDir, ".data", "sample-repos", "default", "echo");
+  const worktree = path.join(sampleBase, "work");
+  const remote = path.join(sampleBase, "remote.git");
+  await exec("git", ["-C", worktree, "commit", "--allow-empty", "-m", "Prepare next sample release"]);
+  await exec("git", ["-C", worktree, "push", remote, "HEAD:refs/heads/main"]);
+}
 
 async function waitForWebhookDelivery(api, subscriptionID) {
   for (let attempt = 0; attempt < 80; attempt += 1) {

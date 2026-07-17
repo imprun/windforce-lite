@@ -12,6 +12,7 @@ import {
 } from "../components/ui";
 import { StatTile, WindowSelector, windowLabel } from "../components/stats";
 import { PublishReleaseDialog } from "../features/PublishReleaseDialog";
+import { SourceReleaseActions } from "../features/SourceReleaseActions";
 import { RepositorySettings } from "../features/RepositorySettings";
 import { AppInputSettings } from "../features/AppInputSettings";
 import { AuditEventTable } from "../features/AuditEventTable";
@@ -55,8 +56,9 @@ export function AppDetailPage({
 }) {
   const { api } = useApp();
   const { navigate } = useRouter();
-  const [publishing, setPublishing] = useState(false);
+  const [publishingSource, setPublishingSource] = useState<GitSource | null>(null);
   const [releaseHistoryRevision, setReleaseHistoryRevision] = useState(0);
+  const [actionRevision, setActionRevision] = useState(0);
 
   const activeTab: TabKey = (tabs.find((item) => item.key === tab)?.key || "overview") as TabKey;
 
@@ -120,13 +122,26 @@ export function AppDetailPage({
       actions={
         <>
           <ReleaseStateBadge released={Boolean(app)} />
-          <button className="button" type="button" onClick={() => state.reload()}>
+          <button
+            className="button"
+            type="button"
+            onClick={() => {
+              setActionRevision((current) => current + 1);
+              state.reload();
+            }}
+          >
             Refresh
           </button>
           {source ? (
-            <button className="button primary" type="button" id="publishReleaseButton" onClick={() => setPublishing(true)}>
-              Publish Release
-            </button>
+            <SourceReleaseActions
+              key={`${source.id}:${actionRevision}`}
+              source={source}
+              activeCommit={app?.commit_sha}
+              syncButtonID="syncSourceButton"
+              publishButtonID="publishReleaseButton"
+              onSynced={() => state.reload()}
+              onPublish={setPublishingSource}
+            />
           ) : null}
         </>
       }
@@ -144,7 +159,7 @@ export function AppDetailPage({
       </nav>
 
       {activeTab === "overview" ? (
-        <OverviewTab sourceID={sourceID} source={source} app={app} detail={detail} onPublish={() => setPublishing(true)} />
+        <OverviewTab sourceID={sourceID} source={source} app={app} detail={detail} />
       ) : null}
       {activeTab === "docs" ? (
         <DocsTab
@@ -174,17 +189,17 @@ export function AppDetailPage({
         />
       ) : null}
       {activeTab === "audit" ? <AuditTab sourceID={sourceID} appKey={app?.app_key || source?.name || ""} /> : null}
-      {publishing && source ? (
+      {publishingSource ? (
         <PublishReleaseDialog
-          source={source}
+          source={publishingSource}
           appKey={app?.app_key}
           activeCommit={app?.commit_sha}
-          onClose={() => setPublishing(false)}
+          onClose={() => setPublishingSource(null)}
           onPublished={() => {
-            setPublishing(false);
+            setPublishingSource(null);
             setReleaseHistoryRevision((current) => current + 1);
             state.reload();
-            navigate(`/apps/${source.id}/releases`);
+            navigate(`/apps/${sourceID}/releases`);
           }}
         />
       ) : null}
@@ -197,13 +212,11 @@ function OverviewTab({
   source,
   app,
   detail,
-  onPublish,
 }: {
   sourceID: number;
   source: GitSource | null;
   app: AppSummary | null;
   detail: AppDetail | null;
-  onPublish: () => void;
 }) {
   const { api } = useApp();
   const summary = useAsync(() => api.jobsSummary(), [api]);
@@ -216,9 +229,6 @@ function OverviewTab({
             This repository source is registered but has no worker-visible contract. Sync the source on the Repository
             tab, then publish the synchronized revision to workers.
           </p>
-          <button className="button primary" type="button" onClick={onPublish}>
-            Publish Release
-          </button>
         </EmptyState>
       </Panel>
     );

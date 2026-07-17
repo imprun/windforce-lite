@@ -18,6 +18,7 @@ export default {
     await page.waitForSelector("#appList .tableRow");
     await page.click("#appList .tableRow");
     await page.waitForSelector("#publishReleaseButton");
+    await page.waitForSelector("#publishReleaseButton:not([disabled])");
     await page.click("#publishReleaseButton");
     await page.waitForSelector("#publishReleaseDialog");
     await page.fill("#publishReleaseMessage", "Ship the new echo contract");

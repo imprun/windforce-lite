@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { DefinitionList, Field, Modal, Panel, ProbeNotice } from "../components/ui";
-import { errorMessage, type GitSource, type ProbeResult, type SourceSyncResult } from "../lib/api";
+import { errorMessage, type GitSource, type ProbeResult } from "../lib/api";
 import { useApp } from "../lib/app-context";
 import { gitCredentialSecretValue, type GitAuthMethod } from "../lib/git-credential";
 import { formatTime, shortSHA } from "../lib/format";
@@ -26,8 +26,6 @@ export function RepositorySettings({
   const [action, setAction] = useState<RepositoryAction>(null);
   const [probe, setProbe] = useState<ProbeResult | null>(null);
   const [probing, setProbing] = useState(false);
-  const [syncing, setSyncing] = useState(false);
-  const [syncResult, setSyncResult] = useState<SourceSyncResult | null>(null);
   const [error, setError] = useState("");
   const locationLocked = repositoryLocationLocked(source);
 
@@ -48,22 +46,6 @@ export function RepositorySettings({
       setError(errorMessage(cause));
     } finally {
       setProbing(false);
-    }
-  }
-
-  async function syncCurrentRepository() {
-    setSyncing(true);
-    setSyncResult(null);
-    setError("");
-    try {
-      const result = await api.syncGitSource(source.id);
-      setSyncResult(result);
-      notify("ok", `Synchronized ${result.app} at ${shortSHA(result.commit, 12)}.`);
-      onChanged();
-    } catch (cause) {
-      setError(errorMessage(cause));
-    } finally {
-      setSyncing(false);
     }
   }
 
@@ -93,14 +75,9 @@ export function RepositorySettings({
         title="Repository settings"
         subtitle="Release source and access state. Protected values require an explicit change action."
         actions={
-          <>
-            <button className="button" type="button" disabled={probing || syncing} onClick={probeCurrentRepository}>
-              {probing ? "Probing…" : "Probe repository"}
-            </button>
-            <button className="button primary" type="button" disabled={probing || syncing} onClick={syncCurrentRepository}>
-              {syncing ? "Synchronizing…" : "Sync source"}
-            </button>
-          </>
+          <button className="button" type="button" disabled={probing} onClick={probeCurrentRepository}>
+            {probing ? "Probing…" : "Probe repository"}
+          </button>
         }
       >
         <DefinitionList
@@ -116,11 +93,6 @@ export function RepositorySettings({
           ]}
         />
 
-        {syncResult ? (
-          <div className="inlineNotice success">
-            Source snapshot <code>{shortSHA(syncResult.commit, 12)}</code> is ready for deployment. Runtime dependencies are prepared only when the release is published.
-          </div>
-        ) : null}
         {probe ? <ProbeNotice probe={probe} branch={source.branch || "main"} /> : null}
         {error ? <div className="inlineNotice error">{error}</div> : null}
 

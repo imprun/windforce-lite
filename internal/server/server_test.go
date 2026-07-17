@@ -3423,6 +3423,21 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 	if resyncBody.Commit == "" || resyncBody.Commit == syncBody.Commit {
 		t.Fatalf("resync commit = %q, initial = %q", resyncBody.Commit, syncBody.Commit)
 	}
+	resyncedSourcesResp, err := http.Get(server.URL + "/api/w/ws-a/git_sources")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resyncedSourcesResp.Body.Close()
+	var resyncedSources []struct {
+		LastSyncedCommit *string `json:"last_synced_commit"`
+	}
+	if err := json.NewDecoder(resyncedSourcesResp.Body).Decode(&resyncedSources); err != nil {
+		t.Fatal(err)
+	}
+	if len(resyncedSources) != 1 || resyncedSources[0].LastSyncedCommit == nil ||
+		*resyncedSources[0].LastSyncedCommit != resyncBody.Commit {
+		t.Fatalf("resynced sources = %#v, want latest synchronized commit %q", resyncedSources, resyncBody.Commit)
+	}
 	pinnedResp, err := http.Get(server.URL + "/api/w/ws-a/jobs/" + runBody.JobID)
 	if err != nil {
 		t.Fatal(err)

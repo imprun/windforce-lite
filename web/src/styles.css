@@ -366,6 +366,29 @@ p {
   font-size: 13px;
 }
 
+.button svg {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+}
+
+.releaseActionGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.spin {
+  animation: control-spin 0.9s linear infinite;
+}
+
+@keyframes control-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 input,
 select,
 textarea {

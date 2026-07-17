@@ -3,6 +3,7 @@ import { Layout } from "../components/Layout";
 import { EmptyState, ErrorNotice, Loading, ReleaseStateBadge } from "../components/ui";
 import { PublishReleaseDialog } from "../features/PublishReleaseDialog";
 import { RegisterAppDialog } from "../features/RegisterAppDialog";
+import { SourceReleaseActions } from "../features/SourceReleaseActions";
 import type { AppSummary, GitSource } from "../lib/api";
 import { useApp, useAsync } from "../lib/app-context";
 import { formatRelative, shortSHA } from "../lib/format";
@@ -21,6 +22,7 @@ export function AppsPage() {
   const [search, setSearch] = useState("");
   const [registering, setRegistering] = useState(false);
   const [publishing, setPublishing] = useState<GitSource | null>(null);
+  const [actionRevision, setActionRevision] = useState(0);
 
   const state = useAsync(
     async () => {
@@ -63,7 +65,14 @@ export function AppsPage() {
             onChange={(event) => setSearch(event.target.value)}
             aria-label="Filter apps"
           />
-          <button className="button" type="button" onClick={() => state.reload()}>
+          <button
+            className="button"
+            type="button"
+            onClick={() => {
+              setActionRevision((current) => current + 1);
+              state.reload();
+            }}
+          >
             Refresh
           </button>
           <button className="button primary" type="button" id="registerAppButton" onClick={() => setRegistering(true)}>
@@ -151,13 +160,14 @@ export function AppsPage() {
                       <td>{app ? <span className="mono">{app.effective_route_tag}</span> : "—"}</td>
                       <td className="rowActions" onClick={(event) => event.stopPropagation()}>
                         {source ? (
-                          <button
-                            className="button small primary"
-                            type="button"
-                            onClick={() => setPublishing(source)}
-                          >
-                            Publish Release
-                          </button>
+                          <SourceReleaseActions
+                            key={`${source.id}:${actionRevision}`}
+                            compact
+                            source={source}
+                            activeCommit={app?.commit_sha}
+                            onSynced={() => state.reload()}
+                            onPublish={setPublishing}
+                          />
                         ) : null}
                       </td>
                     </tr>

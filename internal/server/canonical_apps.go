@@ -337,26 +337,6 @@ func (h *Handler) loadGitSourceSnapshot(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return gitsourcepkg.Snapshot{}, false
 	}
-	if markerReader, ok := h.catalog.(interface {
-		ListSourceReleaseMarkers(context.Context) (map[string]catalogpkg.SourceReleaseMarker, error)
-	}); ok {
-		markers, err := markerReader.ListSourceReleaseMarkers(r.Context())
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
-			return gitsourcepkg.Snapshot{}, false
-		}
-		for key, source := range snapshot.Sources {
-			marker, exists := markers[catalogpkg.SourceReleaseKey(source.Workspace, source.ID)]
-			if !exists {
-				continue
-			}
-			commit := marker.Commit
-			releasedAt := marker.ReleasedAt
-			source.LastSyncedCommit = &commit
-			source.LastSyncedAt = &releasedAt
-			snapshot.Sources[key] = source
-		}
-	}
 	return snapshot, true
 }
 

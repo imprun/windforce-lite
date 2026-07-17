@@ -43,9 +43,9 @@ Sync source fetches the tracked branch, validates the source contract, and store
 
 ![Synchronize source](../assets/ui/sync-source.png)
 
-1. Open an app and switch to the Repository tab.
+1. Open an app and find Sync source next to Publish Release.
 2. Click Sync source.
-3. Confirm that Latest synchronized source shows the fetched commit.
+3. Confirm that Sync source changes to Source current and Publish Release becomes available when the commit changed.
 
 ## Publish a release
 
