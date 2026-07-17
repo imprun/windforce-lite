@@ -52,6 +52,7 @@ export function WebhookOverview({ subscription, apps, onUpdated, onDeleted }: Pr
           tag: "",
           timeout_s: 0,
           script_lang: "",
+          bundle_status: "missing",
           updated_at: subscription.updated_at,
           effective_route_tag: "",
           actions_count: 0,

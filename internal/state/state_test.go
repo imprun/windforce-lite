@@ -47,6 +47,7 @@ func TestActionJobUsesCompactExecutionPin(t *testing.T) {
 		Commit:               "commit-a",
 		DeploymentID:         &deploymentID,
 		BundleDigest:         "sha256:bundle-a",
+		BundleURI:            "execution-bundle://sha256/bundle-a",
 		ObjectURI:            "bundle://ws-a/source-a/commit-a",
 		Actions: map[string]contract.Action{
 			"selected": {
@@ -86,6 +87,7 @@ func TestActionJobUsesCompactExecutionPin(t *testing.T) {
 	pinned := job.Payload.PinnedDeployment()
 	if pinned.Commit != deployment.Commit || pinned.Entrypoint != deployment.Entrypoint || pinned.ScriptLang != deployment.ScriptLang ||
 		pinned.MaxConcurrent == nil || *pinned.MaxConcurrent != maxConcurrent || pinned.DeploymentID == nil || *pinned.DeploymentID != deploymentID ||
+		pinned.BundleDigest != deployment.BundleDigest || pinned.BundleURI != deployment.BundleURI || pinned.ObjectURI != deployment.ObjectURI ||
 		len(pinned.Actions) != 1 || pinned.Actions["selected"].Action != "selected" {
 		t.Fatalf("reconstructed deployment = %#v", pinned)
 	}

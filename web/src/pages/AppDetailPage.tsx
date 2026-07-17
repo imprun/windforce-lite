@@ -257,6 +257,12 @@ function OverviewTab({
               ],
               ["Entrypoint", <span className="mono">{app.entrypoint}</span>],
               ["Script language", app.script_lang],
+              [
+                "Execution bundle",
+                app.bundle_status === "ready" && app.bundle_digest
+                  ? <span><strong>Ready</strong> · <span className="mono">{shortSHA(app.bundle_digest.replace(/^sha256:/, ""), 12)}</span></span>
+                  : "Missing — sync and publish a new release",
+              ],
               ["Route tag", <span className="mono">{routeTag}</span>],
               [
                 "Execution",
@@ -273,6 +279,7 @@ function OverviewTab({
           className="readinessFacts"
           items={[
             ["Registered", source ? formatTime(source.created_at) : "repository source removed"],
+            ["Worker artifact", app.bundle_status === "ready" ? "Ready" : "Not ready"],
             [
               "Last release",
               source?.last_synced_at

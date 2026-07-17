@@ -12,6 +12,7 @@ import (
 
 	"github.com/imprun/windforce-core/internal/bundle"
 	"github.com/imprun/windforce-core/internal/contract"
+	"github.com/imprun/windforce-core/internal/executionbundle"
 	"github.com/imprun/windforce-core/internal/executor"
 	"github.com/imprun/windforce-core/internal/runner"
 	"github.com/imprun/windforce-core/internal/token"
@@ -19,6 +20,7 @@ import (
 
 type Runner struct {
 	Store          bundle.Store
+	ArtifactStore  executionbundle.Store
 	CacheRoot      string
 	BaseURL        string
 	JobTokenSecret string
@@ -94,9 +96,6 @@ func (r *Runner) Prepare(ctx context.Context, deployment contract.Deployment) (s
 }
 
 func (r *Runner) Run(ctx context.Context, req RunRequest) (contract.JobResult, error) {
-	if r.Store == nil {
-		return contract.JobResult{}, errors.New("bundle store is required")
-	}
 	if req.Deployment.App == "" {
 		return contract.JobResult{}, errors.New("deployment app is required")
 	}
@@ -113,7 +112,7 @@ func (r *Runner) Run(ctx context.Context, req RunRequest) (contract.JobResult, e
 	}
 
 	scriptLang := firstNonEmpty(req.Deployment.ScriptLang, "typescript")
-	sourceDir, err := r.Prepare(ctx, req.Deployment)
+	sourceDir, err := r.openExecutionBundle(ctx, req.Deployment)
 	if err != nil {
 		return contract.JobResult{}, err
 	}

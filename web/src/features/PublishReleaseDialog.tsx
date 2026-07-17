@@ -28,7 +28,7 @@ export function PublishReleaseDialog({
     try {
       const result = await api.syncGitSource(source.id);
       setCandidate(result);
-      notify("ok", `Synchronized ${result.app} at ${shortSHA(result.commit, 12)}.`);
+      notify("ok", `Prepared ${result.app} at ${shortSHA(result.commit, 12)} for release.`);
     } catch (cause) {
       setCandidate(null);
       setError(errorMessage(cause));
@@ -58,7 +58,7 @@ export function PublishReleaseDialog({
     <Modal
       id="publishReleaseDialog"
       title={`Publish Release — ${appKey || source.name}`}
-      subtitle="Synchronize and validate a commit, then publish that exact candidate to workers."
+      subtitle="Prepare an immutable execution bundle, then publish that exact candidate to workers."
       onClose={onClose}
     >
       <DefinitionList
@@ -73,11 +73,22 @@ export function PublishReleaseDialog({
       />
       {candidate ? (
         <div className="inlineNotice success">
-          Candidate ready: <strong>{candidate.app}</strong> at <code>{shortSHA(candidate.commit, 12)}</code> with {candidate.actions.length} action(s).
-          Publishing will use this exact commit.
+          <strong>Execution bundle ready</strong>
+          <DefinitionList
+            items={[
+              ["App", candidate.app],
+              ["Commit", <code>{shortSHA(candidate.commit, 12)}</code>],
+              ["Runtime", candidate.runtime],
+              ["Bundle", <code>{shortBundleDigest(candidate.bundle_digest)}</code>],
+              ["Validated", candidate.validation_checks.map(validationCheckLabel).join(" · ")],
+              ["Actions", `${candidate.actions.length}`],
+            ]}
+          />
         </div>
       ) : (
-        <div className="inlineNotice">Synchronize the repository to create a validated release candidate. No active release changes during this step.</div>
+        <div className="inlineNotice">
+          Sync pins the repository commit, resolves dependencies, validates the entrypoint, and stores the worker-ready bundle. The active release does not change.
+        </div>
       )}
       {!settings.actor ? (
         <div className="inlineNotice error">
@@ -100,13 +111,13 @@ export function PublishReleaseDialog({
             Cancel
           </button>
           <button className="button" type="button" onClick={handleSync} disabled={busy}>
-            {operation === "sync" ? "Synchronizing…" : candidate ? "Sync again" : "Sync source"}
+            {operation === "sync" ? "Preparing…" : candidate ? "Prepare again" : "Sync & validate"}
           </button>
           <button
             className="button primary"
             type="button"
             onClick={handlePublish}
-            disabled={busy || !settings.actor || !candidate}
+            disabled={busy || !settings.actor || !candidate || candidate.bundle_status !== "ready"}
           >
             {operation === "publish" ? "Publishing…" : "Publish candidate"}
           </button>
@@ -114,4 +125,13 @@ export function PublishReleaseDialog({
       </footer>
     </Modal>
   );
+}
+
+function shortBundleDigest(digest: string): string {
+  const value = digest.includes(":") ? digest.split(":", 2)[1] : digest;
+  return value ? value.slice(0, 12) : "—";
+}
+
+function validationCheckLabel(check: string): string {
+  return check.replaceAll("_", " ");
 }

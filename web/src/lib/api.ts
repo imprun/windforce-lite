@@ -106,6 +106,11 @@ export type SyncResult = {
   deployment_id?: string;
   created_by?: string;
   message?: string;
+  bundle_status: "ready";
+  bundle_digest: string;
+  bundle_uri?: string;
+  runtime: string;
+  validation_checks: string[];
 };
 
 export type AppSummary = {
@@ -119,6 +124,9 @@ export type AppSummary = {
   tag_override?: string;
   timeout_s: number;
   script_lang: string;
+  bundle_status: "ready" | "missing";
+  bundle_digest?: string;
+  bundle_uri?: string;
   required_capabilities?: string[];
   max_concurrent?: number | null;
   updated_at: string;

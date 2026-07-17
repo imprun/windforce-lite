@@ -16,6 +16,7 @@ import (
 	"github.com/imprun/windforce-core/internal/bundle"
 	"github.com/imprun/windforce-core/internal/catalog"
 	"github.com/imprun/windforce-core/internal/contract"
+	"github.com/imprun/windforce-core/internal/executionbundle"
 	"github.com/imprun/windforce-core/internal/gitsource"
 	"github.com/imprun/windforce-core/internal/runner"
 	"github.com/imprun/windforce-core/internal/runtime"
@@ -79,7 +80,7 @@ func runServer(args []string, mode string) int {
 	secretKeyEnv := flags.String("secret-key-env", "SECRET_KEY", "environment variable that contains the instance secret used for secret variables")
 	secretKeyPreviousEnv := flags.String("secret-key-previous-env", "SECRET_KEY_PREVIOUS", "environment variable that contains the previous instance secret during rotation")
 	baseURL := flags.String("base-url", "", "public API base URL injected into job ctx helpers")
-	storeDir := flags.String("store", defaultStoreDir(), "bundle store directory")
+	storeDir := flags.String("store", defaultStoreDir(), "source snapshot and execution bundle store directory")
 	catalogPath := flags.String("catalog", defaultCatalogPath(), "catalog JSON import path")
 	gitSourcesPath := flags.String("git-sources", defaultGitSourcesPath(), "registered git sources JSON path")
 	cacheRoot := flags.String("cache", defaultCacheDir(), "runtime cache directory")
@@ -131,8 +132,10 @@ func runServer(args []string, mode string) int {
 		runtimeBaseURL = localBaseURL(*addr)
 	}
 	bundleStore := bundle.NewLocalStore(*storeDir)
+	executionBundleStore := executionbundle.NewLocalStore(executionBundleStoreRoot(*storeDir))
 	runtimeRunner := runtime.Runner{
 		Store:          bundleStore,
+		ArtifactStore:  executionBundleStore,
 		CacheRoot:      *cacheRoot,
 		BaseURL:        runtimeBaseURL,
 		JobTokenSecret: jobTokenSecret,
@@ -157,7 +160,7 @@ func runServer(args []string, mode string) int {
 		Store:              stateStore,
 		Catalog:            releaseCatalog,
 		Syncer:             &syncer.Syncer{Store: bundleStore},
-		CandidatePreparer:  &runtimeRunner,
+		ExecutionBundles:   &runtimeRunner,
 		GitSources:         gitSources,
 		EnableControlAPI:   mode == "control-plane" || combinedMode,
 		EnableExecutionAPI: mode == "execution-api" || combinedMode,
@@ -232,7 +235,7 @@ func runWorker(args []string) int {
 	statePath := flags.String("state", defaultStatePath(), "local runtime state JSON path")
 	databaseURL := flags.String("database-url", "", "PostgreSQL database URL for --state-backend postgres")
 	migrate := flags.Bool("migrate", false, "run state backend schema migration before starting")
-	storeDir := flags.String("store", defaultStoreDir(), "bundle store directory")
+	storeDir := flags.String("store", defaultStoreDir(), "execution bundle store directory")
 	cacheRoot := flags.String("cache", defaultCacheDir(), "runtime cache directory")
 	bunPath := flags.String("bun-path", "", "bun executable path")
 	pythonPath := flags.String("python-path", "", "python executable path")
@@ -270,7 +273,7 @@ func runWorker(args []string) int {
 	processor := worker.Processor{
 		Store: stateStore,
 		Runner: runtime.Runner{
-			Store:          bundle.NewLocalStore(*storeDir),
+			ArtifactStore:  executionbundle.NewLocalStore(executionBundleStoreRoot(*storeDir)),
 			CacheRoot:      *cacheRoot,
 			BaseURL:        strings.TrimSpace(*baseURL),
 			JobTokenSecret: jobTokenSecret,
@@ -559,6 +562,10 @@ func writeJSON(file *os.File, value any) error {
 
 func defaultStoreDir() string {
 	return filepath.Join(".windforce-core", "store")
+}
+
+func executionBundleStoreRoot(storeDir string) string {
+	return filepath.Join(storeDir, "artifacts")
 }
 
 func defaultCatalogPath() string {
