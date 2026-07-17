@@ -527,3 +527,7 @@ The local backend stores run, job, event, and HITL state in a JSON file for
 development and smoke checks. The PostgreSQL backend stores production run, job,
 event, and HITL state. Redis is optional for notification/cache only. See
 [ADR 0002](docs/adr/0002-postgres-runtime-and-hitl.md).
+
+## License
+
+windforce-lite is licensed under the [Apache License, Version 2.0](LICENSE).
