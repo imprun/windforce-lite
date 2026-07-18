@@ -460,6 +460,7 @@ var jobHostEnvAllow = map[string]bool{
 	"TMPDIR": true, "TMP": true, "TEMP": true,
 	"SystemRoot": true, "COMSPEC": true, "PATHEXT": true,
 	"PLAYWRIGHT_BROWSERS_PATH": true, "PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD": true,
+	"LOG_LEVEL": true, "PYTHON_LOG_LEVEL": true, "PYTHONUNBUFFERED": true, "PYTHONIOENCODING": true,
 }
 
 var prepareHostEnvAllow = map[string]bool{
