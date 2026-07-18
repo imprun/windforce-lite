@@ -28,6 +28,7 @@ RUN useradd --system --uid 10001 --create-home windforce \
     && chown -R windforce:windforce /data
 
 COPY --from=build /out/windforce-core /usr/local/bin/windforce-core
+COPY --from=web-build /usr/local/bin/bun /usr/local/bin/bun
 
 USER windforce
 WORKDIR /data
