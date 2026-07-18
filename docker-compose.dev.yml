@@ -57,6 +57,10 @@ services:
       GOCACHE: /home/windforce/.cache/go-build
       GOMODCACHE: /go/pkg/mod
       WINDFORCE_LITE_DATABASE_URL: ${WINDFORCE_LITE_DATABASE_URL:-postgres://postgres@postgres:5432/windforce_core?sslmode=disable}
+      LOG_LEVEL: ${WINDFORCE_LITE_DEV_SCRIPT_LOG_LEVEL:-DEBUG}
+      PYTHON_LOG_LEVEL: ${WINDFORCE_LITE_DEV_SCRIPT_LOG_LEVEL:-DEBUG}
+      PYTHONUNBUFFERED: "1"
+      PYTHONIOENCODING: utf-8
     volumes:
       - .:/src
       - windforce-data:/data

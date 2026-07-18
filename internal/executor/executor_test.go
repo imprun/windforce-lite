@@ -140,6 +140,47 @@ async def main(ctx):
 	}
 }
 
+func TestRunPythonConfiguresLoggingFromEnv(t *testing.T) {
+	requirePython(t)
+	entrypoint := filepath.Join(t.TempDir(), "main.py")
+	if err := os.WriteFile(entrypoint, []byte(`
+import logging
+
+
+async def main(ctx):
+    logging.getLogger("scraping.sdk").debug("debug sdk log %s", ctx.action)
+    logging.getLogger("gov24.plus").info("info fcode log %s", ctx.app)
+    return {"ok": True}
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := Run(context.Background(), RunParams{
+		ScriptLang:        "python",
+		BaseDir:           t.TempDir(),
+		EntrypointAbsPath: entrypoint,
+		Input:             []byte(`{}`),
+		Env: []string{
+			"WF_WORKSPACE=ws-a",
+			"WF_APP=MLMWGM",
+			"WF_ACTION=50",
+			"LOG_LEVEL=DEBUG",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if !res.Success() {
+		t.Fatalf("success = false, exit=%d, result=%s, logs=%s", res.ExitCode, res.Result, res.Logs)
+	}
+	if !strings.Contains(res.Logs, "DEBUG scraping.sdk debug sdk log 50") {
+		t.Fatalf("debug logs missing: %q", res.Logs)
+	}
+	if !strings.Contains(res.Logs, "INFO gov24.plus info fcode log MLMWGM") {
+		t.Fatalf("info logs missing: %q", res.Logs)
+	}
+}
+
 func TestRunPythonLoadsSrcLayoutFromPreparedSourceRoot(t *testing.T) {
 	requirePython(t)
 	sourceRoot := t.TempDir()

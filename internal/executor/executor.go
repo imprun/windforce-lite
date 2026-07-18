@@ -366,6 +366,7 @@ func wrapperPy(entrypointAbsPath string) string {
 	return fmt.Sprintf(`import asyncio
 import importlib.util
 import json
+import logging
 import os
 import sys
 import traceback
@@ -396,6 +397,17 @@ if _vendor:
 for _path in reversed([p for p in _source_paths if p]):
     if _path not in sys.path:
         sys.path.insert(0, _path)
+
+
+_log_level_name = (_env("PYTHON_LOG_LEVEL") or _env("LOG_LEVEL") or "").upper()
+if _log_level_name:
+    _log_level = getattr(logging, _log_level_name, logging.DEBUG)
+    logging.basicConfig(
+        level=_log_level,
+        stream=sys.stderr,
+        format="%%(asctime)s %%(levelname)s %%(name)s %%(message)s",
+        force=True,
+    )
 
 try:
     with open("input.json", "r", encoding="utf-8") as _f:
