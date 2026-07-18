@@ -2500,6 +2500,40 @@ textarea {
   background: var(--surface-2);
 }
 
+.notificationCenterHandoff {
+  display: grid;
+  gap: 12px;
+  margin: 14px 0;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--surface-2);
+}
+
+.notificationCenterHandoff strong,
+.notificationCenterHandoff code {
+  display: block;
+}
+
+.notificationCenterHandoff p {
+  margin: 4px 0 8px;
+  color: var(--text-muted);
+}
+
+.notificationCenterHandoff pre {
+  overflow-x: auto;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-small);
+  background: var(--surface-1);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.notificationCenterHandoff .button {
+  width: fit-content;
+}
+
 .webhookSecretFooter {
   justify-content: space-between;
 }

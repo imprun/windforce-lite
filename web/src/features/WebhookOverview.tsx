@@ -266,7 +266,7 @@ export function WebhookOverview({ subscription, apps, onUpdated, onDeleted }: Pr
           </div>
         </Modal>
       ) : null}
-      {secret ? <WebhookSecretDialog secret={secret} onClose={() => setSecret("")} /> : null}
+      {secret ? <WebhookSecretDialog secret={secret} endpoint={endpoint} onClose={() => setSecret("")} /> : null}
     </div>
   );
 }

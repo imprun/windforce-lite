@@ -159,7 +159,7 @@ export function WebhookCreatePage() {
         </div>
       </form>
 
-      {created?.signing_secret ? <WebhookSecretDialog secret={created.signing_secret} onClose={finish} /> : null}
+      {created?.signing_secret ? <WebhookSecretDialog secret={created.signing_secret} endpoint={endpoint} onClose={finish} /> : null}
     </Layout>
   );
 }
