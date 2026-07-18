@@ -1,0 +1,46 @@
+resources:
+  - apiVersion: windforce-lite.imprun.dev/v1
+    kind: GitCredential
+    metadata:
+      name: example-app-git
+    spec:
+      method: pat
+      storageRef: git/example-app/credential
+      token:
+        valueFrom:
+          env: EXAMPLE_APP_GIT_TOKEN
+
+  - apiVersion: windforce-lite.imprun.dev/v1
+    kind: AppSource
+    metadata:
+      name: example-app
+    spec:
+      repository:
+        url: https://example.test/group/example-app.git
+        branch: main
+        subpath: ""
+        authRef: example-app-git
+
+  - apiVersion: windforce-lite.imprun.dev/v1
+    kind: Client
+    metadata:
+      name: Example Client
+    spec:
+      externalKey:
+        valueFrom:
+          env: EXAMPLE_CLIENT_KEY
+
+  - apiVersion: windforce-lite.imprun.dev/v1
+    kind: InputSettings
+    metadata:
+      name: example-action-settings
+    spec:
+      appKey: EXAMPLE
+      actionKey: "1000"
+      clientRef: Example Client
+      lockedKeys:
+        - EXAMPLE_PROXY_URL
+      config:
+        EXAMPLE_PROXY_URL:
+          valueFrom:
+            env: EXAMPLE_PROXY_URL

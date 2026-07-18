@@ -85,6 +85,11 @@ the same build inside the image so the embedded assets are always rebuilt from
 source. The API process serves the UI at `/ui/` with an SPA fallback for
 client-side routes. See [ADR 0004](docs/adr/0004-web-ui-rewrite.md).
 
+Repository sources, external client identifiers, variables, and input settings
+can also be bootstrapped from JSON/YAML provisioning files. See
+[Provisioning](docs/concepts/provisioning.md) and
+[examples/provisioning/app.yaml](examples/provisioning/app.yaml).
+
 ## Docker Compose profiles
 
 The Compose file keeps PostgreSQL, the control plane, the execution API, and the

@@ -102,7 +102,7 @@ func TestCanonicalClientLifecycle(t *testing.T) {
 
 func TestControlPlaneOpenAPIIncludesClients(t *testing.T) {
 	schemas := controlPlaneSchemas()
-	for _, name := range []string{"Client", "CreateClientRequest", "UpdateClientRequest", "ClientAudit", "AuditChanges", "AuditEvent", "InputConfig", "SetInputConfigRequest", "InputConfigAudit"} {
+	for _, name := range []string{"Client", "CreateClientRequest", "UpdateClientRequest", "ClientAudit", "AuditChanges", "AuditEvent", "InputConfig", "SetInputConfigRequest", "InputConfigAudit", "ProvisioningResource", "ProvisioningImportRequest", "ProvisioningResult"} {
 		if schemas[name] == nil {
 			t.Fatalf("missing schema %s", name)
 		}
@@ -110,6 +110,8 @@ func TestControlPlaneOpenAPIIncludesClients(t *testing.T) {
 	paths := buildControlPlaneOpenAPI("http://example.test", "default")["paths"].(map[string]any)
 	for _, path := range []string{
 		"/api/w/{workspace}/audit-events",
+		"/api/w/{workspace}/provisioning/import",
+		"/api/w/{workspace}/provisioning/export",
 		"/api/w/{workspace}/clients",
 		"/api/w/{workspace}/clients/{client_id}",
 		"/api/w/{workspace}/clients/{client_id}/audit",

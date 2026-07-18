@@ -255,6 +255,14 @@ func (h *Handler) handleAPI(w http.ResponseWriter, r *http.Request) bool {
 		h.handleCanonicalControlPlaneOpenAPI(w, r, parts[2])
 		return true
 	}
+	if len(parts) == 5 && parts[0] == "api" && parts[1] == "w" && parts[3] == "provisioning" && parts[4] == "import" && r.Method == http.MethodPost {
+		h.handleCanonicalProvisioningImport(w, r, parts[2])
+		return true
+	}
+	if len(parts) == 5 && parts[0] == "api" && parts[1] == "w" && parts[3] == "provisioning" && parts[4] == "export" && r.Method == http.MethodGet {
+		h.handleCanonicalProvisioningExport(w, r, parts[2])
+		return true
+	}
 	if len(parts) == 4 && parts[0] == "api" && parts[1] == "w" && parts[3] == "clients" && r.Method == http.MethodGet {
 		h.handleCanonicalClients(w, r, parts[2])
 		return true

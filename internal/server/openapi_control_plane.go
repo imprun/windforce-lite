@@ -12,6 +12,34 @@ func buildControlPlaneOpenAPI(baseURL string, workspaceID string) map[string]any
 				},
 			},
 		},
+		"/api/w/{workspace}/provisioning/import": map[string]any{
+			"post": map[string]any{
+				"operationId": "importProvisioningResources",
+				"summary":     "Import provisioning resources",
+				"parameters": []any{
+					oapiWorkspaceParam(workspaceID),
+					oapiQueryParam("dry_run", "Validate resources without writing state.", oapiBooleanSchema(), false),
+				},
+				"requestBody": oapiJSONBody(oapiSchemaRef("ProvisioningImportRequest"), true),
+				"responses": withErrors(map[string]any{
+					"200": oapiResponse("Provisioning import result.", oapiSchemaRef("ProvisioningResult")),
+				}, "400", "401", "403", "422"),
+			},
+		},
+		"/api/w/{workspace}/provisioning/export": map[string]any{
+			"get": map[string]any{
+				"operationId": "exportProvisioningResources",
+				"summary":     "Export provisioning resources",
+				"parameters": []any{
+					oapiWorkspaceParam(workspaceID),
+					oapiQueryParam("format", "Response format.", map[string]any{"type": "string", "enum": []any{"json", "yaml"}}, false),
+					oapiQueryParam("include_values", "Include non-secret values where export permits it.", oapiBooleanSchema(), false),
+				},
+				"responses": withErrors(map[string]any{
+					"200": oapiResponse("Provisioning resources.", oapiSchemaRef("ProvisioningExportResponse")),
+				}, "401", "403"),
+			},
+		},
 		"/api/w/{workspace}/audit-events": map[string]any{
 			"get": map[string]any{
 				"operationId": "listAuditEvents",
@@ -693,6 +721,98 @@ func controlPlaneSchemas() map[string]any {
 			"description": "windforce's uniform error envelope.",
 			"properties":  map[string]any{"error": oapiStringSchema()},
 			"required":    []any{"error"},
+		},
+		"ProvisioningValueSource": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"value":    map[string]any{"description": "Inline value. Avoid using this for secrets.", "nullable": true},
+				"redacted": oapiBooleanSchema(),
+				"valueFrom": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"env":  oapiStringSchema(),
+						"file": oapiStringSchema(),
+					},
+				},
+			},
+		},
+		"ProvisioningResource": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"apiVersion": oapiStringSchema(),
+				"kind":       map[string]any{"type": "string", "enum": []any{"GitCredential", "AppSource", "Client", "Variable", "InputSettings"}},
+				"metadata": map[string]any{
+					"type":       "object",
+					"properties": map[string]any{"name": oapiStringSchema()},
+					"required":   []any{"name"},
+				},
+				"spec": map[string]any{
+					"type":                 "object",
+					"additionalProperties": true,
+					"properties": map[string]any{
+						"name":        oapiStringSchema(),
+						"appKey":      oapiStringSchema(),
+						"actionKey":   oapiStringSchema(),
+						"clientRef":   oapiStringSchema(),
+						"externalKey": oapiSchemaRef("ProvisioningValueSource"),
+						"method":      oapiStringEnumSchema("none", "pat", "basic"),
+						"storageRef":  oapiStringSchema(),
+						"username":    oapiSchemaRef("ProvisioningValueSource"),
+						"password":    oapiSchemaRef("ProvisioningValueSource"),
+						"token":       oapiSchemaRef("ProvisioningValueSource"),
+						"path":        oapiStringSchema(),
+						"appScope":    oapiStringSchema(),
+						"value":       oapiSchemaRef("ProvisioningValueSource"),
+						"secret":      oapiBooleanSchema(),
+						"description": oapiStringSchema(),
+						"repository": map[string]any{
+							"type": "object",
+							"properties": map[string]any{
+								"url":           oapiStringSchema(),
+								"branch":        oapiStringSchema(),
+								"subpath":       oapiStringSchema(),
+								"authRef":       oapiStringSchema(),
+								"credentialRef": oapiStringSchema(),
+							},
+						},
+						"config":     map[string]any{"type": "object", "additionalProperties": true},
+						"lockedKeys": stringArray,
+					},
+				},
+			},
+			"required": []any{"kind", "metadata", "spec"},
+		},
+		"ProvisioningImportRequest": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"resources": map[string]any{"type": "array", "items": oapiSchemaRef("ProvisioningResource")},
+				"dry_run":   oapiBooleanSchema(),
+			},
+			"required": []any{"resources"},
+		},
+		"ProvisioningAppliedResource": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"kind":   oapiStringSchema(),
+				"name":   oapiStringSchema(),
+				"action": oapiStringSchema(),
+				"detail": oapiStringSchema(),
+			},
+			"required": []any{"kind", "name", "action"},
+		},
+		"ProvisioningResult": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"applied": map[string]any{"type": "array", "items": oapiSchemaRef("ProvisioningAppliedResource")},
+			},
+			"required": []any{"applied"},
+		},
+		"ProvisioningExportResponse": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"resources": map[string]any{"type": "array", "items": oapiSchemaRef("ProvisioningResource")},
+			},
+			"required": []any{"resources"},
 		},
 		"Client": map[string]any{
 			"type": "object",

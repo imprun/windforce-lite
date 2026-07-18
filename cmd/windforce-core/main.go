@@ -17,8 +17,10 @@ import (
 	"github.com/imprun/windforce-core/internal/bundle"
 	"github.com/imprun/windforce-core/internal/catalog"
 	"github.com/imprun/windforce-core/internal/contract"
+	"github.com/imprun/windforce-core/internal/crypto"
 	"github.com/imprun/windforce-core/internal/executionbundle"
 	"github.com/imprun/windforce-core/internal/gitsource"
+	"github.com/imprun/windforce-core/internal/provisioning"
 	"github.com/imprun/windforce-core/internal/remoteworker"
 	"github.com/imprun/windforce-core/internal/runner"
 	"github.com/imprun/windforce-core/internal/runtime"
@@ -87,6 +89,7 @@ func runServer(args []string, mode string) int {
 	storeDir := flags.String("store", defaultStoreDir(), "source snapshot and execution bundle store directory")
 	catalogPath := flags.String("catalog", defaultCatalogPath(), "catalog JSON import path")
 	gitSourcesPath := flags.String("git-sources", defaultGitSourcesPath(), "registered git sources JSON path")
+	provisionDir := flags.String("provision-dir", strings.TrimSpace(os.Getenv("WINDFORCE_LITE_PROVISION_DIR")), "directory containing provisioning JSON/YAML resources to apply before serving")
 	cacheRoot := flags.String("cache", defaultCacheDir(), "runtime cache directory")
 	bunPath := flags.String("bun-path", "", "bun executable path")
 	pythonPath := flags.String("python-path", "", "python executable path")
@@ -142,6 +145,28 @@ func runServer(args []string, mode string) int {
 	secretKey := effectiveSecretKey(rawSecretKey)
 	secretKeyPrevious := tokenFromEnv(*secretKeyPreviousEnv)
 	configureInputCrypto(stateStore, secretKey, secretKeyPrevious)
+	if strings.TrimSpace(*provisionDir) != "" {
+		docs, err := provisioning.LoadDir(strings.TrimSpace(*provisionDir))
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%s provisioning load: %v\n", mode, err)
+			return 1
+		}
+		result, err := (provisioning.Service{
+			Store:      stateStore,
+			GitSources: gitSources,
+			Encrypt: func(ctx context.Context, workspaceID string, value string) (string, error) {
+				return cryptoEncryptSecret(stateStore, secretKey, secretKeyPrevious, workspaceID, value)
+			},
+		}).Apply(context.Background(), docs, provisioning.Options{
+			Workspace: contract.DefaultWorkspace,
+			Actor:     "system:provisioning",
+		})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%s provisioning apply: %v\n", mode, err)
+			return 1
+		}
+		fmt.Fprintf(os.Stderr, "%s provisioning applied %d resource(s) from %s\n", mode, len(result.Applied), strings.TrimSpace(*provisionDir))
+	}
 	runtimeBaseURL := strings.TrimSpace(*baseURL)
 	if runtimeBaseURL == "" && mode == "standalone" {
 		runtimeBaseURL = localBaseURL(*addr)
@@ -558,6 +583,30 @@ func configureInputCrypto(store state.Store, secretKey string, previous string) 
 	}
 }
 
+func cryptoEncryptSecret(store state.Store, secretKey string, previous string, workspaceID string, value string) (string, error) {
+	key := crypto.DeriveWorkspaceKey(secretKey, workspaceID)
+	if keyStore, ok := store.(interface {
+		GetWorkspaceKeyVersioned(context.Context, string) (string, int32, error)
+	}); ok {
+		storedKey, version, err := keyStore.GetWorkspaceKeyVersioned(context.Background(), workspaceID)
+		if err != nil {
+			return "", err
+		}
+		if storedKey != "" {
+			keks := []string{crypto.DeriveKEK(secretKey)}
+			if previous != "" {
+				keks = append(keks, crypto.DeriveKEK(previous))
+			}
+			resolved, err := crypto.ResolveDEK(storedKey, version, keks)
+			if err != nil {
+				return "", err
+			}
+			key = resolved
+		}
+	}
+	return crypto.Encrypt(key, value)
+}
+
 // requireProductionSecrets enforces the fail-closed startup posture:
 // outside explicit dev mode a running instance must have a real admin
 // token (server modes) and a real secret key — never the built-in
@@ -705,10 +754,10 @@ func defaultStatePath() string {
 func printUsage(file *os.File) {
 	fmt.Fprintln(file, "usage:")
 	fmt.Fprintln(file, "  windforce-core version")
-	fmt.Fprintln(file, "  windforce-core control-plane [--addr :8080] [--state-backend local|postgres] [--git-sources <path>]")
+	fmt.Fprintln(file, "  windforce-core control-plane [--addr :8080] [--state-backend local|postgres] [--git-sources <path>] [--provision-dir <path>]")
 	fmt.Fprintln(file, "  windforce-core execution-api [--addr :8080] [--state-backend local|postgres]")
 	fmt.Fprintln(file, "  windforce-core worker [--state-backend local|postgres] [--worker-group default] [--egress-proxy host:port] [--auth-session-url <url>] [--bun-path <path>] [--python-path <path>] [--go-path <path>] [--prepare-timeout 5m] [--once]")
 	fmt.Fprintln(file, "  windforce-core webhook-dispatcher [--state-backend local|postgres] [--database-url <url>] [--once]")
-	fmt.Fprintln(file, "  windforce-core standalone [--addr :8080] [--state-backend local|postgres] [--worker-group default] [--egress-proxy host:port] [--auth-session-url <url>] [--git-sources <path>] [--bun-path <path>] [--python-path <path>] [--go-path <path>] [--prepare-timeout 5m]")
+	fmt.Fprintln(file, "  windforce-core standalone [--addr :8080] [--state-backend local|postgres] [--worker-group default] [--egress-proxy host:port] [--auth-session-url <url>] [--git-sources <path>] [--provision-dir <path>] [--bun-path <path>] [--python-path <path>] [--go-path <path>] [--prepare-timeout 5m]")
 	fmt.Fprintln(file, "  windforce-core run-json [flags] -- <command> [args...]")
 }

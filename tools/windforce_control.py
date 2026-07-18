@@ -126,6 +126,20 @@ def main(argv: list[str] | None = None) -> int:
     control_openapi = sub.add_parser("control-openapi", help="get workspace control-plane OpenAPI")
     control_openapi.set_defaults(func=cmd_control_openapi)
 
+    provision_import = sub.add_parser("provision-import", help="apply provisioning JSON/YAML resources")
+    provision_import.add_argument("--file", required=True, help="JSON/YAML resource file, or '-' for stdin")
+    provision_import.add_argument("--dry-run", action="store_true", help="validate without writing state")
+    provision_import.set_defaults(func=cmd_provision_import)
+
+    provision_export = sub.add_parser("provision-export", help="export provisioning resources")
+    provision_export.add_argument("--format", choices=("json", "yaml"), default="yaml")
+    provision_export.add_argument(
+        "--include-values",
+        action="store_true",
+        help="include non-secret client/input values where the API allows it",
+    )
+    provision_export.set_defaults(func=cmd_provision_export)
+
     webhook_subscriptions = sub.add_parser("webhook-subscriptions", help="list webhook subscriptions")
     webhook_subscriptions.add_argument("--include-deleted", action="store_true")
     webhook_subscriptions.set_defaults(func=cmd_webhook_subscriptions)
@@ -499,6 +513,29 @@ def cmd_control_openapi(args: argparse.Namespace) -> Any:
     return request(args, "GET", f"/api/w/{quote_path(args.workspace)}/openapi.json")
 
 
+def cmd_provision_import(args: argparse.Namespace) -> Any:
+    if args.file == "-":
+        raw = sys.stdin.read()
+    else:
+        with open(args.file, "r", encoding="utf-8") as stream:
+            raw = stream.read()
+    query = query_string({"dry_run": "true" if args.dry_run else ""})
+    return request_raw_body(
+        args,
+        "POST",
+        f"/api/w/{quote_path(args.workspace)}/provisioning/import{query}",
+        raw.encode("utf-8"),
+        content_type="application/yaml" if args.file.endswith((".yaml", ".yml")) else "application/json",
+    )
+
+
+def cmd_provision_export(args: argparse.Namespace) -> Any:
+    query = query_string({"format": args.format, "include_values": "true" if args.include_values else ""})
+    if args.format == "yaml":
+        return request_raw(args, "GET", f"/api/w/{quote_path(args.workspace)}/provisioning/export{query}")
+    return request(args, "GET", f"/api/w/{quote_path(args.workspace)}/provisioning/export{query}")
+
+
 def cmd_webhook_subscriptions(args: argparse.Namespace) -> Any:
     query = query_string({"include_deleted": "true" if args.include_deleted else ""})
     return request(args, "GET", f"/api/w/{quote_path(args.workspace)}/webhooks{query}")
@@ -753,6 +790,32 @@ def request_raw(args: argparse.Namespace, method: str, path: str) -> RawOutput:
     try:
         with urllib.request.urlopen(req, timeout=60) as response:
             return RawOutput(response.read().decode("utf-8", errors="replace"))
+    except urllib.error.HTTPError as exc:
+        payload = decode_response(exc.read())
+        if isinstance(payload, dict):
+            payload.setdefault("status", exc.code)
+            payload.setdefault("url", url)
+        else:
+            payload = {"status": exc.code, "url": url, "error": payload}
+        raise APIError(payload) from exc
+    except urllib.error.URLError as exc:
+        raise APIError({"error": str(exc.reason), "url": url}) from exc
+
+
+def request_raw_body(
+    args: argparse.Namespace,
+    method: str,
+    path: str,
+    data: bytes,
+    content_type: str,
+) -> Any:
+    url = args.api_url.rstrip("/") + path
+    headers = request_headers(args, True)
+    headers["Content-Type"] = content_type
+    req = urllib.request.Request(url, data=data, headers=headers, method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=60) as response:
+            return decode_response(response.read())
     except urllib.error.HTTPError as exc:
         payload = decode_response(exc.read())
         if isinstance(payload, dict):

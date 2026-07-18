@@ -18,6 +18,7 @@
         "pages": [
           "concepts/core-concepts",
           "concepts/release-lifecycle",
+          "concepts/provisioning",
           "architecture"
         ]
       }
