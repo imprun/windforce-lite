@@ -223,15 +223,6 @@ func NormalizeCapabilities(caps []string) ([]string, error) {
 	return normalized, nil
 }
 
-// EffectiveCapabilities resolves the action-level capability override for
-// display surfaces: nil inherits the app set, non-nil replaces it.
-func EffectiveCapabilities(appCaps []string, actionCaps *[]string) []string {
-	if actionCaps != nil {
-		return *actionCaps
-	}
-	return appCaps
-}
-
 // EffectiveRequiredLabels resolves the label set pinned onto a job: the
 // deployment (app-level) labels unioned with the action's contribution.
 // Legacy deployments that only carry requiredCapabilities are honored.

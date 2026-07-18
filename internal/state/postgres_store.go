@@ -1022,6 +1022,7 @@ ON CONFLICT (id) DO UPDATE SET
     tags = EXCLUDED.tags,
     labels = EXCLUDED.labels,
     slots = EXCLUDED.slots,
+    started_at = now(),
     last_heartbeat_at = now()`,
 		record.ID, record.Group, tags, labels, record.Slots)
 	return err
@@ -1044,6 +1045,12 @@ func (s *PostgresStore) DeregisterWorker(ctx context.Context, workerID string) e
 }
 
 func (s *PostgresStore) ListWorkers(ctx context.Context) ([]WorkerRecord, error) {
+	// Crashed workers never deregister — drop their silent records.
+	if _, err := s.pool.Exec(ctx, `
+DELETE FROM worker_registry WHERE last_heartbeat_at < now() - $1::interval`,
+		WorkerRegistryExpiry.String()); err != nil {
+		return nil, err
+	}
 	rows, err := s.pool.Query(ctx, `
 SELECT id, worker_group, tags, labels, slots, started_at, last_heartbeat_at
 FROM worker_registry ORDER BY id`)

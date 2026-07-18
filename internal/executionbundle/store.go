@@ -257,6 +257,20 @@ func parseDigest(digest string) (string, error) {
 	return value, nil
 }
 
+// HashTree computes the bundle digest of a directory tree (names, modes,
+// symlink targets, file contents; the descriptor marker excluded) — the same
+// hash Publish/Verify use, exported so remote fetchers can re-verify.
+func HashTree(ctx context.Context, root string) (string, error) {
+	digest, _, _, err := hashTree(ctx, root)
+	return digest, err
+}
+
+// ValidateSymlink rejects symlinks whose target is absolute or escapes root;
+// path is the link's location inside root.
+func ValidateSymlink(root string, path string, target string) error {
+	return validateSymlink(root, path, target)
+}
+
 func hashTree(ctx context.Context, root string) (string, int, int64, error) {
 	h := sha256.New()
 	fileCount := 0

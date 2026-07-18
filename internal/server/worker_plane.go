@@ -58,10 +58,48 @@ func (h *Handler) workerPlaneAuthorized(r *http.Request) bool {
 	return authorized(r, token)
 }
 
+// workerPlaneMaxBody caps worker plane request bodies (job results and log
+// chunks are the largest payloads; the public API is capped similarly).
+const workerPlaneMaxBody = 10 << 20
+
+// workerPlaneMaxLeaseTTL caps client-supplied lease TTLs so a buggy worker
+// cannot park a claimed job beyond the reaper's reach.
+const workerPlaneMaxLeaseTTL = 15 * time.Minute
+
+// writeStoreError maps typed store errors onto the wire (code field) so
+// remote workers keep the same recovery semantics as local ones — an invalid
+// lease or missing record must not surface as an opaque 500.
+func writeStoreError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, state.ErrInvalidLease):
+		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error(), "code": "invalid_lease"})
+	case errors.Is(err, state.ErrNotFound):
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error(), "code": "not_found"})
+	case errors.Is(err, state.ErrConflict):
+		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error(), "code": "conflict"})
+	default:
+		writeError(w, http.StatusInternalServerError, err.Error())
+	}
+}
+
+func clampLeaseTTL(ms int64) time.Duration {
+	leaseTTL := time.Duration(ms) * time.Millisecond
+	if leaseTTL <= 0 {
+		return 30 * time.Second
+	}
+	if leaseTTL > workerPlaneMaxLeaseTTL {
+		return workerPlaneMaxLeaseTTL
+	}
+	return leaseTTL
+}
+
 func (h *Handler) handleWorkerPlane(w http.ResponseWriter, r *http.Request) {
 	if !h.workerPlaneAuthorized(r) {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
+	}
+	if r.Body != nil {
+		r.Body = http.MaxBytesReader(w, r.Body, workerPlaneMaxBody)
 	}
 	path := strings.TrimPrefix(r.URL.Path, "/worker/v1")
 	parts := strings.Split(strings.Trim(path, "/"), "/")
@@ -122,11 +160,7 @@ func (h *Handler) workerPlaneRegister(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) workerPlaneWorkerHeartbeat(w http.ResponseWriter, r *http.Request, workerID string) {
 	if err := h.store.HeartbeatWorker(r.Context(), workerID); err != nil {
-		if errors.Is(err, state.ErrNotFound) {
-			writeError(w, http.StatusNotFound, err.Error())
-			return
-		}
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeStoreError(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -158,17 +192,14 @@ func (h *Handler) workerPlaneClaim(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "worker_id is required")
 		return
 	}
-	leaseTTL := time.Duration(req.LeaseTTLMs) * time.Millisecond
-	if leaseTTL <= 0 {
-		leaseTTL = 30 * time.Second
-	}
+	leaseTTL := clampLeaseTTL(req.LeaseTTLMs)
 	job, lease, err := h.store.ClaimJobForWorker(r.Context(), req.WorkerID, req.Tags, req.Labels, leaseTTL)
 	if errors.Is(err, state.ErrNoQueuedJob) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeStoreError(w, err)
 		return
 	}
 	workspaceID := contract.NormalizeWorkspace(job.Payload.Workspace)
@@ -193,10 +224,7 @@ func (h *Handler) workerPlaneClaim(w http.ResponseWriter, r *http.Request) {
 	job.Payload.Input = prepared
 	jobToken := ""
 	if secret := strings.TrimSpace(h.jobTokenSecret); secret != "" {
-		ttl := time.Duration(job.Payload.TimeoutS)*time.Second + time.Minute
-		if ttl <= time.Minute {
-			ttl = time.Hour
-		}
+		ttl := jobTokenTTL(job)
 		jobToken = token.MintJob(secret, token.JobClaims{
 			Workspace: workspaceID,
 			JobID:     job.ID,
@@ -209,6 +237,25 @@ func (h *Handler) workerPlaneClaim(w http.ResponseWriter, r *http.Request) {
 		"lease":     leaseToWire(lease),
 		"job_token": jobToken,
 	})
+}
+
+// jobTokenTTL mirrors the local worker's mint path (runtime actionTimeout
+// precedence: pinned action timeout over the app-level pin) so remote SDK
+// callbacks stay valid for the whole run, not just the app default.
+func jobTokenTTL(job state.Job) time.Duration {
+	timeout := time.Duration(job.Payload.TimeoutS) * time.Second
+	deployment := job.Payload.PinnedDeployment()
+	if action, ok := deployment.Actions[job.Payload.Action]; ok {
+		if action.TimeoutS != nil && *action.TimeoutS > 0 {
+			timeout = time.Duration(*action.TimeoutS) * time.Second
+		} else if action.TimeoutMs > 0 {
+			timeout = time.Duration(action.TimeoutMs) * time.Millisecond
+		}
+	}
+	if timeout <= 0 {
+		return time.Hour
+	}
+	return timeout + time.Minute
 }
 
 func (h *Handler) workerPlaneJobHeartbeat(w http.ResponseWriter, r *http.Request, jobID string) {
@@ -224,13 +271,9 @@ func (h *Handler) workerPlaneJobHeartbeat(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusBadRequest, "lease does not match job")
 		return
 	}
-	leaseTTL := time.Duration(req.LeaseTTLMs) * time.Millisecond
-	if leaseTTL <= 0 {
-		leaseTTL = 30 * time.Second
-	}
-	heartbeat, err := h.store.HeartbeatJob(r.Context(), leaseFromWire(req.Lease), leaseTTL)
+	heartbeat, err := h.store.HeartbeatJob(r.Context(), leaseFromWire(req.Lease), clampLeaseTTL(req.LeaseTTLMs))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeStoreError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -273,7 +316,7 @@ func (h *Handler) workerPlaneComplete(w http.ResponseWriter, r *http.Request, jo
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeStoreError(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -289,7 +332,7 @@ func (h *Handler) workerPlaneLogs(w http.ResponseWriter, r *http.Request, jobID 
 		return
 	}
 	if err := h.store.AppendLogs(r.Context(), jobID, contract.NormalizeWorkspace(req.Workspace), req.Chunk); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeStoreError(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -314,26 +357,43 @@ func (h *Handler) workerPlaneArtifact(w http.ResponseWriter, r *http.Request, di
 	}
 	w.Header().Set("Content-Type", "application/x-tar")
 	tw := tar.NewWriter(w)
-	defer tw.Close()
-	_ = filepath.WalkDir(tempDir, func(path string, d os.DirEntry, walkErr error) error {
-		if walkErr != nil || d.IsDir() {
+	walkErr := filepath.WalkDir(tempDir, func(path string, d os.DirEntry, walkErr error) error {
+		if walkErr != nil {
 			return walkErr
 		}
 		rel, err := filepath.Rel(tempDir, path)
 		if err != nil {
 			return err
 		}
+		if rel == "." {
+			return nil
+		}
 		info, err := d.Info()
 		if err != nil {
 			return err
 		}
-		header, err := tar.FileInfoHeader(info, "")
+		// Symlinks (bundles carry validated in-tree links, e.g. node_modules
+		// .bin) become link headers; directories carry their modes — both
+		// participate in the bundle digest the client re-verifies.
+		link := ""
+		if info.Mode()&os.ModeSymlink != 0 {
+			if link, err = os.Readlink(path); err != nil {
+				return err
+			}
+		}
+		header, err := tar.FileInfoHeader(info, link)
 		if err != nil {
 			return err
 		}
 		header.Name = filepath.ToSlash(rel)
+		if d.IsDir() {
+			header.Name += "/"
+		}
 		if err := tw.WriteHeader(header); err != nil {
 			return err
+		}
+		if !info.Mode().IsRegular() {
+			return nil
 		}
 		file, err := os.Open(path)
 		if err != nil {
@@ -343,4 +403,10 @@ func (h *Handler) workerPlaneArtifact(w http.ResponseWriter, r *http.Request, di
 		_, err = io.Copy(tw, file)
 		return err
 	})
+	if walkErr != nil {
+		// The 200 header is already on the wire — abort the connection so the
+		// client sees a broken stream, never a well-formed partial archive.
+		panic(http.ErrAbortHandler)
+	}
+	_ = tw.Close()
 }

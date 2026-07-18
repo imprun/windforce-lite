@@ -3,6 +3,7 @@ package remoteworker
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -93,6 +94,17 @@ func TestClientLifecycleAgainstRealServer(t *testing.T) {
 	if err := client.DeregisterWorker(ctx, "w-remote"); err != nil {
 		t.Fatal(err)
 	}
+
+	// Typed store errors survive the wire: recovery logic (errors.Is) must
+	// behave exactly as against a local store.
+	staleLease := lease
+	staleLease.WorkerID = "someone-else"
+	if err := client.CompleteJobSucceeded(ctx, staleLease, contract.JobResult{}); !errors.Is(err, state.ErrInvalidLease) {
+		t.Fatalf("stale-lease complete err = %v, want ErrInvalidLease", err)
+	}
+	if err := client.HeartbeatWorker(ctx, "w-never-registered"); !errors.Is(err, state.ErrNotFound) {
+		t.Fatalf("unknown worker heartbeat err = %v, want ErrNotFound", err)
+	}
 }
 
 func TestArtifactStoreFetchesAndExtracts(t *testing.T) {
@@ -129,5 +141,57 @@ func TestArtifactStoreFetchesAndExtracts(t *testing.T) {
 	}
 	if !strings.Contains(string(payload), "print") {
 		t.Fatalf("fetched content = %q", payload)
+	}
+}
+
+func TestArtifactStoreRoundTripsSymlinks(t *testing.T) {
+	tempDir := t.TempDir()
+	sourceDir := filepath.Join(tempDir, "src")
+	if err := os.MkdirAll(filepath.Join(sourceDir, "bin"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sourceDir, "tool.py"), []byte("print('hi')\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join("..", "tool.py"), filepath.Join(sourceDir, "bin", "tool")); err != nil {
+		t.Skipf("symlinks unavailable on this host: %v", err)
+	}
+
+	artifacts := executionbundle.NewLocalStore(filepath.Join(tempDir, "artifacts"))
+	descriptor, err := artifacts.Publish(context.Background(), sourceDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(server.New(server.Config{
+		Store:         state.NewLocalStore(filepath.Join(tempDir, "state.json")),
+		Catalog:       catalog.NewFileCatalog(filepath.Join(tempDir, "catalog.json")),
+		EnableAPI:     true,
+		AdminToken:    "admin-secret",
+		ArtifactStore: artifacts,
+	}))
+	defer srv.Close()
+
+	dest := filepath.Join(tempDir, "fetched")
+	if _, err := (ArtifactStore{Client: New(srv.URL, "admin-secret")}).FetchTo(context.Background(), dest, descriptor.Digest); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Lstat(filepath.Join(dest, "bin", "tool"))
+	if err != nil {
+		t.Fatalf("symlink missing after fetch: %v", err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("bin/tool is not a symlink after fetch (mode %v)", info.Mode())
+	}
+	payload, err := os.ReadFile(filepath.Join(dest, "bin", "tool"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(payload), "print") {
+		t.Fatalf("symlink does not resolve to content: %q", payload)
+	}
+	// Files after the symlink in walk order must survive too (the old tar
+	// writer truncated everything past the first symlink).
+	if _, err := os.Stat(filepath.Join(dest, "tool.py")); err != nil {
+		t.Fatalf("entry after symlink missing: %v", err)
 	}
 }

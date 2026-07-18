@@ -19,6 +19,11 @@ type WorkerRecord struct {
 // live in observability surfaces.
 const WorkerLiveTTL = 90 * time.Second
 
+// WorkerRegistryExpiry is how long a silent record survives before the
+// registry drops it — crashed workers (no graceful deregister) must not
+// accumulate forever. Live workers heartbeat every ~15s, far inside this.
+const WorkerRegistryExpiry = 15 * time.Minute
+
 // Live reports whether the record's heartbeat is fresh at the given time.
 func (w WorkerRecord) Live(now time.Time) bool {
 	return now.Sub(w.LastHeartbeatAt) <= WorkerLiveTTL

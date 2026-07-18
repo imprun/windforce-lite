@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 
 	"github.com/jackc/pgx/v5"
 
@@ -15,12 +16,21 @@ func (s *PostgresStore) AppendLogs(ctx context.Context, jobID string, workspaceI
 		return nil
 	}
 	workspaceID = contract.NormalizeWorkspace(workspaceID)
-	_, err := s.pool.Exec(ctx, `
+	// Guard on job existence: a flush for a pruned/unknown job must not
+	// create an orphan row no pruner would ever delete (local-store parity:
+	// ErrNotFound).
+	tag, err := s.pool.Exec(ctx, `
 INSERT INTO job_logs (job_id, workspace_id, logs)
-VALUES ($1, $2, $3)
+SELECT $1, $2, $3 WHERE EXISTS (SELECT 1 FROM jobs WHERE id = $1)
 ON CONFLICT (job_id) DO UPDATE SET logs = job_logs.logs || EXCLUDED.logs
 `, jobID, workspaceID, chunk)
-	return err
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("%w: job %q", ErrNotFound, jobID)
+	}
+	return nil
 }
 
 func (s *PostgresStore) GetLogs(ctx context.Context, workspaceID string, jobID string) (string, bool, error) {

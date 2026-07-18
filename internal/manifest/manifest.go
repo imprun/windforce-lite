@@ -98,6 +98,12 @@ func Parse(data []byte) (contract.App, error) {
 				labels = []string{}
 			}
 			action.RunsOn = &labels
+			// Claim-time pinning unions app and action labels; a union no
+			// worker can offer (labels are capped) must fail here, not sit
+			// queued forever.
+			if _, err := contract.NormalizeLabels(append(append([]string{}, app.RunsOn...), labels...), false); err != nil {
+				return contract.App{}, fmt.Errorf("action %s.%s runsOn combined with app runsOn: %w", app.App, name, err)
+			}
 		}
 		applyAppDefaults(app, &action)
 		if err := validateExecutableAction(app.App, name, action); err != nil {

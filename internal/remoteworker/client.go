@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -69,7 +70,7 @@ func (c *Client) do(ctx context.Context, method, path string, body any, out any)
 		return resp.StatusCode, err
 	}
 	if resp.StatusCode >= 400 {
-		return resp.StatusCode, fmt.Errorf("worker plane %s %s: %d %s", method, path, resp.StatusCode, strings.TrimSpace(string(payload)))
+		return resp.StatusCode, wireError(method, path, resp.StatusCode, payload)
 	}
 	if out != nil && len(payload) > 0 {
 		if err := json.Unmarshal(payload, out); err != nil {
@@ -77,6 +78,30 @@ func (c *Client) do(ctx context.Context, method, path string, body any, out any)
 		}
 	}
 	return resp.StatusCode, nil
+}
+
+// wireError rebuilds typed store errors from the worker plane's code field so
+// callers' errors.Is checks (invalid lease, not found) work exactly as they
+// do against a local store.
+func wireError(method string, path string, status int, payload []byte) error {
+	message := strings.TrimSpace(string(payload))
+	var wire struct {
+		Error string `json:"error"`
+		Code  string `json:"code"`
+	}
+	if json.Unmarshal(payload, &wire) == nil && wire.Error != "" {
+		message = wire.Error
+	}
+	err := fmt.Errorf("worker plane %s %s: %d %s", method, path, status, message)
+	switch wire.Code {
+	case "invalid_lease":
+		return fmt.Errorf("%v: %w", err, state.ErrInvalidLease)
+	case "not_found":
+		return fmt.Errorf("%v: %w", err, state.ErrNotFound)
+	case "conflict":
+		return fmt.Errorf("%v: %w", err, state.ErrConflict)
+	}
+	return err
 }
 
 func (c *Client) RegisterWorker(ctx context.Context, record state.WorkerRecord) error {
@@ -244,42 +269,100 @@ func (a ArtifactStore) FetchTo(ctx context.Context, destinationDir string, diges
 		payload, _ := io.ReadAll(resp.Body)
 		return executionbundle.Descriptor{}, fmt.Errorf("fetch artifact %s: %d %s", digest, resp.StatusCode, strings.TrimSpace(string(payload)))
 	}
-	if err := os.MkdirAll(destinationDir, 0o755); err != nil {
+	// Extract into a sibling temp dir, verify, then rename — a torn stream or
+	// crash never leaves a partial tree at the destination for the ready
+	// marker to bless.
+	destinationDir, err = filepath.Abs(destinationDir)
+	if err != nil {
 		return executionbundle.Descriptor{}, err
 	}
-	reader := tar.NewReader(resp.Body)
-	for {
-		header, err := reader.Next()
-		if err == io.EOF {
-			break
-		}
+	if err := os.MkdirAll(filepath.Dir(destinationDir), 0o755); err != nil {
+		return executionbundle.Descriptor{}, err
+	}
+	tempDir, err := os.MkdirTemp(filepath.Dir(destinationDir), ".fetch-")
+	if err != nil {
+		return executionbundle.Descriptor{}, err
+	}
+	defer os.RemoveAll(tempDir)
+	if err := extractTar(tempDir, tar.NewReader(resp.Body)); err != nil {
+		return executionbundle.Descriptor{}, fmt.Errorf("extract artifact %s: %w", digest, err)
+	}
+	// The digest hashes names, modes, symlink targets, and contents. Windows
+	// cannot represent POSIX modes faithfully, so only POSIX hosts (the
+	// deploy target) enforce the match.
+	if runtime.GOOS != "windows" {
+		actual, err := executionbundle.HashTree(ctx, tempDir)
 		if err != nil {
 			return executionbundle.Descriptor{}, err
 		}
-		name := filepath.Clean(header.Name)
-		if name == "." || strings.HasPrefix(name, "..") || filepath.IsAbs(name) {
-			return executionbundle.Descriptor{}, fmt.Errorf("artifact entry escapes destination: %q", header.Name)
+		if actual != digest {
+			return executionbundle.Descriptor{}, fmt.Errorf("fetched artifact digest mismatch: got %s, want %s", actual, digest)
 		}
-		target := filepath.Join(destinationDir, name)
+	}
+	if err := os.RemoveAll(destinationDir); err != nil {
+		return executionbundle.Descriptor{}, err
+	}
+	if err := os.Rename(tempDir, destinationDir); err != nil {
+		return executionbundle.Descriptor{}, err
+	}
+	return executionbundle.Descriptor{Digest: digest}, nil
+}
+
+func extractTar(root string, reader *tar.Reader) error {
+	for {
+		header, err := reader.Next()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		name := filepath.Clean(filepath.FromSlash(strings.TrimSuffix(header.Name, "/")))
+		if name == "." || name == "" || strings.HasPrefix(name, "..") || filepath.IsAbs(name) {
+			return fmt.Errorf("artifact entry escapes destination: %q", header.Name)
+		}
+		target := filepath.Join(root, name)
+		mode := os.FileMode(header.Mode) & 0o777
 		switch header.Typeflag {
 		case tar.TypeDir:
 			if err := os.MkdirAll(target, 0o755); err != nil {
-				return executionbundle.Descriptor{}, err
+				return err
+			}
+			if err := os.Chmod(target, mode); err != nil {
+				return err
 			}
 		case tar.TypeReg:
 			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-				return executionbundle.Descriptor{}, err
+				return err
 			}
-			file, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(header.Mode)&0o777)
+			file, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode)
 			if err != nil {
-				return executionbundle.Descriptor{}, err
+				return err
 			}
 			if _, err := io.Copy(file, reader); err != nil {
 				file.Close()
-				return executionbundle.Descriptor{}, err
+				return err
 			}
-			file.Close()
+			if err := file.Close(); err != nil {
+				return err
+			}
+			if err := os.Chmod(target, mode); err != nil {
+				return err
+			}
+		case tar.TypeSymlink:
+			// Bundles legitimately carry in-tree symlinks (e.g. node_modules
+			// .bin); anything pointing outside the tree is rejected.
+			if err := executionbundle.ValidateSymlink(root, target, header.Linkname); err != nil {
+				return err
+			}
+			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+				return err
+			}
+			if err := os.Symlink(header.Linkname, target); err != nil {
+				return err
+			}
+		default:
+			return fmt.Errorf("unsupported artifact entry type %d: %q", header.Typeflag, header.Name)
 		}
 	}
-	return executionbundle.Descriptor{Digest: digest}, nil
 }

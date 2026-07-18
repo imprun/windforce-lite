@@ -284,13 +284,14 @@ func (p *Processor) RunLoop(ctx context.Context, pollInterval time.Duration) err
 		pollInterval = 500 * time.Millisecond
 	}
 	workerID := p.workerID()
-	if err := p.Store.RegisterWorker(ctx, state.WorkerRecord{
+	record := state.WorkerRecord{
 		ID:     workerID,
 		Group:  p.Group,
 		Tags:   append([]string(nil), p.Tags...),
 		Labels: append([]string(nil), p.Labels...),
 		Slots:  p.Slots,
-	}); err != nil {
+	}
+	if err := p.Store.RegisterWorker(ctx, record); err != nil {
 		return fmt.Errorf("register worker: %w", err)
 	}
 	defer func() {
@@ -298,20 +299,52 @@ func (p *Processor) RunLoop(ctx context.Context, pollInterval time.Duration) err
 			log.Printf("deregister worker %s: %v", workerID, err)
 		}
 	}()
-	heartbeat := time.NewTicker(heartbeatInterval)
-	defer heartbeat.Stop()
-	for {
-		select {
-		case <-heartbeat.C:
-			if err := p.Store.HeartbeatWorker(ctx, workerID); err != nil {
+	// Registry heartbeats run in their own goroutine so a long job does not
+	// make a busy worker look dead (WorkerLiveTTL). A 404 means the registry
+	// lost the record (state reset) — re-register instead of beating into it.
+	heartbeatCtx, stopHeartbeat := context.WithCancel(ctx)
+	defer stopHeartbeat()
+	go func() {
+		ticker := time.NewTicker(heartbeatInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-heartbeatCtx.Done():
+				return
+			case <-ticker.C:
+				err := p.Store.HeartbeatWorker(heartbeatCtx, workerID)
+				if err == nil {
+					continue
+				}
 				log.Printf("worker heartbeat %s: %v", workerID, err)
+				if errors.Is(err, state.ErrNotFound) {
+					if regErr := p.Store.RegisterWorker(heartbeatCtx, record); regErr != nil {
+						log.Printf("re-register worker %s: %v", workerID, regErr)
+					}
+				}
 			}
-		default:
 		}
+	}()
+	// Transient failures (engine restart, network blip, expired lease on
+	// complete) must not kill a long-running worker — back off and retry.
+	consecutiveFailures := 0
+	for {
 		processed, err := p.ProcessOne(ctx)
 		if err != nil {
-			return err
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			consecutiveFailures++
+			delay := retryDelay(pollInterval, consecutiveFailures)
+			log.Printf("worker %s: process: %v (retry in %s)", workerID, err, delay)
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(delay):
+			}
+			continue
 		}
+		consecutiveFailures = 0
 		if processed {
 			continue
 		}
@@ -321,6 +354,22 @@ func (p *Processor) RunLoop(ctx context.Context, pollInterval time.Duration) err
 		case <-time.After(pollInterval):
 		}
 	}
+}
+
+// retryDelay backs off exponentially from the poll interval to 30s.
+func retryDelay(pollInterval time.Duration, failures int) time.Duration {
+	const maxDelay = 30 * time.Second
+	delay := pollInterval
+	for i := 1; i < failures; i++ {
+		delay *= 2
+		if delay >= maxDelay {
+			return maxDelay
+		}
+	}
+	if delay > maxDelay {
+		return maxDelay
+	}
+	return delay
 }
 
 func HumanTaskFromOutput(runID string, output json.RawMessage) (state.HumanTask, bool, error) {

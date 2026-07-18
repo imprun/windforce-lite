@@ -1245,9 +1245,26 @@ func (s *LocalStore) ListWorkers(ctx context.Context) ([]WorkerRecord, error) {
 	if err != nil {
 		return nil, err
 	}
+	now := time.Now()
+	stale := false
 	out := make([]WorkerRecord, 0, len(snapshot.Workers))
 	for _, record := range snapshot.Workers {
+		if now.Sub(record.LastHeartbeatAt) > WorkerRegistryExpiry {
+			stale = true
+			continue
+		}
 		out = append(out, record)
+	}
+	if stale {
+		// Crashed workers never deregister — drop their silent records.
+		_ = s.update(ctx, func(snapshot *Snapshot, now time.Time) error {
+			for id, record := range snapshot.Workers {
+				if now.Sub(record.LastHeartbeatAt) > WorkerRegistryExpiry {
+					delete(snapshot.Workers, id)
+				}
+			}
+			return nil
+		})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out, nil

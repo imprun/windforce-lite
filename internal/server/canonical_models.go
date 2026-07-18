@@ -461,7 +461,9 @@ func (h *Handler) newCanonicalActionView(schemaReader *canonicalSchemaReader, de
 	if err != nil {
 		return canonicalActionView{}, err
 	}
-	effectiveCapabilities := contract.EffectiveCapabilities(deployment.RequiredCapabilities, action.Capabilities)
+	// Display shows exactly what claim-time pinning computes (app ∪ action
+	// union, ADR 0009) — a divergent view here misleads worker operators.
+	effectiveCapabilities := contract.EffectiveRequiredLabels(deployment, action)
 	return canonicalActionView{
 		canonicalActionModel:  model,
 		EffectiveCapabilities: cloneStringSlice(effectiveCapabilities),
