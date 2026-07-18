@@ -184,3 +184,53 @@ describe("WindforceApi webhooks", () => {
     }
   });
 });
+
+describe("WindforceApi provisioning", () => {
+  test("imports raw YAML with dry-run and actor headers", async () => {
+    const requests: Array<{ url: string; method: string; headers: Headers; body: string }> = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (input, init) => {
+      requests.push({
+        url: String(input),
+        method: init?.method || "GET",
+        headers: new Headers(init?.headers),
+        body: String(init?.body || ""),
+      });
+      return new Response(JSON.stringify({ applied: [{ kind: "Client", name: "Client A", action: "validated" }] }), {
+        status: 200,
+      });
+    }) as typeof fetch;
+    try {
+      const api = new WindforceApi({ workspace: "default", token: "tok", actor: "operator" });
+      const result = await api.importProvisioning("kind: Client\nmetadata:\n  name: Client A\n", true, "yaml");
+
+      expect(result.applied[0].action).toBe("validated");
+      expect(requests).toHaveLength(1);
+      expect(requests[0].url).toBe("/api/w/default/provisioning/import?dry_run=true");
+      expect(requests[0].method).toBe("POST");
+      expect(requests[0].headers.get("content-type")).toBe("application/yaml");
+      expect(requests[0].headers.get("authorization")).toBe("Bearer tok");
+      expect(requests[0].headers.get("x-windforce-actor")).toBe("operator");
+      expect(requests[0].body).toContain("kind: Client");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("exports provisioning as raw text", async () => {
+    const calls: string[] = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (input) => {
+      calls.push(String(input));
+      return new Response("resources: []\n", { status: 200, headers: { "content-type": "application/yaml" } });
+    }) as typeof fetch;
+    try {
+      const api = new WindforceApi({ workspace: "ops", token: "", actor: "operator" });
+      const text = await api.exportProvisioning("yaml", true);
+      expect(text).toBe("resources: []\n");
+      expect(calls).toEqual(["/api/w/ops/provisioning/export?format=yaml&include_values=true"]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+});

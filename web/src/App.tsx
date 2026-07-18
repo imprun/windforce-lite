@@ -4,6 +4,7 @@ import { AppsPage } from "./pages/AppsPage";
 import { ClientRegistryPage } from "./pages/ClientRegistryPage";
 import { ClientDetailPage } from "./pages/ClientDetailPage";
 import { MonitoringPage } from "./pages/MonitoringPage";
+import { ProvisioningPage } from "./pages/ProvisioningPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { AuditPage } from "./pages/AuditPage";
 import { WebhookCreatePage } from "./pages/WebhookCreatePage";
@@ -30,6 +31,7 @@ export function App() {
 
   if (matchRoute("/monitoring", path)) return <MonitoringPage />;
   if (matchRoute("/audit", path)) return <AuditPage />;
+  if (matchRoute("/provisioning", path)) return <ProvisioningPage />;
   const clientDetail = matchRoute("/clients/:id/:tab?/:appKey?", path);
   if (clientDetail?.id) {
     return <ClientDetailPage clientID={clientDetail.id} tab={clientDetail.tab || "overview"} appKey={clientDetail.appKey} />;

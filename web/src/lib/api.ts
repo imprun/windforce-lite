@@ -342,6 +342,17 @@ export type WebhookDeliveryPage = {
   next_cursor?: string;
 };
 
+export type ProvisioningAppliedResource = {
+  kind: string;
+  name: string;
+  action: string;
+  detail?: string;
+};
+
+export type ProvisioningImportResult = {
+  applied: ProvisioningAppliedResource[];
+};
+
 export type WebhookDeliveryQuery = {
   state?: WebhookDeliveryState | "";
   limit?: number;
@@ -617,6 +628,22 @@ export class WindforceApi {
     return this.request(`/webhook-deliveries/${encodeURIComponent(id)}/retry`, { method: "POST" });
   }
 
+  importProvisioning(text: string, dryRun: boolean, format: "yaml" | "json"): Promise<ProvisioningImportResult> {
+    const suffix = dryRun ? "?dry_run=true" : "";
+    return this.requestRaw(`/provisioning/import${suffix}`, {
+      method: "POST",
+      body: text,
+      contentType: format === "yaml" ? "application/yaml" : "application/json",
+    });
+  }
+
+  exportProvisioning(format: "yaml" | "json", includeValues = false): Promise<string> {
+    const params = new URLSearchParams();
+    params.set("format", format);
+    if (includeValues) params.set("include_values", "true");
+    return this.requestText(`/provisioning/export?${params.toString()}`);
+  }
+
   private async request<T>(path: string, options: RequestOptions = {}): Promise<T> {
     const headers = new Headers();
     headers.set("accept", "application/json");
@@ -651,8 +678,50 @@ export class WindforceApi {
     }
   }
 
+  private async requestRaw<T>(
+    path: string,
+    options: { method: string; body: string; contentType: string },
+  ): Promise<T> {
+    const headers = new Headers();
+    headers.set("accept", "application/json");
+    headers.set("content-type", options.contentType);
+    if (this.settings.token) headers.set("authorization", `Bearer ${this.settings.token}`);
+    setActorHeaders(headers, this.settings.actor);
+    const response = await fetch(this.workspaceURL(path), {
+      method: options.method,
+      headers,
+      body: options.body,
+    });
+    const text = await response.text();
+    if (!response.ok) throw new ApiError(apiErrorMessage(response, text), response.status);
+    if (!text) return undefined as T;
+    return JSON.parse(text) as T;
+  }
+
+  private async requestText(path: string): Promise<string> {
+    const headers = new Headers();
+    headers.set("accept", "application/yaml, application/json");
+    if (this.settings.token) headers.set("authorization", `Bearer ${this.settings.token}`);
+    setActorHeaders(headers, this.settings.actor);
+    const response = await fetch(this.workspaceURL(path), { headers });
+    const text = await response.text();
+    if (!response.ok) throw new ApiError(apiErrorMessage(response, text), response.status);
+    return text;
+  }
+
   private workspaceURL(path: string): string {
     const workspace = encodeURIComponent(this.settings.workspace || "default");
     return `/api/w/${workspace}${path}`;
   }
+}
+
+function apiErrorMessage(response: Response, text: string): string {
+  let message = `${response.status} ${response.statusText}`;
+  try {
+    const payload = JSON.parse(text) as { error?: string };
+    if (payload?.error) message = payload.error;
+  } catch {
+    if (text) message = text;
+  }
+  return message;
 }

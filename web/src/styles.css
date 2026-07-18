@@ -1557,6 +1557,18 @@ textarea {
   padding: 16px 0;
 }
 
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 /* ---------- code blocks ---------- */
 
 .codeBlock {
@@ -1570,6 +1582,78 @@ textarea {
   overflow-wrap: anywhere;
   font-size: 12.5px;
   max-height: 480px;
+}
+
+/* ---------- provisioning ---------- */
+
+.provisioningGrid {
+  display: grid;
+  grid-template-columns: minmax(360px, 0.9fr) minmax(420px, 1.1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.provisioningToolbar,
+.provisioningApplyBar,
+.provisioningSafety {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.provisioningToolbar,
+.provisioningApplyBar {
+  justify-content: space-between;
+}
+
+.provisioningSafety {
+  min-width: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.provisioningSafety svg {
+  flex: 0 0 auto;
+  color: var(--accent);
+}
+
+.provisioningEditor,
+.provisioningCode {
+  font-family: "SFMono-Regular", "JetBrains Mono", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.provisioningEditor {
+  min-height: 420px;
+  white-space: pre;
+  overflow: auto;
+}
+
+.provisioningCode {
+  margin: 0;
+  min-height: 420px;
+  max-height: 620px;
+  overflow: auto;
+  white-space: pre;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--surface-2);
+}
+
+.provisioningResultTable {
+  min-width: 760px;
+  table-layout: fixed;
+}
+
+.provisioningResultTable th:nth-child(1) { width: 18%; }
+.provisioningResultTable th:nth-child(2) { width: 28%; }
+.provisioningResultTable th:nth-child(3) { width: 18%; }
+.provisioningResultTable th:nth-child(4) { width: 36%; }
+
+.provisioningResultTable td {
+  overflow-wrap: anywhere;
 }
 
 .schemaStack {
@@ -1983,6 +2067,10 @@ textarea {
   .auditFilters {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .provisioningGrid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 640px) {
@@ -2170,6 +2258,17 @@ textarea {
 
   .auditFilters {
     grid-template-columns: 1fr;
+  }
+
+  .provisioningToolbar,
+  .provisioningApplyBar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .provisioningEditor,
+  .provisioningCode {
+    min-height: 320px;
   }
 }
 
