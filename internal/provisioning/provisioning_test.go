@@ -148,6 +148,109 @@ func TestExportRedactsSensitiveProvisioningValues(t *testing.T) {
 	}
 }
 
+func TestExportedRedactedProvisioningCanRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	ctx := context.Background()
+	store := state.NewLocalStore(filepath.Join(dir, "state.json"))
+	registry := gitsource.NewFileRegistry(filepath.Join(dir, "git-sources.json"))
+	if err := store.SetVariable(ctx, "default", "", "git/app/credential", "stored-secret", true, "credential"); err != nil {
+		t.Fatalf("SetVariable credential: %v", err)
+	}
+	client, err := store.CreateClient(ctx, "default", "Client A", "external-a", "tester")
+	if err != nil {
+		t.Fatalf("CreateClient: %v", err)
+	}
+	configJSON := json.RawMessage(`{"CACHE":{"TEST":"123"},"PLAIN":"visible"}`)
+	if _, err := store.SetInputConfig(ctx, state.InputConfig{
+		WorkspaceID: "default",
+		AppKey:      "APP",
+		ActionKey:   "1000",
+		ClientID:    client.ID,
+		Config:      configJSON,
+		LockedKeys:  []string{"CACHE"},
+	}, "tester"); err != nil {
+		t.Fatalf("SetInputConfig: %v", err)
+	}
+	if _, err := registry.Create(ctx, gitsource.Source{
+		Workspace: "default",
+		Name:      "app-source",
+		RepoURL:   "https://example.test/app.git",
+		Branch:    "main",
+		TokenEnv:  "git/app/credential",
+	}); err != nil {
+		t.Fatalf("Create source: %v", err)
+	}
+	service := Service{Store: store, GitSources: registry, AppKeys: []string{"APP"}}
+	exported, err := service.Export(ctx, "default", false)
+	if err != nil {
+		t.Fatalf("Export returned error: %v", err)
+	}
+	data, err := EncodeYAML(exported)
+	if err != nil {
+		t.Fatalf("EncodeYAML returned error: %v", err)
+	}
+	imported, err := Decode(data, ".yaml")
+	if err != nil {
+		t.Fatalf("Decode exported YAML returned error: %v", err)
+	}
+	if _, err := service.Apply(ctx, imported, Options{Workspace: "default", Actor: "tester", DryRun: true}); err != nil {
+		t.Fatalf("dry-run of exported redacted provisioning failed: %v\n%s", err, data)
+	}
+	if _, err := service.Apply(ctx, imported, Options{Workspace: "default", Actor: "tester"}); err != nil {
+		t.Fatalf("apply of exported redacted provisioning failed: %v\n%s", err, data)
+	}
+	variable, found, err := store.GetVariableExact(ctx, "default", "", "git/app/credential")
+	if err != nil || !found {
+		t.Fatalf("credential after apply: found=%v err=%v", found, err)
+	}
+	if variable.Value != "stored-secret" || !variable.IsSecret {
+		t.Fatalf("credential variable changed: %#v", variable)
+	}
+	preserved, err := store.ListInputConfigsForClient(ctx, "default", client.ID)
+	if err != nil {
+		t.Fatalf("ListInputConfigsForClient: %v", err)
+	}
+	if len(preserved) != 1 {
+		t.Fatalf("input configs count = %d", len(preserved))
+	}
+	var values map[string]json.RawMessage
+	if err := json.Unmarshal(preserved[0].Config, &values); err != nil {
+		t.Fatalf("config JSON: %v", err)
+	}
+	var cache map[string]string
+	if err := json.Unmarshal(values["CACHE"], &cache); err != nil {
+		t.Fatalf("CACHE JSON: %v", err)
+	}
+	if cache["TEST"] != "123" {
+		t.Fatalf("redacted CACHE was not preserved: %#v", cache)
+	}
+	if string(values["PLAIN"]) != `"visible"` {
+		t.Fatalf("redacted PLAIN was not preserved: %s", values["PLAIN"])
+	}
+}
+
+func TestRedactedProvisioningRequiresExistingValue(t *testing.T) {
+	dir := t.TempDir()
+	docs, err := Decode([]byte(`
+kind: Variable
+metadata:
+  name: missing-secret
+spec:
+  path: secret/missing
+  secret: true
+  value:
+    redacted: true
+`), ".yaml")
+	if err != nil {
+		t.Fatalf("Decode returned error: %v", err)
+	}
+	store := state.NewLocalStore(filepath.Join(dir, "state.json"))
+	_, err = (Service{Store: store}).Apply(context.Background(), docs, Options{Workspace: "default", DryRun: true})
+	if err == nil || !strings.Contains(err.Error(), "redacted") {
+		t.Fatalf("Apply error = %v, want redacted existing value error", err)
+	}
+}
+
 func TestLoadDirReadsJSONAndYAML(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "a.yaml"), []byte("kind: Client\nmetadata:\n  name: A\nspec:\n  externalKey:\n    value: a\n"), 0o644); err != nil {

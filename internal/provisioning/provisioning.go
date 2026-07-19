@@ -186,6 +186,15 @@ func (s Service) Apply(ctx context.Context, docs []Document, options Options) (R
 		if doc.Kind != "GitCredential" {
 			continue
 		}
+		if gitCredentialHasRedactedValue(doc) {
+			ref := gitCredentialRef(doc)
+			if err := s.requireExistingVariable(ctx, options, "", ref, "redacted credential"); err != nil {
+				return result, resourceError(doc, err)
+			}
+			credentials[doc.Metadata.Name] = ref
+			result.Applied = append(result.Applied, AppliedResource{Kind: doc.Kind, Name: doc.Metadata.Name, Action: dryRunAction(options, "unchanged"), Detail: ref})
+			continue
+		}
 		ref, credentialJSON, err := gitCredential(doc)
 		if err != nil {
 			return result, resourceError(doc, err)
@@ -401,6 +410,20 @@ func EncodeYAML(docs []Document) ([]byte, error) {
 
 func (s Service) applyClient(ctx context.Context, doc Document, options Options) (state.Client, string, error) {
 	name := firstNonEmpty(doc.Spec.Name, doc.Metadata.Name)
+	if valueSourceIsRedacted(doc.Spec.ExternalKey) || valueSourceIsRedacted(doc.Spec.ClientKey) {
+		client, err := s.clientByName(ctx, options.Workspace, name)
+		if err != nil {
+			return state.Client{}, "", fmt.Errorf("redacted externalKey requires an existing client named %q", name)
+		}
+		if options.DryRun {
+			return client, "validated", nil
+		}
+		if client.Name == name {
+			return client, "unchanged", nil
+		}
+		updated, err := s.Store.UpdateClient(ctx, options.Workspace, client.ID, name, client.ExternalKey, options.Actor)
+		return updated, "updated", err
+	}
 	externalKey, err := resolveString(doc.Spec.ExternalKey, doc.Spec.ClientKey)
 	if err != nil {
 		return state.Client{}, "", err
@@ -431,12 +454,29 @@ func (s Service) applyVariable(ctx context.Context, doc Document, options Option
 	if path == "" {
 		path = strings.TrimSpace(doc.Metadata.Name)
 	}
+	if path == "" {
+		return "", "", errors.New("variable path is required")
+	}
+	if valueSourceIsRedacted(doc.Spec.Value) {
+		existing, err := s.existingVariable(ctx, options.Workspace, doc.Spec.AppScope, path)
+		if err != nil {
+			return "", "", fmt.Errorf("redacted variable requires existing value for %q: %w", path, err)
+		}
+		if options.DryRun {
+			return "validated", path, nil
+		}
+		isSecret := existing.IsSecret
+		if doc.Spec.Secret {
+			isSecret = true
+		}
+		if err := s.Store.SetVariable(ctx, options.Workspace, doc.Spec.AppScope, path, existing.Value, isSecret, doc.Spec.Description); err != nil {
+			return "", "", err
+		}
+		return "unchanged", path, nil
+	}
 	value, err := resolveString(doc.Spec.Value)
 	if err != nil {
 		return "", "", err
-	}
-	if path == "" {
-		return "", "", errors.New("variable path is required")
 	}
 	if options.DryRun {
 		return "validated", path, nil
@@ -520,7 +560,11 @@ func (s Service) applyInputSettings(ctx context.Context, doc Document, options O
 			clientID = client.ID
 		}
 	}
-	values, err := resolveConfig(doc.Spec.Config)
+	existing, err := s.findInputConfig(ctx, options.Workspace, appKey, strings.TrimSpace(doc.Spec.ActionKey), clientID)
+	if err != nil {
+		return "", "", err
+	}
+	values, err := resolveConfigWithExisting(doc.Spec.Config, existing)
 	if err != nil {
 		return "", "", err
 	}
@@ -609,10 +653,7 @@ func normalizeDocument(doc *Document) error {
 }
 
 func gitCredential(doc Document) (string, string, error) {
-	ref := strings.TrimSpace(doc.Spec.StorageRef)
-	if ref == "" {
-		ref = "git/" + doc.Metadata.Name + "/credential"
-	}
+	ref := gitCredentialRef(doc)
 	method := strings.ToLower(strings.TrimSpace(doc.Spec.Method))
 	if method == "" {
 		method = "pat"
@@ -649,12 +690,39 @@ func gitCredential(doc Document) (string, string, error) {
 	}
 }
 
+func gitCredentialRef(doc Document) string {
+	ref := strings.TrimSpace(doc.Spec.StorageRef)
+	if ref == "" {
+		ref = "git/" + doc.Metadata.Name + "/credential"
+	}
+	return ref
+}
+
+func gitCredentialHasRedactedValue(doc Document) bool {
+	return valueSourceIsRedacted(doc.Spec.Value) ||
+		valueSourceIsRedacted(doc.Spec.Token) ||
+		valueSourceIsRedacted(doc.Spec.Username) ||
+		valueSourceIsRedacted(doc.Spec.Password)
+}
+
 func resolveConfig(values map[string]any) (map[string]json.RawMessage, error) {
+	return resolveConfigWithExisting(values, nil)
+}
+
+func resolveConfigWithExisting(values map[string]any, existing map[string]json.RawMessage) (map[string]json.RawMessage, error) {
 	resolved := map[string]json.RawMessage{}
 	for key, raw := range values {
 		key = strings.TrimSpace(key)
 		if key == "" {
 			return nil, errors.New("input setting key must not be empty")
+		}
+		if redactedAny(raw) {
+			value, ok := existing[key]
+			if !ok {
+				return nil, fmt.Errorf("%s: redacted input setting requires an existing value", key)
+			}
+			resolved[key] = append(json.RawMessage(nil), value...)
+			continue
 		}
 		value, err := resolveAny(raw)
 		if err != nil {
@@ -667,6 +735,71 @@ func resolveConfig(values map[string]any) (map[string]json.RawMessage, error) {
 		resolved[key] = data
 	}
 	return resolved, nil
+}
+
+func (s Service) requireExistingVariable(ctx context.Context, options Options, appKey string, path string, label string) error {
+	_, err := s.existingVariable(ctx, options.Workspace, appKey, path)
+	if err != nil {
+		return fmt.Errorf("%s requires existing variable %q: %w", label, path, err)
+	}
+	return nil
+}
+
+func (s Service) existingVariable(ctx context.Context, workspace string, appKey string, path string) (state.Variable, error) {
+	variable, found, err := s.Store.GetVariableExact(ctx, workspace, appKey, path)
+	if err != nil {
+		return state.Variable{}, err
+	}
+	if !found {
+		return state.Variable{}, state.ErrNotFound
+	}
+	return variable, nil
+}
+
+func (s Service) clientByName(ctx context.Context, workspace string, name string) (state.Client, error) {
+	clients, err := s.Store.ListClients(ctx, workspace)
+	if err != nil {
+		return state.Client{}, err
+	}
+	for _, client := range clients {
+		if client.Name == name {
+			return client, nil
+		}
+	}
+	return state.Client{}, state.ErrNotFound
+}
+
+func (s Service) findInputConfig(ctx context.Context, workspace string, appKey string, actionKey string, clientID string) (map[string]json.RawMessage, error) {
+	configs, err := s.Store.ListInputConfigsForApp(ctx, workspace, appKey)
+	if err != nil {
+		return nil, err
+	}
+	for _, config := range configs {
+		if config.ActionKey == actionKey && config.ClientID == clientID {
+			var values map[string]json.RawMessage
+			if err := json.Unmarshal(config.Config, &values); err != nil {
+				return nil, err
+			}
+			return values, nil
+		}
+	}
+	return nil, nil
+}
+
+func valueSourceIsRedacted(source ValueSource) bool {
+	return source.Redacted && source.Value == nil && source.ValueFrom == nil
+}
+
+func redactedAny(raw any) bool {
+	if source, ok := raw.(ValueSource); ok {
+		return valueSourceIsRedacted(source)
+	}
+	m, ok := raw.(map[string]any)
+	if !ok {
+		return false
+	}
+	_, hasValue := m["value"]
+	return m["redacted"] == true && !hasValue && m["valueFrom"] == nil
 }
 
 func resolveString(sources ...ValueSource) (string, error) {
