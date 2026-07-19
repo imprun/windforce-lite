@@ -81,6 +81,8 @@ services:
       GOCACHE: /home/windforce/.cache/go-build
       GOMODCACHE: /go/pkg/mod
       WINDFORCE_LITE_DATABASE_URL: ${WINDFORCE_LITE_DATABASE_URL:-postgres://postgres@postgres:5432/windforce_core?sslmode=disable}
+      WINDFORCE_LITE_WEBHOOK_ALLOWED_INSECURE_HTTP_HOSTS: ${WINDFORCE_LITE_WEBHOOK_ALLOWED_INSECURE_HTTP_HOSTS:-host.docker.internal}
+      WINDFORCE_LITE_WEBHOOK_ALLOW_INSECURE_LOOPBACK: ${WINDFORCE_LITE_WEBHOOK_ALLOW_INSECURE_LOOPBACK:-true}
     volumes:
       - .:/src
       - go-mod-cache:/go/pkg/mod

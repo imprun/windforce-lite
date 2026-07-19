@@ -79,16 +79,18 @@ func flagSetForWebhookTest(t *testing.T, requestTimeout time.Duration, leaseTTL 
 	maxAttempts := 8
 	allowedHosts := ""
 	allowedCIDRs := ""
+	allowedInsecureHTTPHosts := ""
 	allowLoopback := false
 	workerID := "dispatcher-test"
 	return webhookDispatcherFlags{
-		dispatchInterval:      &dispatchInterval,
-		requestTimeout:        &requestTimeout,
-		leaseTTL:              &leaseTTL,
-		maxAttempts:           &maxAttempts,
-		allowedHosts:          &allowedHosts,
-		allowedCIDRs:          &allowedCIDRs,
-		allowInsecureLoopback: &allowLoopback,
-		workerID:              &workerID,
+		dispatchInterval:         &dispatchInterval,
+		requestTimeout:           &requestTimeout,
+		leaseTTL:                 &leaseTTL,
+		maxAttempts:              &maxAttempts,
+		allowedHosts:             &allowedHosts,
+		allowedCIDRs:             &allowedCIDRs,
+		allowedInsecureHTTPHosts: &allowedInsecureHTTPHosts,
+		allowInsecureLoopback:    &allowLoopback,
+		workerID:                 &workerID,
 	}
 }

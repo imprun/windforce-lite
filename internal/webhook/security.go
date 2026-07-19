@@ -22,12 +22,13 @@ type AddressResolver interface {
 type DialContextFunc func(ctx context.Context, network string, address string) (net.Conn, error)
 
 type EgressPolicy struct {
-	AllowedHosts          []string
-	AllowedCIDRs          []netip.Prefix
-	AllowInsecureLoopback bool
-	Resolver              AddressResolver
-	DialContext           DialContextFunc
-	TLSConfig             *tls.Config
+	AllowedHosts             []string
+	AllowedCIDRs             []netip.Prefix
+	AllowedInsecureHTTPHosts []string
+	AllowInsecureLoopback    bool
+	Resolver                 AddressResolver
+	DialContext              DialContextFunc
+	TLSConfig                *tls.Config
 }
 
 type ResolvedEndpoint struct {
@@ -65,7 +66,7 @@ func ParseAllowedHosts(raw string) ([]string, error) {
 }
 
 func (policy EgressPolicy) ResolveEndpoint(ctx context.Context, raw string) (ResolvedEndpoint, error) {
-	parsed, err := ValidateEndpoint(raw, policy.AllowInsecureLoopback)
+	parsed, err := validateEndpoint(raw, policy.AllowInsecureLoopback, len(policy.AllowedInsecureHTTPHosts) > 0)
 	if err != nil {
 		return ResolvedEndpoint{}, ErrEgressPolicy
 	}
@@ -129,13 +130,16 @@ func (policy EgressPolicy) allows(host string, scheme string, address netip.Addr
 	if address.IsLoopback() {
 		return policy.AllowInsecureLoopback && scheme == "http"
 	}
+	if scheme == "http" {
+		return hostAllowed(host, policy.AllowedInsecureHTTPHosts)
+	}
 	if scheme != "https" {
 		return false
 	}
 	if !isRestrictedAddress(address) {
 		return true
 	}
-	if policy.hostAllowed(host) {
+	if hostAllowed(host, policy.AllowedHosts) {
 		return true
 	}
 	for _, prefix := range policy.AllowedCIDRs {
@@ -161,9 +165,9 @@ var metadataAddresses = []netip.Addr{
 	netip.MustParseAddr("fd00:ec2::254"),
 }
 
-func (policy EgressPolicy) hostAllowed(host string) bool {
+func hostAllowed(host string, candidates []string) bool {
 	host = normalizeHost(host)
-	for _, candidate := range policy.AllowedHosts {
+	for _, candidate := range candidates {
 		candidate = normalizeHost(candidate)
 		if candidate == host {
 			return true

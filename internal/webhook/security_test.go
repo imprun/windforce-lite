@@ -48,6 +48,9 @@ func TestEgressPolicyResolveEndpoint(t *testing.T) {
 		{name: "loopback blocked", raw: "http://127.0.0.1:8090/releases", policy: EgressPolicy{}, wantErr: true},
 		{name: "loopback explicit development mode", raw: "http://127.0.0.1:8090/releases", policy: EgressPolicy{AllowInsecureLoopback: true}},
 		{name: "public HTTP blocked", raw: "http://hooks.example.test/releases", policy: policyWithAddresses("hooks.example.test", public), wantErr: true},
+		{name: "private HTTP blocked by default", raw: "http://host.docker.internal:8010/releases", policy: policyWithAddresses("host.docker.internal", private), wantErr: true},
+		{name: "private HTTP explicit local host allowed", raw: "http://host.docker.internal:8010/releases", policy: EgressPolicy{Resolver: resolverFor("host.docker.internal", private), AllowedInsecureHTTPHosts: []string{"host.docker.internal"}}},
+		{name: "metadata blocked despite insecure HTTP host allow", raw: "http://metadata.internal/latest", policy: EgressPolicy{Resolver: resolverFor("metadata.internal", linkLocal), AllowedInsecureHTTPHosts: []string{"metadata.internal"}}, wantErr: true},
 		{name: "userinfo blocked", raw: "https://user:pass@hooks.example.test/releases", policy: policyWithAddresses("hooks.example.test", public), wantErr: true},
 		{name: "fragment blocked", raw: "https://hooks.example.test/releases#secret", policy: policyWithAddresses("hooks.example.test", public), wantErr: true},
 	}

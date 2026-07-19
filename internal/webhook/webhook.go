@@ -193,11 +193,15 @@ func Matches(subscription Subscription, eventType string, appKey string) bool {
 }
 
 func ValidateEndpoint(raw string, allowHTTP bool) (*url.URL, error) {
+	return validateEndpoint(raw, allowHTTP, false)
+}
+
+func validateEndpoint(raw string, allowHTTPLoopback bool, allowHTTPNonLoopback bool) (*url.URL, error) {
 	parsed, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil {
 		return nil, invalid("endpoint is invalid")
 	}
-	if parsed.Scheme != "https" && !(allowHTTP && parsed.Scheme == "http" && isLoopbackHost(parsed.Hostname())) {
+	if parsed.Scheme != "https" && !(parsed.Scheme == "http" && (allowHTTPNonLoopback || (allowHTTPLoopback && isLoopbackHost(parsed.Hostname())))) {
 		return nil, invalid("endpoint must use HTTPS")
 	}
 	if parsed.Hostname() == "" {
