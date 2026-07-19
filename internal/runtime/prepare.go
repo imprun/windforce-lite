@@ -33,6 +33,12 @@ func (r *Runner) ensureSource(ctx context.Context, workspace string, gitSourceID
 	if cacheRoot == "" {
 		cacheRoot = filepath.Join(os.TempDir(), "windforce-core-cache")
 	}
+	// A relative cache root double-resolves in prepare subprocesses (their
+	// cmd.Dir is the source dir and their path args join the same relative
+	// root) — pin it to an absolute path once.
+	if abs, err := filepath.Abs(cacheRoot); err == nil {
+		cacheRoot = abs
+	}
 	sourceDir := filepath.Join(cacheRoot, "src", safePath(workspace), safePath(gitSourceID), safePath(commit))
 	key := sourceDir
 
