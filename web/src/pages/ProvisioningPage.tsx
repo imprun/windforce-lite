@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { CheckCircle2, Clipboard, Download, FileInput, Play, ShieldCheck, Upload } from "lucide-react";
+import { CheckCircle2, Clipboard, Download, FileInput, Play, RotateCcw, ShieldCheck, Trash2, Upload } from "lucide-react";
 import { Layout } from "../components/Layout";
 import { SettingsNav } from "../components/SettingsNav";
 import { EmptyState, ErrorNotice, Field, Panel } from "../components/ui";
@@ -136,16 +136,18 @@ export function ProvisioningPage() {
     setError("");
   }
 
+  function resetImportDocument(text: string, format: ImportFormat) {
+    setImportText(text);
+    setImportFormat(format);
+    setDryRunResult([]);
+    setApplyResult([]);
+    setError("");
+  }
+
   return (
     <Layout
       title="Settings"
       subtitle="Provision repeatable control-plane state for backup, restore, and environment setup."
-      actions={
-        <button className="button primary" type="button" onClick={handleExport} disabled={exporting}>
-          <Download aria-hidden="true" />
-          Export snapshot
-        </button>
-      }
     >
       <SettingsNav />
       {error ? <ErrorNotice message={error} /> : null}
@@ -199,6 +201,10 @@ export function ProvisioningPage() {
                   onChange={(event) => void handleFile(event.target.files?.[0] || null)}
                 />
               </label>
+              <button className="button" type="button" onClick={() => resetImportDocument(sampleYaml, "yaml")}>
+                <RotateCcw aria-hidden="true" />
+                Reset sample
+              </button>
             </div>
             <Field label="Provisioning document">
               <textarea
@@ -224,6 +230,15 @@ export function ProvisioningPage() {
                 <button className="button primary" type="button" disabled={!canApply} onClick={handleApply}>
                   <Upload aria-hidden="true" />
                   {working === "apply" ? "Applying…" : "Apply"}
+                </button>
+                <button
+                  className="button"
+                  type="button"
+                  disabled={!importText || working !== ""}
+                  onClick={() => resetImportDocument("", importFormat)}
+                >
+                  <Trash2 aria-hidden="true" />
+                  Clear document
                 </button>
               </div>
               <div className="provisioningSafety">
