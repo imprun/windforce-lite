@@ -17,7 +17,7 @@ RUN rm -rf internal/webui/assets
 COPY --from=web-build /src/web/dist ./internal/webui/assets
 RUN CGO_ENABLED=0 GOOS=linux go build -o /out/windforce-core ./cmd/windforce-core
 
-FROM python:3.14.6-slim-bookworm
+FROM python:3.14.6-slim-bookworm AS runtime
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates git \
@@ -36,3 +36,14 @@ EXPOSE 8080
 
 ENTRYPOINT ["windforce-core"]
 CMD ["api", "--addr", ":8080", "--store", "/data/store", "--catalog", "/data/catalog.json", "--git-sources", "/data/git-sources.json"]
+
+# OCR variant: tesseract (kor+eng) for apps that OCR documents. Published as
+# a separate image (ghcr.io/imprun/windforce-core-ocr); the default image
+# stays lean. Build with --target runtime-ocr.
+FROM runtime AS runtime-ocr
+
+USER root
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-kor \
+    && rm -rf /var/lib/apt/lists/*
+USER windforce
