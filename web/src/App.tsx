@@ -5,6 +5,7 @@ import { ClientRegistryPage } from "./pages/ClientRegistryPage";
 import { ClientDetailPage } from "./pages/ClientDetailPage";
 import { MonitoringPage } from "./pages/MonitoringPage";
 import { ProvisioningPage } from "./pages/ProvisioningPage";
+import { SettingsInfoPage } from "./pages/SettingsInfoPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { AuditPage } from "./pages/AuditPage";
 import { WebhookCreatePage } from "./pages/WebhookCreatePage";
@@ -47,6 +48,7 @@ export function App() {
     return <WebhookDetailPage subscriptionID={webhookDetail.id} tab={webhookDetail.tab || "overview"} />;
   }
   if (matchRoute("/settings/webhooks", path)) return <WebhookSettingsPage />;
+  if (matchRoute("/settings/info", path)) return <SettingsInfoPage />;
   if (matchRoute("/settings", path)) return <SettingsPage />;
   return <AppsPage />;
 }

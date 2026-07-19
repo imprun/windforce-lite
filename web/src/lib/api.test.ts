@@ -234,3 +234,31 @@ describe("WindforceApi provisioning", () => {
     }
   });
 });
+
+describe("WindforceApi system info", () => {
+  test("loads safe service information for the current workspace", async () => {
+    const calls: string[] = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (input) => {
+      calls.push(String(input));
+      return new Response(JSON.stringify({
+        service: "windforce-lite",
+        workspace: "ops",
+        ready: true,
+        planes: { control_api: true },
+        backends: { state_store: true },
+        auth: { admin_token_configured: true },
+        runtime_config: { wait_ms: 250 },
+      }), { status: 200 });
+    }) as typeof fetch;
+    try {
+      const api = new WindforceApi({ workspace: "ops", token: "", actor: "operator" });
+      const info = await api.systemInfo();
+      expect(info.ready).toBe(true);
+      expect(info.auth.admin_token_configured).toBe(true);
+      expect(calls).toEqual(["/api/w/ops/system/info"]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+});

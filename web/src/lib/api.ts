@@ -353,6 +353,16 @@ export type ProvisioningImportResult = {
   applied: ProvisioningAppliedResource[];
 };
 
+export type SystemInfo = {
+  service: string;
+  workspace: string;
+  ready: boolean;
+  planes: Record<string, boolean>;
+  backends: Record<string, boolean>;
+  auth: Record<string, boolean>;
+  runtime_config: Record<string, unknown>;
+};
+
 export type WebhookDeliveryQuery = {
   state?: WebhookDeliveryState | "";
   limit?: number;
@@ -642,6 +652,10 @@ export class WindforceApi {
     params.set("format", format);
     if (includeValues) params.set("include_values", "true");
     return this.requestText(`/provisioning/export?${params.toString()}`);
+  }
+
+  systemInfo(): Promise<SystemInfo> {
+    return this.request("/system/info");
   }
 
   private async request<T>(path: string, options: RequestOptions = {}): Promise<T> {
