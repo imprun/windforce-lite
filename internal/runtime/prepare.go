@@ -119,11 +119,11 @@ func (r *Runner) prepareSource(ctx context.Context, sourceDir string, scriptLang
 	case "python":
 		pythonPath := firstNonEmpty(r.PythonPath, defaultPythonPath())
 		if fileExists(filepath.Join(sourceDir, "requirements.txt")) {
-			if err := pythonInstallRequirements(ctx, pythonPath, sourceDir); err != nil {
+			if err := pythonInstallRequirements(ctx, pythonPath, sourceDir, r.prepareTimeout()); err != nil {
 				return fmt.Errorf("pip install: %w", err)
 			}
 		} else if fileExists(filepath.Join(sourceDir, "pyproject.toml")) {
-			if err := pythonInstallProject(ctx, pythonPath, sourceDir); err != nil {
+			if err := pythonInstallProject(ctx, pythonPath, sourceDir, r.prepareTimeout()); err != nil {
 				return fmt.Errorf("pip install project: %w", err)
 			}
 		}
@@ -135,12 +135,12 @@ func (r *Runner) prepareSource(ctx context.Context, sourceDir string, scriptLang
 		if err := injectGoSDK(goPath, sourceDir); err != nil {
 			return fmt.Errorf("inject go sdk: %w", err)
 		}
-		if err := goBuild(ctx, goPath, sourceDir, entrypoint); err != nil {
+		if err := goBuild(ctx, goPath, sourceDir, entrypoint, r.prepareTimeout()); err != nil {
 			return fmt.Errorf("go build: %w", err)
 		}
 	default:
 		if fileExists(filepath.Join(sourceDir, "package.json")) {
-			if err := bunInstall(ctx, firstNonEmpty(r.BunPath, "bun"), sourceDir); err != nil {
+			if err := bunInstall(ctx, firstNonEmpty(r.BunPath, "bun"), sourceDir, r.prepareTimeout()); err != nil {
 				return fmt.Errorf("bun install: %w", err)
 			}
 		}
@@ -151,8 +151,8 @@ func (r *Runner) prepareSource(ctx context.Context, sourceDir string, scriptLang
 	return nil
 }
 
-func bunInstall(ctx context.Context, bunPath string, dir string) error {
-	cctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+func bunInstall(ctx context.Context, bunPath string, dir string, timeout time.Duration) error {
+	cctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	cmd := exec.CommandContext(cctx, bunPath, "install", "--frozen-lockfile", "--no-progress")
 	cmd.Dir = dir
@@ -181,16 +181,16 @@ func injectTypeScriptSDK(dir string) error {
 	return nil
 }
 
-func pythonInstallRequirements(ctx context.Context, pythonPath string, dir string) error {
-	return pythonInstall(ctx, pythonPath, dir, "-r", filepath.Join(dir, "requirements.txt"))
+func pythonInstallRequirements(ctx context.Context, pythonPath string, dir string, timeout time.Duration) error {
+	return pythonInstall(ctx, pythonPath, dir, timeout, "-r", filepath.Join(dir, "requirements.txt"))
 }
 
-func pythonInstallProject(ctx context.Context, pythonPath string, dir string) error {
-	return pythonInstall(ctx, pythonPath, dir, ".")
+func pythonInstallProject(ctx context.Context, pythonPath string, dir string, timeout time.Duration) error {
+	return pythonInstall(ctx, pythonPath, dir, timeout, ".")
 }
 
-func pythonInstall(ctx context.Context, pythonPath string, dir string, installSpec ...string) error {
-	cctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+func pythonInstall(ctx context.Context, pythonPath string, dir string, timeout time.Duration, installSpec ...string) error {
+	cctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	args := []string{"-m", "pip", "install",
 		"--target", filepath.Join(dir, pyVendorDir),
@@ -255,8 +255,8 @@ func injectGoSDK(goPath string, dir string) error {
 	return nil
 }
 
-func goBuild(ctx context.Context, goPath string, dir string, entrypoint string) error {
-	cctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+func goBuild(ctx context.Context, goPath string, dir string, entrypoint string, timeout time.Duration) error {
+	cctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	pkgDir := filepath.Dir(filepath.Join(dir, filepath.FromSlash(entrypoint)))
 	if err := os.WriteFile(filepath.Join(pkgDir, "windforce_main.go"), []byte(wrapperGo()), 0o644); err != nil {
