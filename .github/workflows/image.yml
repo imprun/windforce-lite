@@ -56,3 +56,21 @@ jobs:
           labels: ${{ steps.meta-ocr.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - uses: docker/metadata-action@v5
+        id: meta-go
+        with:
+          images: ghcr.io/${{ github.repository }}-go
+          tags: |
+            type=ref,event=tag
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: runtime-go
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta-go.outputs.tags }}
+          labels: ${{ steps.meta-go.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

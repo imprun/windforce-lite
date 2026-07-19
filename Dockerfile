@@ -47,3 +47,11 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-kor \
     && rm -rf /var/lib/apt/lists/*
 USER windforce
+
+# Go toolchain variant for go-runtime apps (the engine builds them at
+# prepare). Published as ghcr.io/imprun/windforce-core-go. Build with
+# --target runtime-go.
+FROM runtime AS runtime-go
+
+COPY --from=golang:1.26.5-bookworm /usr/local/go /usr/local/go
+ENV PATH=/usr/local/go/bin:$PATH
