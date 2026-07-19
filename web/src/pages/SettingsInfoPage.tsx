@@ -91,7 +91,7 @@ export function SettingsInfoPage() {
             <Panel title="Enabled surfaces" subtitle="Request planes and public handlers enabled in this process.">
               <FlagList values={info.planes} />
             </Panel>
-            <Panel title="Configured backends" subtitle="Backend integrations attached to this control-plane process.">
+            <Panel title="Backend availability" subtitle="Backend integrations available to this control-plane process.">
               <FlagList values={info.backends} />
             </Panel>
           </div>
@@ -101,7 +101,7 @@ export function SettingsInfoPage() {
               <FlagList values={info.auth} />
             </Panel>
             <Panel title="Runtime configuration" subtitle="Non-secret runtime settings useful for local and operational diagnosis.">
-              <DefinitionList items={Object.entries(info.runtime_config).map(([key, value]) => [labelize(key), formatValue(value)])} />
+              <DefinitionList items={Object.entries(info.runtime_config).map(([key, value]) => [labelize(key), formatSystemInfoValue(value)])} />
             </Panel>
           </div>
         </>
@@ -120,7 +120,7 @@ function FlagList({ values }: { values: Record<string, boolean> }) {
     <div className="settingsInfoFlags">
       {entries.map(([key, enabled]) => (
         <div className="settingsInfoFlag" key={key}>
-          <span className={enabled ? "badge badge-good" : "badge badge-neutral"}>{enabled ? "enabled" : "off"}</span>
+          <span className={enabled ? "badge badge-good" : "badge badge-neutral"}>{enabled ? "Enabled" : "Not enabled"}</span>
           <strong>{labelize(key)}</strong>
         </div>
       ))}
@@ -136,8 +136,8 @@ function labelize(key: string): string {
     .join(" ");
 }
 
-function formatValue(value: unknown): string {
-  if (typeof value === "boolean") return value ? "enabled" : "off";
+export function formatSystemInfoValue(value: unknown): string {
+  if (typeof value === "boolean") return value ? "Enabled" : "Not enabled";
   if (value === null || value === undefined || value === "") return "—";
   return String(value);
 }
