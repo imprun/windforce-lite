@@ -23,6 +23,8 @@ The product is organized around two independent paths:
    Register, Sync, Publish Release, and Run in order.
 3. [Architecture](architecture.md) defines the Control, Trigger, and Execution
    Plane boundaries.
+4. [Control Plane CLI](cli.md) covers installation, profiles, releases, jobs,
+   and provisioning automation.
 
 ## Documentation hosting
 

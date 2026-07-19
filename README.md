@@ -72,10 +72,11 @@ tables. `--catalog` names an optional catalog snapshot that is imported
 idempotently at startup.
 
 The Docker Compose control plane maps its API to `127.0.0.1:18091`. The
-execution API is a separate service mapped to `127.0.0.1:18092`. The local Web UI is a Vite development server
-(run with Bun) on `127.0.0.1:18090/ui/` and proxies control-plane API calls to
-the backend. Local development uses `tools/windforce_control.py` against the
-API instead of a separate source-sync command.
+execution API is a separate service mapped to `127.0.0.1:18092`. The local Web
+UI is a Vite development server (run with Bun) on `127.0.0.1:18090/ui/` and
+proxies control-plane API calls to the backend. The supported `windforce` CLI
+uses the same control-plane API for local and hosted workspaces. See the
+[Control Plane CLI guide](docs/cli.md).
 
 The Web UI is live during local development. Run `make web-dev` for a host dev
 server, or `make compose-up` for the Compose-managed dev server. The production

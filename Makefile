@@ -1,4 +1,4 @@
-.PHONY: help fmt test test-postgres build web-deps web-install web-dev web-build web-embed web-test web-typecheck clean dev \
+.PHONY: help fmt test test-postgres build cli-build web-deps web-install web-dev web-build web-embed web-test web-typecheck clean dev \
 	compose-up compose-db compose-execution-api compose-worker compose-webhook-dispatcher compose-dev compose-dev-worker compose-dev-build compose-dev-logs compose-build compose-down compose-reset compose-logs compose-ps postgres-dsn \
 	dev-standalone dev-standalone-postgres dev-api dev-worker worker-once dev-webhook-dispatcher webhook-once \
 	webhook-receiver \
@@ -9,6 +9,11 @@
 
 APP := windforce-core
 CMD := ./cmd/windforce-core
+CLI_APP := windforce
+CLI_CMD := ./cmd/windforce
+ifeq ($(OS),Windows_NT)
+EXEEXT := .exe
+endif
 
 LOCAL_GO_WIN := .tmp/tools/go/bin/go.exe
 LOCAL_GO_UNIX := .tmp/tools/go/bin/go
@@ -34,6 +39,8 @@ WFL_TMP ?= .tmp
 DEV_DIR ?= $(WFL_TMP)/dev
 BIN_DIR ?= $(WFL_TMP)/bin
 BIN ?= $(BIN_DIR)/$(APP)
+CLI_BIN ?= $(BIN_DIR)/$(CLI_APP)$(EXEEXT)
+VERSION ?= dev
 STORE ?= $(DEV_DIR)/store
 CATALOG ?= $(DEV_DIR)/catalog.json
 STATE ?= $(DEV_DIR)/state.json
@@ -100,6 +107,7 @@ help:
 	@echo "  test                   run go test ./..."
 	@echo "  test-postgres          run PostgreSQL integration test against docker compose"
 	@echo "  build                  build $(BIN)"
+	@echo "  cli-build              build supported Control Plane CLI at $(CLI_BIN)"
 	@echo "  dev-standalone         run local JSON-state standalone server"
 	@echo "  dev-standalone-postgres run PostgreSQL-backed standalone server"
 	@echo "  dev-api                run API process with PostgreSQL state"
@@ -165,9 +173,13 @@ test:
 test-postgres: compose-db
 	WINDFORCE_LITE_POSTGRES_TEST_DSN="$(POSTGRES_DSN)" $(GO) test ./internal/state -run Postgres -count=1 -v
 
-build:
+build: cli-build
 	@mkdir -p "$(BIN_DIR)"
-	$(GO) build -o "$(BIN)" $(CMD)
+	$(GO) build -ldflags "-X main.version=$(VERSION)" -o "$(BIN)" $(CMD)
+
+cli-build:
+	@mkdir -p "$(BIN_DIR)"
+	$(GO) build -ldflags "-X github.com/imprun/windforce-core/internal/controlcli.Version=$(VERSION)" -o "$(CLI_BIN)" $(CLI_CMD)
 
 compose-up:
 	$(COMPOSE) --profile backend up -d control-plane execution-api webhook-dispatcher web

@@ -11,7 +11,7 @@
     "groups": [
       {
         "group": "Getting started",
-        "pages": ["index"]
+        "pages": ["index", "cli"]
       },
       {
         "group": "Concepts",
