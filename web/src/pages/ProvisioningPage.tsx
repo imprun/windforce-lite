@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { CheckCircle2, Clipboard, Download, FileInput, Play, ShieldCheck, Upload } from "lucide-react";
 import { Layout } from "../components/Layout";
+import { SettingsNav } from "../components/SettingsNav";
 import { EmptyState, ErrorNotice, Field, Panel } from "../components/ui";
 import { errorMessage, type ProvisioningAppliedResource } from "../lib/api";
 import { useApp } from "../lib/app-context";
@@ -48,6 +49,7 @@ export function ProvisioningPage() {
   const canApply = importReady && dryRunResult.length > 0 && working === "";
   const resultRows = applyResult.length ? applyResult : dryRunResult;
   const resultLabel = applyResult.length ? "Applied resources" : "Dry-run result";
+  const resultSummary = summarizeResult(resultRows);
   const exportFileName = useMemo(
     () => `windforce-lite-${settings.workspace || "default"}-provisioning.${exportFormat === "yaml" ? "yaml" : "json"}`,
     [exportFormat, settings.workspace],
@@ -134,38 +136,39 @@ export function ProvisioningPage() {
 
   return (
     <Layout
-      title="Provisioning"
-      subtitle="Import and export repeatable control-plane state for this workspace."
+      title="Settings"
+      subtitle="Provision repeatable control-plane state for backup, restore, and environment setup."
       actions={
         <button className="button primary" type="button" onClick={handleExport} disabled={exporting}>
           <Download aria-hidden="true" />
-          Export current state
+          Export snapshot
         </button>
       }
     >
+      <SettingsNav />
       {error ? <ErrorNotice message={error} /> : null}
 
-      <div className="provisioningGrid">
-        <Panel
-          title="Export"
-          subtitle="Create a redacted workspace snapshot that can be reviewed, copied, or saved."
-          actions={
-            <div className="inlineActions">
-              <select
-                aria-label="Export format"
-                value={exportFormat}
-                onChange={(event) => setExportFormat(event.target.value as ExportFormat)}
-              >
-                <option value="yaml">YAML</option>
-                <option value="json">JSON</option>
-              </select>
-              <button className="button" type="button" onClick={handleExport} disabled={working === "export"}>
-                <Download aria-hidden="true" />
-                Refresh
-              </button>
-            </div>
-          }
-        >
+      <section className="provisioningTaskGrid" aria-label="Provisioning tasks">
+        <div className="provisioningTask">
+          <div>
+            <span className="eyebrow">Export</span>
+            <h2>Workspace snapshot</h2>
+            <p>Create a redacted provisioning document for review, backup, or another environment.</p>
+          </div>
+          <div className="provisioningTaskControls">
+            <select
+              aria-label="Export format"
+              value={exportFormat}
+              onChange={(event) => setExportFormat(event.target.value as ExportFormat)}
+            >
+              <option value="yaml">YAML</option>
+              <option value="json">JSON</option>
+            </select>
+            <button className="button primary" type="button" onClick={handleExport} disabled={working === "export"}>
+              <Download aria-hidden="true" />
+              {exporting ? "Exporting…" : "Export"}
+            </button>
+          </div>
           <label className="toggleField">
             <input
               type="checkbox"
@@ -177,95 +180,95 @@ export function ProvisioningPage() {
               <small>Secret variables and credential values remain redacted.</small>
             </span>
           </label>
-          {exportText ? (
-            <>
-              <div className="provisioningToolbar">
-                <span className="cellSub">{exportFileName}</span>
-                <div className="inlineActions">
-                  <button className="button small" type="button" onClick={copyExport}>
-                    <Clipboard aria-hidden="true" />
-                    Copy
-                  </button>
-                  <button className="button small" type="button" onClick={downloadExport}>
-                    <Download aria-hidden="true" />
-                    Download
-                  </button>
-                </div>
-              </div>
-              <pre className="provisioningCode">{exportText}</pre>
-            </>
-          ) : (
-            <EmptyState title="No export loaded">
-              <button className="button" type="button" onClick={handleExport} disabled={exporting}>
-                <Download aria-hidden="true" />
-                Export workspace
-              </button>
-            </EmptyState>
-          )}
-        </Panel>
+        </div>
 
-        <Panel
-          title="Import"
-          subtitle="Paste or load a provisioning file. Validate with dry-run before applying."
-          actions={
-            <div className="inlineActions">
-              <select
-                aria-label="Import format"
-                value={importFormat}
-                onChange={(event) => {
-                  setImportFormat(event.target.value as ImportFormat);
-                  setDryRunResult([]);
-                  setApplyResult([]);
-                }}
-              >
-                <option value="yaml">YAML</option>
-                <option value="json">JSON</option>
-              </select>
-              <label className="button">
-                <FileInput aria-hidden="true" />
-                Load file
-                <input
-                  className="visuallyHidden"
-                  type="file"
-                  accept=".yaml,.yml,.json,application/json,application/yaml,text/yaml"
-                  onChange={(event) => void handleFile(event.target.files?.[0] || null)}
-                />
-              </label>
-            </div>
-          }
-        >
-          <Field label="Provisioning document" hint="Use valueFrom.env or valueFrom.file for credentials and environment-specific values.">
-            <textarea
-              className="provisioningEditor"
-              value={importText}
-              spellCheck={false}
+        <div className="provisioningTask">
+          <div>
+            <span className="eyebrow">Import</span>
+            <h2>Validate before apply</h2>
+            <p>Load or paste a provisioning document. Apply is guarded until the dry-run succeeds.</p>
+          </div>
+          <div className="provisioningTaskControls">
+            <select
+              aria-label="Import format"
+              value={importFormat}
               onChange={(event) => {
-                setImportText(event.target.value);
+                setImportFormat(event.target.value as ImportFormat);
                 setDryRunResult([]);
                 setApplyResult([]);
               }}
-            />
-          </Field>
-          <div className="provisioningApplyBar">
-            <div className="provisioningSafety">
-              <ShieldCheck aria-hidden="true" />
-              <span>Apply is enabled after a successful dry-run.</span>
-            </div>
-            <div className="inlineActions">
-              <button className="button" type="button" disabled={!importReady || working !== ""} onClick={handleDryRun}>
-                <Play aria-hidden="true" />
-                Dry-run
-              </button>
-              <button className="button primary" type="button" disabled={!canApply} onClick={handleApply}>
-                <Upload aria-hidden="true" />
-                Apply
-              </button>
-            </div>
+            >
+              <option value="yaml">YAML</option>
+              <option value="json">JSON</option>
+            </select>
+            <label className="button">
+              <FileInput aria-hidden="true" />
+              Load file
+              <input
+                className="visuallyHidden"
+                type="file"
+                accept=".yaml,.yml,.json,application/json,application/yaml,text/yaml"
+                onChange={(event) => void handleFile(event.target.files?.[0] || null)}
+              />
+            </label>
           </div>
-        </Panel>
-      </div>
+          <div className="provisioningTaskControls">
+            <button className="button" type="button" disabled={!importReady || working !== ""} onClick={handleDryRun}>
+              <Play aria-hidden="true" />
+              Dry-run
+            </button>
+            <button className="button primary" type="button" disabled={!canApply} onClick={handleApply}>
+              <Upload aria-hidden="true" />
+              Apply
+            </button>
+          </div>
+          <div className="provisioningSafety">
+            <ShieldCheck aria-hidden="true" />
+            <span>Dry-run checks the document without changing stored state.</span>
+          </div>
+        </div>
+      </section>
 
-      <Panel title={resultLabel} subtitle="Resources are listed in the order returned by the control plane.">
+      {exportText ? (
+        <Panel
+          title="Export preview"
+          subtitle="Review or save the latest exported snapshot."
+          actions={
+            <div className="inlineActions">
+              <button className="button small" type="button" onClick={copyExport}>
+                <Clipboard aria-hidden="true" />
+                Copy
+              </button>
+              <button className="button small" type="button" onClick={downloadExport}>
+                <Download aria-hidden="true" />
+                Download
+              </button>
+            </div>
+          }
+        >
+          <div className="provisioningToolbar">
+            <span className="cellSub">{exportFileName}</span>
+          </div>
+          <pre className="provisioningCode">{exportText}</pre>
+        </Panel>
+      ) : null}
+
+      <Panel title="Import document" subtitle="Use valueFrom.env or valueFrom.file for credentials and environment-specific values.">
+        <Field label="Provisioning document">
+          <textarea
+            className="provisioningEditor"
+            value={importText}
+            spellCheck={false}
+            onChange={(event) => {
+              setImportText(event.target.value);
+              setDryRunResult([]);
+              setApplyResult([]);
+            }}
+          />
+        </Field>
+      </Panel>
+
+      <Panel title={resultLabel} subtitle={resultRows.length ? resultSummary : "Run dry-run to review planned resources before applying."}>
         {resultRows.length ? (
           <div className="tableWrap">
             <table className="table provisioningResultTable">
@@ -304,4 +307,16 @@ export function ProvisioningPage() {
       </Panel>
     </Layout>
   );
+}
+
+function summarizeResult(rows: ProvisioningAppliedResource[]): string {
+  if (!rows.length) return "";
+  const counts = rows.reduce<Record<string, number>>((acc, row) => {
+    acc[row.action] = (acc[row.action] || 0) + 1;
+    return acc;
+  }, {});
+  return Object.entries(counts)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([action, count]) => `${count} ${action}`)
+    .join(" · ");
 }

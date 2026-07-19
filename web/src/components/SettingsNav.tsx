@@ -3,6 +3,7 @@ import { Link, useRouter } from "../lib/router";
 const items = [
   { to: "/settings", label: "General", match: (path: string) => path === "/settings" },
   { to: "/settings/info", label: "Info", match: (path: string) => path === "/settings/info" },
+  { to: "/settings/provisioning", label: "Provisioning", match: (path: string) => path === "/settings/provisioning" },
   { to: "/settings/webhooks", label: "Webhooks", match: (path: string) => path.startsWith("/settings/webhooks") },
 ];
 

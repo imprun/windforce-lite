@@ -32,7 +32,6 @@ export function App() {
 
   if (matchRoute("/monitoring", path)) return <MonitoringPage />;
   if (matchRoute("/audit", path)) return <AuditPage />;
-  if (matchRoute("/provisioning", path)) return <ProvisioningPage />;
   const clientDetail = matchRoute("/clients/:id/:tab?/:appKey?", path);
   if (clientDetail?.id) {
     return <ClientDetailPage clientID={clientDetail.id} tab={clientDetail.tab || "overview"} appKey={clientDetail.appKey} />;
@@ -49,6 +48,8 @@ export function App() {
   }
   if (matchRoute("/settings/webhooks", path)) return <WebhookSettingsPage />;
   if (matchRoute("/settings/info", path)) return <SettingsInfoPage />;
+  if (matchRoute("/settings/provisioning", path)) return <ProvisioningPage />;
+  if (matchRoute("/provisioning", path)) return <ProvisioningPage />;
   if (matchRoute("/settings", path)) return <SettingsPage />;
   return <AppsPage />;
 }

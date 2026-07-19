@@ -3,7 +3,6 @@ import {
   Activity,
   AppWindow,
   ContactRound,
-  FileCog,
   PanelLeftClose,
   PanelLeftOpen,
   ScrollText,
@@ -16,7 +15,6 @@ import { Link, useRouter } from "../lib/router";
 const navItems = [
   { to: "/", label: "Apps", icon: AppWindow, match: (path: string) => path === "/" || path.startsWith("/apps") },
   { to: "/clients", label: "Client Registry", icon: ContactRound, match: (path: string) => path.startsWith("/clients") },
-  { to: "/provisioning", label: "Provisioning", icon: FileCog, match: (path: string) => path.startsWith("/provisioning") },
   { to: "/monitoring", label: "Monitoring", icon: Activity, match: (path: string) => path.startsWith("/monitoring") || path.startsWith("/jobs") },
   { to: "/audit", label: "Audit", icon: ScrollText, match: (path: string) => path.startsWith("/audit") },
   { to: "/settings", label: "Settings", icon: Settings, match: (path: string) => path.startsWith("/settings") },

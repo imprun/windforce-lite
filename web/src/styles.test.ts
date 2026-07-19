@@ -14,9 +14,10 @@ describe("table column alignment", () => {
 });
 
 describe("provisioning layout", () => {
-  test("keeps editor and export panes at stable dimensions", () => {
-    expect(styles).toMatch(/\.provisioningGrid\s*\{[^}]*grid-template-columns:\s*minmax\(360px,\s*0\.9fr\)\s*minmax\(420px,\s*1\.1fr\);/s);
-    expect(styles).toMatch(/\.provisioningEditor\s*\{[^}]*min-height:\s*420px;/s);
-    expect(styles).toMatch(/\.provisioningCode\s*\{[^}]*min-height:\s*420px;/s);
+  test("keeps provisioning as task cards inside settings", () => {
+    expect(styles).toMatch(/\.provisioningTaskGrid\s*\{[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(360px,\s*1fr\)\);/s);
+    expect(styles).toMatch(/\.provisioningTask\s*\{[^}]*min-height:\s*236px;/s);
+    expect(styles).toMatch(/\.provisioningEditor\s*\{[^}]*min-height:\s*320px;/s);
+    expect(styles).toMatch(/\.provisioningCode\s*\{[^}]*max-height:\s*460px;/s);
   });
 });

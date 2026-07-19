@@ -1667,6 +1667,46 @@ textarea {
   align-items: start;
 }
 
+.provisioningTaskGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(360px, 1fr));
+  gap: 16px;
+}
+
+.provisioningTask {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 236px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.provisioningTask h2 {
+  margin: 6px 0 6px;
+  font-size: 18px;
+}
+
+.provisioningTask p {
+  margin: 0;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.provisioningTaskControls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.provisioningTaskControls select {
+  min-width: 140px;
+}
+
 .provisioningToolbar,
 .provisioningApplyBar,
 .provisioningSafety {
@@ -1699,15 +1739,15 @@ textarea {
 }
 
 .provisioningEditor {
-  min-height: 420px;
+  min-height: 320px;
   white-space: pre;
   overflow: auto;
 }
 
 .provisioningCode {
   margin: 0;
-  min-height: 420px;
-  max-height: 620px;
+  min-height: 260px;
+  max-height: 460px;
   overflow: auto;
   white-space: pre;
   padding: 12px 14px;
@@ -2143,6 +2183,10 @@ textarea {
   }
 
   .provisioningGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .provisioningTaskGrid {
     grid-template-columns: 1fr;
   }
 
