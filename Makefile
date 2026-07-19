@@ -1,4 +1,4 @@
-.PHONY: help fmt test test-postgres build web-install web-dev web-build web-embed web-test web-typecheck clean dev \
+.PHONY: help fmt test test-postgres build web-deps web-install web-dev web-build web-embed web-test web-typecheck clean dev \
 	compose-up compose-db compose-execution-api compose-worker compose-webhook-dispatcher compose-dev compose-dev-worker compose-dev-build compose-dev-logs compose-build compose-down compose-reset compose-logs compose-ps postgres-dsn \
 	dev-standalone dev-standalone-postgres dev-api dev-worker worker-once dev-webhook-dispatcher webhook-once \
 	webhook-receiver \
@@ -89,6 +89,7 @@ export POSTGRES_DSN
 help:
 	@echo "targets:"
 	@echo "  fmt                    run gofmt"
+	@echo "  web-deps               install Web UI dependencies for this worktree"
 	@echo "  web-install            install Web UI dependencies"
 	@echo "  dev                    start PostgreSQL and Docker air control-plane/worker, then run local Web UI dev server"
 	@echo "  web-dev                run the local Vite Web UI dev server with live reload on WINDFORCE_LITE_WEB_PORT"
@@ -137,7 +138,7 @@ help:
 fmt:
 	$(GO) fmt ./...
 
-web-install:
+web-deps web-install:
 	cd web && $(BUN) install
 
 web-dev:
