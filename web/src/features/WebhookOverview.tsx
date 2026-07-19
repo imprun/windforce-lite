@@ -144,9 +144,9 @@ export function WebhookOverview({ subscription, apps, onUpdated, onDeleted }: Pr
             <WebhookSubscriptionStatus enabled={subscription.enabled} deleted={deleted} />
           </div>
           <div>
-            <span className="fieldLabel">Receiver</span>
+            <span className="fieldLabel">Receiver host</span>
             <strong className="mono">{subscription.endpoint_summary}</strong>
-            <span className="fieldHint">The URL path is never returned by the API.</span>
+            <span className="fieldHint">Full paths and query strings are hidden after save.</span>
           </div>
           <div>
             <span className="fieldLabel">Events</span>
@@ -168,7 +168,7 @@ export function WebhookOverview({ subscription, apps, onUpdated, onDeleted }: Pr
               <Field label="Name" hint="Shown in operations, delivery history, and audit events.">
                 <input id="webhookEditName" maxLength={200} value={name} onChange={(event) => setName(event.target.value)} />
               </Field>
-              <Field label="Replace endpoint URL" hint="Leave blank to keep the current receiver. Entering a value replaces the full URL.">
+              <Field label="Replace endpoint URL" hint="Leave blank to keep the current receiver. Enter a new full URL to rotate the hidden path or query.">
                 <input
                   id="webhookEditEndpoint"
                   type="url"
