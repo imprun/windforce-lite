@@ -2,7 +2,6 @@ import { useEffect, useState, type ReactNode } from "react";
 import {
   Activity,
   AppWindow,
-  Boxes,
   ContactRound,
   PanelLeftClose,
   PanelLeftOpen,
@@ -14,10 +13,9 @@ import { useApp } from "../lib/app-context";
 import { Link, useRouter } from "../lib/router";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 
-const navItems = [
+export const primaryNavItems = [
   { to: "/", label: "Apps", icon: AppWindow, match: (path: string) => path === "/" || path.startsWith("/apps") },
   { to: "/clients", label: "Client Registry", icon: ContactRound, match: (path: string) => path.startsWith("/clients") },
-  { to: "/workspaces", label: "Workspaces", icon: Boxes, match: (path: string) => path.startsWith("/workspaces") || path === "/settings/workspaces" },
   { to: "/monitoring", label: "Monitoring", icon: Activity, match: (path: string) => path.startsWith("/monitoring") || path.startsWith("/jobs") },
   { to: "/audit", label: "Audit", icon: ScrollText, match: (path: string) => path.startsWith("/audit") },
   { to: "/settings", label: "Settings", icon: Settings, match: (path: string) => path.startsWith("/settings") && path !== "/settings/workspaces" },
@@ -73,7 +71,7 @@ export function Layout({
           </button>
         </div>
         <nav className="nav" aria-label="Primary">
-          {navItems.map((item) => {
+          {primaryNavItems.map((item) => {
             const Icon = item.icon;
             return (
               <Link

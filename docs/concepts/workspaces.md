@@ -33,7 +33,7 @@ Workspace deletion and reactivation are not exposed. Use a separate workspace wh
 
 ## Operations
 
-Use the sidebar selector only to change the current workspace. Use the top-level Workspaces administration page with an instance-admin token to:
+Use the sidebar workspace switcher to change the current workspace. Open **Manage workspaces** from the same switcher to use the instance administration page with an instance-admin token:
 
 - create a workspace;
 - change its display name;

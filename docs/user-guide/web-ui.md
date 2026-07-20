@@ -130,6 +130,25 @@ General settings holds the API token and local audit actor used by Web UI reques
 2. Set the API token when the control plane requires authentication.
 3. Set the audit actor recorded on releases and cancels; local development defaults to local-dev.
 
+## Switch workspace context
+
+The workspace switcher identifies the current scope, lists available workspaces, and provides the entry point to instance workspace administration.
+
+![Switch workspace context](../assets/ui/workspace-switcher.png)
+
+1. Open the workspace control at the bottom of the sidebar.
+2. Select a workspace to change the active application and monitoring scope.
+3. Choose Manage workspaces to create workspaces or manage identity, access, audit, and lifecycle settings.
+
+## Switch workspace on a narrow screen
+
+The current workspace remains visible below the page title and opens the same context and administration menu on narrow screens.
+
+![Switch workspace on a narrow screen](../assets/ui/workspace-switcher-mobile.png)
+
+1. Open the workspace control below the page title.
+2. Choose another workspace or open Manage workspaces without returning to desktop navigation.
+
 ## Collapse the sidebar
 
 The sidebar collapses to an icon rail so wide tables get the full viewport. The choice is remembered in the browser.
@@ -146,8 +165,8 @@ The workspace registry is the instance-admin surface for workspace identity, sta
 
 ![Manage workspaces](../assets/ui/workspaces.png)
 
-1. Select an active workspace from the sidebar.
-2. Open Workspaces from the primary navigation to review the instance registry.
+1. Open the workspace switcher at the bottom of the sidebar.
+2. Choose Manage workspaces to review the instance registry.
 3. Create a workspace or open a workspace's dedicated administration page.
 4. Use an instance-admin token for workspace lifecycle operations; workspace tokens remain scoped to one workspace.
 
@@ -167,9 +186,9 @@ Each workspace has a dedicated administration page that separates identity, acce
 
 ![Administer a workspace](../assets/ui/workspace-detail.png)
 
-1. Open a workspace from the instance-level Workspace registry.
+1. Open Manage workspaces from the workspace switcher, then choose a workspace from the registry.
 2. Use Overview for its display name, Access for its scoped token, Audit for lifecycle history, and Lifecycle for archive controls.
-3. Use the sidebar workspace switcher only to change the active workspace for workspace-scoped operations.
+3. Return to the workspace switcher when changing the active workspace for workspace-scoped operations.
 
 ## Configure a release webhook
 

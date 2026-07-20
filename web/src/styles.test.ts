@@ -27,3 +27,14 @@ describe("provisioning layout", () => {
     expect(styles).not.toMatch(/\.provisioningModeTabs button\.active\s*\{/);
   });
 });
+
+describe("workspace switcher layout", () => {
+  test("limits collapsed labels to the desktop sidebar instance", () => {
+    expect(styles).toContain(".sidebarCollapsed .sidebar .workspaceSwitcherText");
+    expect(styles).not.toMatch(/\.sidebarCollapsed \.workspaceSwitcherText\s*[,\{]/);
+  });
+
+  test("opens the mobile workspace popover below its trigger", () => {
+    expect(styles).toMatch(/\.mobileWorkspaceContext \.workspacePopover\s*\{[^}]*top:\s*calc\(100% \+ 8px\);[^}]*bottom:\s*auto;/s);
+  });
+});

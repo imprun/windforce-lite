@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { Workspace } from "./api";
-import { visibleWorkspaces } from "./workspaces";
+import { filterWorkspaces, visibleWorkspaces } from "./workspaces";
 
 const base: Omit<Workspace, "id" | "name" | "status"> = {
   has_token: false,
@@ -22,5 +22,21 @@ describe("visibleWorkspaces", () => {
       "default",
       "archived-current",
     ]);
+  });
+});
+
+describe("filterWorkspaces", () => {
+  const workspaces: Workspace[] = [
+    { ...base, id: "default", name: "Default", status: "active" },
+    { ...base, id: "finance-ops", name: "Finance Operations", status: "active" },
+  ];
+
+  test("matches workspace display names and routing IDs", () => {
+    expect(filterWorkspaces(workspaces, "finance").map((workspace) => workspace.id)).toEqual(["finance-ops"]);
+    expect(filterWorkspaces(workspaces, "DEFAULT").map((workspace) => workspace.id)).toEqual(["default"]);
+  });
+
+  test("preserves the server order for an empty query", () => {
+    expect(filterWorkspaces(workspaces, " ")).toEqual(workspaces);
   });
 });

@@ -118,8 +118,8 @@ workload 집계 대시보드. 개별 job 레코드는 다루지 않는다.
 ### Settings
 
 General에서 API token과 actor를 설정하고 브라우저 localStorage에 저장한다.
-현재 workspace는 사이드바의 등록 목록에서 선택한다. 전체 workspace 생성과
-관리는 Settings가 아닌 최상위 Workspaces에서 instance admin이 수행한다. 각
+현재 workspace는 사이드바의 workspace switcher에서 선택한다. 전체 workspace 생성과
+관리는 switcher의 `Manage workspaces`에서 instance admin이 수행한다. 각
 workspace 상세는 identity, access, audit, lifecycle 책임을 별도 탭으로 구분한다.
 actor는 인증 수단이 아니라 로컬 audit subject다.
 workspace token으로 인증하면 audit subject는 해당 workspace principal로 고정된다.
