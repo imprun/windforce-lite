@@ -12,6 +12,7 @@ import { WebhookCreatePage } from "./pages/WebhookCreatePage";
 import { WebhookDetailPage } from "./pages/WebhookDetailPage";
 import { WebhookSettingsPage } from "./pages/WebhookSettingsPage";
 import { WorkspacesPage } from "./pages/WorkspacesPage";
+import { WorkspaceDetailPage } from "./pages/WorkspaceDetailPage";
 
 export function App() {
   const { path } = useRouter();
@@ -38,6 +39,11 @@ export function App() {
     return <ClientDetailPage clientID={clientDetail.id} tab={clientDetail.tab || "overview"} appKey={clientDetail.appKey} />;
   }
   if (matchRoute("/clients", path)) return <ClientRegistryPage />;
+  const workspaceDetail = matchRoute("/workspaces/:id/:tab?", path);
+  if (workspaceDetail?.id) {
+    return <WorkspaceDetailPage workspaceID={workspaceDetail.id} tab={workspaceDetail.tab || "overview"} />;
+  }
+  if (matchRoute("/workspaces", path)) return <WorkspacesPage />;
   // Back-compat: /jobs was the pre-rename route, and /jobs/{id} was the
   // removed per-job detail page (ADR 0005).
   const legacyJobs = matchRoute("/jobs/:id?", path);

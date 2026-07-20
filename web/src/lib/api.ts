@@ -687,6 +687,10 @@ export class WindforceApi {
     return this.globalRequest("/api/workspaces");
   }
 
+  workspace(id: string): Promise<Workspace> {
+    return this.globalRequest(`/api/workspaces/${encodeURIComponent(id)}`);
+  }
+
   createWorkspace(id: string, name: string): Promise<WorkspaceTokenResult> {
     return this.globalRequest("/api/workspaces", { method: "POST", body: { id, name } });
   }

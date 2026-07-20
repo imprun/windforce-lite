@@ -33,12 +33,14 @@ Workspace deletion and reactivation are not exposed. Use a separate workspace wh
 
 ## Operations
 
-Use the sidebar selector to change the current workspace. Use Settings > Workspaces with an instance-admin token to:
+Use the sidebar selector only to change the current workspace. Use the top-level Workspaces administration page with an instance-admin token to:
 
 - create a workspace;
 - change its display name;
 - rotate its workspace token;
 - inspect lifecycle audit records;
 - archive an active workspace.
+
+The administration page is instance-scoped and is separate from Settings, which applies to the currently selected workspace. Each workspace has dedicated Overview, Access, Audit, and Lifecycle tabs.
 
 The global lifecycle API is rooted at `/api/workspaces`. Workspace resources remain rooted at `/api/w/{workspace}` and execution requests at `/execution/v1/workspaces/{workspace}`.

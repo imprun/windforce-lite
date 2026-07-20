@@ -7,13 +7,12 @@ export default {
   screenshot: "docs/assets/ui/workspaces.png",
   guide: [
     "Select an active workspace from the sidebar.",
-    "Open Settings and choose Workspaces to review the registry.",
-    "Create a workspace or open Manage to edit its display name, rotate its one-time token, inspect lifecycle audit, or archive it.",
+    "Open Workspaces from the primary navigation to review the instance registry.",
+    "Create a workspace or open a workspace's dedicated administration page.",
     "Use an instance-admin token for workspace lifecycle operations; workspace tokens remain scoped to one workspace.",
   ],
   async run({ page, capture }) {
     await page.goto();
-    await page.clickText("Settings");
     await page.clickText("Workspaces");
     await page.waitForSelector("#workspaceRegistry tbody tr");
     await page.waitForText("#workspaceRegistry", "Operations");

@@ -2,7 +2,6 @@ import { Link, useRouter } from "../lib/router";
 
 export const settingsNavItems = [
   { to: "/settings", label: "General", match: (path: string) => path === "/settings" },
-  { to: "/settings/workspaces", label: "Workspaces", match: (path: string) => path === "/settings/workspaces" },
   { to: "/settings/provisioning", label: "Provisioning", match: (path: string) => path === "/settings/provisioning" },
   { to: "/settings/webhooks", label: "Webhooks", match: (path: string) => path.startsWith("/settings/webhooks") },
   { to: "/settings/info", label: "Info", match: (path: string) => path === "/settings/info" },

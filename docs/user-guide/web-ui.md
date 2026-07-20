@@ -147,8 +147,8 @@ The workspace registry is the instance-admin surface for workspace identity, sta
 ![Manage workspaces](../assets/ui/workspaces.png)
 
 1. Select an active workspace from the sidebar.
-2. Open Settings and choose Workspaces to review the registry.
-3. Create a workspace or open Manage to edit its display name, rotate its one-time token, inspect lifecycle audit, or archive it.
+2. Open Workspaces from the primary navigation to review the instance registry.
+3. Create a workspace or open a workspace's dedicated administration page.
 4. Use an instance-admin token for workspace lifecycle operations; workspace tokens remain scoped to one workspace.
 
 ## Manage release webhooks
@@ -160,6 +160,16 @@ The Webhooks settings view shows each signed release receiver, its app scope, an
 1. Open Settings and choose Webhooks.
 2. Review each receiver's status, masked endpoint, app scope, latest delivery, and last operator update.
 3. Open a webhook name to manage its configuration and delivery history.
+
+## Administer a workspace
+
+Each workspace has a dedicated administration page that separates identity, access, audit, and lifecycle responsibilities.
+
+![Administer a workspace](../assets/ui/workspace-detail.png)
+
+1. Open a workspace from the instance-level Workspace registry.
+2. Use Overview for its display name, Access for its scoped token, Audit for lifecycle history, and Lifecycle for archive controls.
+3. Use the sidebar workspace switcher only to change the active workspace for workspace-scoped operations.
 
 ## Configure a release webhook
 

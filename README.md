@@ -433,8 +433,8 @@ API token checks are optional for local development. `--admin-token-env` sets
 the instance-admin token used for global workspace lifecycle operations and
 cross-workspace administration. Creating a workspace returns its scoped API
 token once; only its SHA-256 hash is stored. A workspace token can access only
-that workspace and cannot call `/api/workspaces`. Rotate it from the Workspaces
-settings page or `POST /api/workspaces/{workspaceId}/token`.
+that workspace and cannot call `/api/workspaces`. Rotate it from the top-level
+Workspaces administration page or `POST /api/workspaces/{workspaceId}/token`.
 
 Worker scripts receive `WF_TOKEN` as a short-lived job token signed with
 `--job-token-secret-env`; when that flag is omitted, the admin token value is

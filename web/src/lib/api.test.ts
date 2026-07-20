@@ -279,15 +279,17 @@ describe("WindforceApi workspaces", () => {
     try {
       const api = new WindforceApi({ workspace: "default", token: "admin-token", actor: "operator" });
       await api.workspaces();
+      await api.workspace("team-a");
       await api.createWorkspace("team-a", "Team A");
 
       expect(requests.map((request) => [request.url, request.method])).toEqual([
         ["/api/workspaces", "GET"],
+        ["/api/workspaces/team-a", "GET"],
         ["/api/workspaces", "POST"],
       ]);
       expect(requests[0].headers.get("authorization")).toBe("Bearer admin-token");
-      expect(requests[1].headers.get("x-windforce-actor")).toBe("operator");
-      expect(JSON.parse(requests[1].body)).toEqual({ id: "team-a", name: "Team A" });
+      expect(requests[2].headers.get("x-windforce-actor")).toBe("operator");
+      expect(JSON.parse(requests[2].body)).toEqual({ id: "team-a", name: "Team A" });
     } finally {
       globalThis.fetch = originalFetch;
     }

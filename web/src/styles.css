@@ -2080,7 +2080,28 @@ textarea {
   text-align: right;
 }
 
-.workspaceAccessSection,
+.tablePrimaryLink {
+  color: var(--text);
+  text-decoration: none;
+}
+
+.tablePrimaryLink:hover {
+  color: var(--primary);
+  text-decoration: underline;
+}
+
+.workspaceSingleSetting {
+  display: grid;
+  grid-template-columns: minmax(240px, 520px) max-content;
+  align-items: end;
+  justify-content: start;
+  gap: 12px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.workspaceCommandRow,
 .dangerZone {
   display: flex;
   align-items: center;
@@ -2090,14 +2111,7 @@ textarea {
   border-top: 1px solid var(--border);
 }
 
-.workspaceAccessSection h3,
-.workspaceAuditSection h3,
-.dangerZone h3 {
-  font-size: 14px;
-  margin-bottom: 3px;
-}
-
-.workspaceAccessSection p,
+.workspaceCommandRow p,
 .dangerZone p {
   color: var(--text-muted);
   font-size: 12px;
@@ -2129,24 +2143,9 @@ textarea {
   white-space: nowrap;
 }
 
-.workspaceAuditSection {
-  display: grid;
-  gap: 8px;
-  padding: 16px 0;
-  border-top: 1px solid var(--border);
-}
-
-.workspaceAuditRow {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--border);
-}
-
-.workspaceAuditRow:last-child {
-  border-bottom: 0;
+.workspaceAuditTable th:last-child,
+.workspaceAuditTable td:last-child {
+  width: 220px;
 }
 
 /* ---------- toasts ---------- */
@@ -2329,31 +2328,45 @@ textarea {
 }
 
 @media (max-width: 640px) {
-	.workspaceTable {
-		min-width: 0;
-	}
+  .workspaceTable {
+    min-width: 0;
+  }
 
-	.workspaceTable th:nth-child(3),
-	.workspaceTable td:nth-child(3),
-	.workspaceTable th:nth-child(4),
-	.workspaceTable td:nth-child(4) {
-		display: none;
-	}
+  .workspaceTable th:nth-child(3),
+  .workspaceTable td:nth-child(3),
+  .workspaceTable th:nth-child(4),
+  .workspaceTable td:nth-child(4) {
+    display: none;
+  }
 
-	.workspaceTable th:first-child,
-	.workspaceTable td:first-child {
-		width: 56%;
-	}
+  .workspaceTable th:first-child,
+  .workspaceTable td:first-child {
+    width: 56%;
+  }
 
-	.workspaceTable th:nth-child(2),
-	.workspaceTable td:nth-child(2) {
-		width: 24%;
-	}
+  .workspaceTable th:nth-child(2),
+  .workspaceTable td:nth-child(2) {
+    width: 24%;
+  }
 
-	.workspaceTable th:last-child,
-	.workspaceTable td:last-child {
-		width: 20%;
-	}
+  .workspaceTable th:last-child,
+  .workspaceTable td:last-child {
+    width: 20%;
+  }
+
+  .workspaceSingleSetting {
+    grid-template-columns: 1fr;
+  }
+
+  .workspaceSingleSetting .button {
+    width: 100%;
+  }
+
+  .workspaceCommandRow,
+  .dangerZone {
+    align-items: flex-start;
+    flex-direction: column;
+  }
 
   .sidebar {
     padding-left: 12px;
