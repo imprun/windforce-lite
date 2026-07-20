@@ -16,6 +16,7 @@ export function WorkspacesPage() {
 
   return (
     <Layout
+      scope="instance"
       title="Workspaces"
       subtitle="Instance administration for workspace identity, access, and lifecycle."
       actions={

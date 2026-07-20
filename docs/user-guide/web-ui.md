@@ -161,14 +161,15 @@ The sidebar collapses to an icon rail so wide tables get the full viewport. The 
 
 ## Manage workspaces
 
-The workspace registry is the instance-admin surface for workspace identity, status, scoped access, and lifecycle operations.
+The workspace registry uses an instance-administration shell without the active workspace's application navigation.
 
 ![Manage workspaces](../assets/ui/workspaces.png)
 
 1. Open the workspace switcher at the bottom of the sidebar.
 2. Choose Manage workspaces to review the instance registry.
-3. Create a workspace or open a workspace's dedicated administration page.
-4. Use an instance-admin token for workspace lifecycle operations; workspace tokens remain scoped to one workspace.
+3. Use Back to workspace to return to the active workspace console.
+4. Create a workspace or open a workspace's dedicated administration page.
+5. Use an instance-admin token for workspace lifecycle operations; workspace tokens remain scoped to one workspace.
 
 ## Manage release webhooks
 
@@ -182,7 +183,7 @@ The Webhooks settings view shows each signed release receiver, its app scope, an
 
 ## Administer a workspace
 
-Each workspace has a dedicated administration page that separates identity, access, audit, and lifecycle responsibilities.
+Each workspace has a dedicated instance-administration page without workspace-scoped application navigation.
 
 ![Administer a workspace](../assets/ui/workspace-detail.png)
 

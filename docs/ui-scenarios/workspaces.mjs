@@ -3,11 +3,12 @@ export default {
   id: "workspaces",
   title: "Manage workspaces",
   description:
-    "The workspace registry is the instance-admin surface for workspace identity, status, scoped access, and lifecycle operations.",
+    "The workspace registry uses an instance-administration shell without the active workspace's application navigation.",
   screenshot: "docs/assets/ui/workspaces.png",
   guide: [
     "Open the workspace switcher at the bottom of the sidebar.",
     "Choose Manage workspaces to review the instance registry.",
+    "Use Back to workspace to return to the active workspace console.",
     "Create a workspace or open a workspace's dedicated administration page.",
     "Use an instance-admin token for workspace lifecycle operations; workspace tokens remain scoped to one workspace.",
   ],

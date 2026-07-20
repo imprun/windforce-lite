@@ -25,11 +25,11 @@ export function WorkspaceDetailPage({ workspaceID, tab }: { workspaceID: string;
   const activeTab = (workspaceDetailTabs.find((item) => item.key === tab)?.key || "overview") as WorkspaceTab;
 
   if (state.loading && !state.data) {
-    return <Layout title="Workspace"><Loading label="Loading workspace…" /></Layout>;
+    return <Layout scope="instance" title="Workspace"><Loading label="Loading workspace…" /></Layout>;
   }
   if (state.error || !state.data) {
     return (
-      <Layout title="Workspace not found">
+      <Layout scope="instance" title="Workspace not found">
         <ErrorNotice message={state.error || "Workspace not found."} onRetry={state.reload} />
       </Layout>
     );
@@ -38,6 +38,7 @@ export function WorkspaceDetailPage({ workspaceID, tab }: { workspaceID: string;
   const workspace = state.data;
   return (
     <Layout
+      scope="instance"
       title={workspace.name}
       subtitle={`Instance workspace · ${workspace.id}`}
       actions={<Link className="button" to="/workspaces">Back to workspaces</Link>}

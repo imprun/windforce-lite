@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import {
   Activity,
   AppWindow,
+  ArrowLeft,
   ContactRound,
   PanelLeftClose,
   PanelLeftOpen,
@@ -30,11 +31,13 @@ export function Layout({
   subtitle,
   actions,
   children,
+  scope = "workspace",
 }: {
   title: string;
   subtitle?: string;
   actions?: ReactNode;
   children: ReactNode;
+  scope?: "workspace" | "instance";
 }) {
   const { path } = useRouter();
   const { settings, toasts, dismissToast } = useApp();
@@ -45,8 +48,8 @@ export function Layout({
   }, [collapsed]);
 
   return (
-    <div className={collapsed ? "appShell sidebarCollapsed" : "appShell"}>
-      <aside className="sidebar">
+    <div className={scope === "instance" ? "appShell instanceAdminShell" : collapsed ? "appShell sidebarCollapsed" : "appShell"}>
+      {scope === "workspace" ? <aside className="sidebar">
         <div className="sidebarHeader">
           <Link className="brand" to="/" title="windforce-core">
             <span className="brandMark" aria-hidden="true">
@@ -94,15 +97,30 @@ export function Layout({
             actor / {settings.actor || "system"}
           </span>
         </div>
-      </aside>
+      </aside> : null}
       <div className="mainArea">
+        {scope === "instance" ? (
+          <header className="instanceAdminBar">
+            <div className="instanceAdminIdentity">
+              <Link className="brand" to="/" title="windforce-core">
+                <span className="brandMark" aria-hidden="true">
+                  <Wind size={17} strokeWidth={2.2} />
+                </span>
+                <span className="brandName">windforce-core</span>
+              </Link>
+              <span className="instanceAdminDivider" aria-hidden="true" />
+              <span className="instanceAdminContext">Instance administration</span>
+            </div>
+            <Link className="button" to="/">
+              <ArrowLeft size={16} aria-hidden="true" /> Back to workspace
+            </Link>
+          </header>
+        ) : null}
         <header className="topbar">
           <div>
             <h1>{title}</h1>
             {subtitle ? <p className="topbarSubtitle">{subtitle}</p> : null}
-            <div className="mobileWorkspaceContext">
-              <WorkspaceSwitcher />
-            </div>
+            {scope === "workspace" ? <div className="mobileWorkspaceContext"><WorkspaceSwitcher /></div> : null}
           </div>
           {actions ? <div className="topbarActions">{actions}</div> : null}
         </header>

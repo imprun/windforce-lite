@@ -35,6 +35,8 @@ Workspace deletion and reactivation are not exposed. Use a separate workspace wh
 
 Use the sidebar workspace switcher to change the current workspace. Open **Manage workspaces** from the same switcher to use the instance administration page with an instance-admin token:
 
+The instance administration page does not render the active workspace's application navigation. Use **Back to workspace** in its header to return to the active workspace console.
+
 - create a workspace;
 - change its display name;
 - rotate its workspace token;
