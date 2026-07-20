@@ -1,12 +1,42 @@
-import { Copy } from "lucide-react";
+import { Check, Copy } from "lucide-react";
 import type { Workspace } from "../lib/api";
 import { useApp } from "../lib/app-context";
+import { useRouter } from "../lib/router";
 
 export function WorkspaceStatus({ workspace }: { workspace: Workspace }) {
   return workspace.status === "active" ? (
     <span className="badge badge-good">Active</span>
   ) : (
     <span className="badge badge-neutral">Archived</span>
+  );
+}
+
+export function WorkspaceActivation({ workspace, compact = false }: { workspace: Workspace; compact?: boolean }) {
+  const { settings, updateSettings } = useApp();
+  const { navigate } = useRouter();
+  const current = workspace.id === settings.workspace;
+
+  if (current) {
+    return (
+      <span className="badge badge-current">
+        <Check size={13} aria-hidden="true" /> Current
+      </span>
+    );
+  }
+
+  return (
+    <button
+      className={compact ? "button small primary" : "button primary"}
+      type="button"
+      disabled={workspace.status === "archived"}
+      title={workspace.status === "archived" ? "Archived workspaces cannot be selected" : `Switch to ${workspace.name}`}
+      onClick={() => {
+        updateSettings({ ...settings, workspace: workspace.id });
+        navigate("/");
+      }}
+    >
+      {compact ? "Switch" : "Switch to workspace"}
+    </button>
   );
 }
 

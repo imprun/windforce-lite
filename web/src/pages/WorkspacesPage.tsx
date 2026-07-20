@@ -2,7 +2,7 @@ import { Plus, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { Layout } from "../components/Layout";
 import { EmptyState, ErrorNotice, Field, Loading, Modal, Panel } from "../components/ui";
-import { OneTimeWorkspaceToken, WorkspaceStatus } from "../features/WorkspaceAdmin";
+import { OneTimeWorkspaceToken, WorkspaceActivation, WorkspaceStatus } from "../features/WorkspaceAdmin";
 import { useApp, useAsync } from "../lib/app-context";
 import { errorMessage } from "../lib/api";
 import { formatRelative, formatTime } from "../lib/format";
@@ -10,7 +10,7 @@ import { Link } from "../lib/router";
 import { notifyWorkspaceRegistryChanged } from "../lib/workspaces";
 
 export function WorkspacesPage() {
-  const { api, settings } = useApp();
+  const { api } = useApp();
   const state = useAsync(() => api.workspaces(), [api]);
   const [creating, setCreating] = useState(false);
 
@@ -59,7 +59,7 @@ export function WorkspacesPage() {
                           {workspace.name}
                         </Link>
                         <span className="cellSub mono">
-                          {workspace.id}{workspace.id === settings.workspace ? " · current" : ""}
+                          {workspace.id}
                         </span>
                       </td>
                       <td><WorkspaceStatus workspace={workspace} /></td>
@@ -69,7 +69,10 @@ export function WorkspacesPage() {
                         <span className="cellSub">{workspace.updated_by}</span>
                       </td>
                       <td className="tableActions">
-                        <Link className="button small" to={`/workspaces/${encodeURIComponent(workspace.id)}`}>Manage</Link>
+                        <div className="workspaceTableActions">
+                          <WorkspaceActivation workspace={workspace} compact />
+                          <Link className="button small" to={`/workspaces/${encodeURIComponent(workspace.id)}`}>Manage</Link>
+                        </div>
                       </td>
                     </tr>
                   ))}

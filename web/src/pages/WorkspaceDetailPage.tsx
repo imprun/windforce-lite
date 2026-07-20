@@ -2,7 +2,7 @@ import { Archive, ArrowLeft, KeyRound } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Layout } from "../components/Layout";
 import { DefinitionList, EmptyState, ErrorNotice, Field, Loading, Panel } from "../components/ui";
-import { OneTimeWorkspaceToken, WorkspaceStatus } from "../features/WorkspaceAdmin";
+import { OneTimeWorkspaceToken, WorkspaceActivation, WorkspaceStatus } from "../features/WorkspaceAdmin";
 import { useApp, useAsync } from "../lib/app-context";
 import type { Workspace } from "../lib/api";
 import { errorMessage } from "../lib/api";
@@ -47,6 +47,7 @@ export function WorkspaceDetailPage({ workspaceID, tab }: { workspaceID: string;
       title={workspace.name}
       subtitle={`Instance workspace · ${workspace.id}`}
       titleLeading={backToWorkspaces}
+      actions={<WorkspaceActivation workspace={workspace} />}
     >
       <nav className="tabBar" aria-label="Workspace detail tabs">
         {workspaceDetailTabs.map((item) => (
@@ -94,7 +95,7 @@ function WorkspaceOverview({ workspace, onChanged }: { workspace: Workspace; onC
   return (
     <Panel title="Workspace identity" subtitle="The immutable routing ID and operator-facing display name.">
       {error ? <ErrorNotice message={error} /> : null}
-      <DefinitionList items={[
+      <DefinitionList className="workspaceIdentityFacts" items={[
         ["Workspace ID", <span className="mono">{workspace.id}</span>],
         ["Status", <WorkspaceStatus workspace={workspace} />],
         ["Created", formatTime(workspace.created_at)],

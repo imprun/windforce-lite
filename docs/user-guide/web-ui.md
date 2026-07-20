@@ -167,9 +167,10 @@ The workspace registry uses an instance-administration shell without the active 
 
 1. Open the workspace switcher at the bottom of the sidebar.
 2. Choose Manage workspaces to review the instance registry.
-3. Use Back to workspace to return to the active workspace console.
-4. Create a workspace or open a workspace's dedicated administration page.
-5. Use an instance-admin token for workspace lifecycle operations; workspace tokens remain scoped to one workspace.
+3. Use Switch to select a workspace for application and monitoring operations; the selected row is marked Current.
+4. Use Back to workspace to return to the active workspace console.
+5. Create a workspace or open a workspace's dedicated administration page.
+6. Use an instance-admin token for workspace lifecycle operations; workspace tokens remain scoped to one workspace.
 
 ## Manage release webhooks
 
@@ -189,8 +190,9 @@ Each workspace has a dedicated instance-administration page without workspace-sc
 
 1. Open Manage workspaces from the workspace switcher, then choose a workspace from the registry.
 2. Use the back button beside the workspace title to return to the registry.
-3. Use Overview for its display name, Access for its scoped token, Audit for lifecycle history, and Lifecycle for archive controls.
-4. Return to the workspace switcher when changing the active workspace for workspace-scoped operations.
+3. Use Switch to workspace to select this workspace and open its application console.
+4. Use Overview for its display name, Access for its scoped token, Audit for lifecycle history, and Lifecycle for archive controls.
+5. Return to the workspace switcher when changing the active workspace for workspace-scoped operations.
 
 ## Configure a release webhook
 
