@@ -2,6 +2,8 @@ import {
   Activity,
   AppWindow,
   ArrowLeft,
+  ChevronDown,
+  CircleUserRound,
   ContactRound,
   LogOut,
   MonitorSmartphone,
@@ -14,6 +16,7 @@ import {
   Wind,
   X,
 } from "lucide-react";
+import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui";
 import { type ReactNode, useEffect, useState } from "react";
 import { useApp } from "../lib/app-context";
 import { Link, useRouter } from "../lib/router";
@@ -76,7 +79,7 @@ function ThemeToggle() {
   );
 }
 
-export function LogoutButton() {
+export function UserMenu() {
   const { settings, logout, notify } = useApp();
   const { navigate } = useRouter();
   const authenticated = Boolean(settings.token);
@@ -87,18 +90,55 @@ export function LogoutButton() {
     notify("info", "Signed out. The API token was removed from this browser.");
   }
 
+  const itemClass =
+    "flex cursor-pointer select-none items-center gap-2 rounded px-2 py-2 text-sm outline-none data-[disabled]:cursor-not-allowed data-[disabled]:opacity-45 data-[highlighted]:bg-muted";
+
   return (
-    <button
-      type="button"
-      className="button small"
-      onClick={handleLogout}
-      disabled={!authenticated}
-      title={authenticated ? "Log out" : "No browser API token configured"}
-      aria-label={authenticated ? "Log out" : "Signed out"}
-    >
-      <LogOut size={16} />
-      <span className="hidden sm:inline">{authenticated ? "Log out" : "Signed out"}</span>
-    </button>
+    <DropdownMenuPrimitive.Root modal={false}>
+      <DropdownMenuPrimitive.Trigger asChild>
+        <button
+          type="button"
+          className="flex min-w-0 items-center gap-2 rounded-md px-2 py-1 text-left hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          aria-label={`User menu for ${settings.actor || "system"}`}
+        >
+          <CircleUserRound className="shrink-0 text-muted-foreground" size={18} />
+          <span className="hidden min-w-0 sm:block">
+            <span className="block truncate text-sm font-medium leading-tight">
+              {settings.actor || "system"}
+            </span>
+            <span className="block text-xs leading-tight text-muted-foreground">Audit actor</span>
+          </span>
+          <ChevronDown className="shrink-0 text-muted-foreground" size={14} />
+        </button>
+      </DropdownMenuPrimitive.Trigger>
+      <DropdownMenuPrimitive.Portal>
+        <DropdownMenuPrimitive.Content
+          align="end"
+          sideOffset={8}
+          className="z-[100] min-w-56 rounded-md border border-border bg-surface p-1 text-foreground shadow-lg"
+        >
+          <DropdownMenuPrimitive.Label className="px-2 py-2">
+            <span className="block text-sm font-medium">{settings.actor || "system"}</span>
+            <span className="block text-xs text-muted-foreground">
+              {authenticated ? "Browser credential connected" : "No browser credential"}
+            </span>
+          </DropdownMenuPrimitive.Label>
+          <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
+          <DropdownMenuPrimitive.Item className={itemClass} onSelect={() => navigate("/settings")}>
+            <Settings size={16} />
+            Browser API settings
+          </DropdownMenuPrimitive.Item>
+          <DropdownMenuPrimitive.Item
+            className={itemClass}
+            disabled={!authenticated}
+            onSelect={handleLogout}
+          >
+            <LogOut size={16} />
+            {authenticated ? "Log out" : "Signed out"}
+          </DropdownMenuPrimitive.Item>
+        </DropdownMenuPrimitive.Content>
+      </DropdownMenuPrimitive.Portal>
+    </DropdownMenuPrimitive.Root>
   );
 }
 
@@ -118,7 +158,7 @@ export function Layout({
   titleLeading?: ReactNode;
 }) {
   const { path } = useRouter();
-  const { settings, toasts, dismissToast } = useApp();
+  const { toasts, dismissToast } = useApp();
   const [collapsed, setCollapsed] = useState(loadCollapsed);
 
   useEffect(() => {
@@ -146,7 +186,7 @@ export function Layout({
           </div>
           <div className="flex items-center gap-2">
             <ThemeToggle />
-            <LogoutButton />
+            <UserMenu />
             <Link className="button small" to="/">
               <ArrowLeft size={15} /> Back to workspace
             </Link>
@@ -243,11 +283,7 @@ export function Layout({
           <div className="ml-auto flex items-center gap-2">
             <ThemeToggle />
             <span className="hidden h-6 w-px bg-border sm:block" aria-hidden="true" />
-            <div className="hidden text-right sm:block">
-              <div className="text-sm font-medium leading-tight">{settings.actor || "system"}</div>
-              <div className="text-xs leading-tight text-muted-foreground">Audit actor</div>
-            </div>
-            <LogoutButton />
+            <UserMenu />
           </div>
         </header>
         <main className="min-w-0 flex-1 overflow-y-auto">
