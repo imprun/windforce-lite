@@ -76,11 +76,10 @@ function ThemeToggle() {
   );
 }
 
-function LogoutButton() {
+export function LogoutButton() {
   const { settings, logout, notify } = useApp();
   const { navigate } = useRouter();
-
-  if (!settings.token) return null;
+  const authenticated = Boolean(settings.token);
 
   function handleLogout() {
     logout();
@@ -91,12 +90,14 @@ function LogoutButton() {
   return (
     <button
       type="button"
-      className="icon-control"
+      className="button small"
       onClick={handleLogout}
-      title="Log out"
-      aria-label="Log out"
+      disabled={!authenticated}
+      title={authenticated ? "Log out" : "No browser API token configured"}
+      aria-label={authenticated ? "Log out" : "Signed out"}
     >
       <LogOut size={16} />
+      <span className="hidden sm:inline">{authenticated ? "Log out" : "Signed out"}</span>
     </button>
   );
 }
