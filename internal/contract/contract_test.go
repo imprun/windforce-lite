@@ -3,6 +3,7 @@ package contract
 import (
 	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -123,5 +124,34 @@ func TestValidateSourceSubpathRejectsEscapingPaths(t *testing.T) {
 		if err := ValidateSourceSubpath(subpath); err == nil {
 			t.Fatalf("ValidateSourceSubpath(%q) unexpectedly passed", subpath)
 		}
+	}
+}
+
+// The wf-family prefix contract lets fronting proxies classify engine-minted
+// bearers they cannot verify. Every listed prefix must stay in the family,
+// stay distinct, and end with an underscore separator.
+func TestCellBearerTokenPrefixContract(t *testing.T) {
+	prefixes := CellBearerTokenPrefixes()
+	if len(prefixes) == 0 {
+		t.Fatal("prefix contract must not be empty")
+	}
+	seen := map[string]bool{}
+	for _, prefix := range prefixes {
+		if !strings.HasPrefix(prefix, "wf") {
+			t.Fatalf("prefix %q leaves the wf family", prefix)
+		}
+		if !strings.HasSuffix(prefix, "_") {
+			t.Fatalf("prefix %q must end with the _ separator", prefix)
+		}
+		if seen[prefix] {
+			t.Fatalf("duplicate prefix %q", prefix)
+		}
+		seen[prefix] = true
+		if !IsCellBearerToken(prefix + "payload") {
+			t.Fatalf("IsCellBearerToken must accept %q tokens", prefix)
+		}
+	}
+	if IsCellBearerToken("imp_platform-token") {
+		t.Fatal("platform namespace must not classify as a cell bearer")
 	}
 }

@@ -32,6 +32,35 @@ const (
 	ReservedLabelPrefix = "sys/"
 )
 
+// Engine-issued bearer tokens carry a "wf"-family prefix. This is a public
+// contract for fronting platforms/proxies: such a credential can only be
+// verified by the engine that minted it (the secret never leaves the
+// engine), so a proxy that cannot verify it classifies by prefix and
+// forwards it unswapped for the engine to enforce. New token kinds MUST
+// join CellBearerTokenPrefixes and keep the family prefix; platform layers
+// must not mint tokens in the wf namespace.
+const (
+	JobTokenPrefix       = "wfjob_"
+	WorkspaceTokenPrefix = "wfw_"
+)
+
+// CellBearerTokenPrefixes lists every engine-issued bearer prefix — the
+// pass-through classification contract for fronting proxies.
+func CellBearerTokenPrefixes() []string {
+	return []string{JobTokenPrefix, WorkspaceTokenPrefix}
+}
+
+// IsCellBearerToken reports whether a presented bearer was minted by the
+// engine and therefore can only be verified by it.
+func IsCellBearerToken(token string) bool {
+	for _, prefix := range CellBearerTokenPrefixes() {
+		if strings.HasPrefix(token, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
 var labelPattern = regexp.MustCompile(`^[a-z0-9]([a-z0-9._-]{0,62}[a-z0-9])?$`)
 
 // App is the deployable source bundle described by windforce.json.

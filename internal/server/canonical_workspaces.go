@@ -163,7 +163,7 @@ func newWorkspaceToken() (string, error) {
 	if _, err := rand.Read(data); err != nil {
 		return "", err
 	}
-	return "wfw_" + base64.RawURLEncoding.EncodeToString(data), nil
+	return contract.WorkspaceTokenPrefix + base64.RawURLEncoding.EncodeToString(data), nil
 }
 
 func requestActorOrSystem(r *http.Request) string {

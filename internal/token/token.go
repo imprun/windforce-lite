@@ -8,9 +8,13 @@ import (
 	"encoding/json"
 	"strings"
 	"time"
+
+	"github.com/imprun/windforce-core/internal/contract"
 )
 
-const jobPrefix = "wfjob_"
+// jobPrefix follows the engine bearer-token family contract
+// (contract.CellBearerTokenPrefixes).
+const jobPrefix = contract.JobTokenPrefix
 
 // IsJobToken reports whether a presented token is a stateless job token.
 func IsJobToken(tok string) bool { return strings.HasPrefix(tok, jobPrefix) }

@@ -23,6 +23,10 @@ Windforce Lite recognizes three API principals:
 
 Workspace tokens are stored as SHA-256 hashes. The raw token is returned only when the workspace is created or its token is rotated. Rotation invalidates the current token immediately. Workspace principals cannot list, create, archive, or rotate workspaces and cannot access another workspace path.
 
+### Bearer prefix contract for fronting proxies
+
+Every bearer token the engine mints carries a `wf`-family prefix: `wfjob_` for job tokens and `wfw_` for workspace tokens. These credentials can only be verified by the engine that minted them — the signing secret and token hashes never leave the instance. A fronting platform or proxy that terminates its own authentication classifies an engine-minted bearer by this prefix and forwards it unswapped for the engine to enforce. New token kinds extend the same family; platform layers must not mint tokens in the `wf` namespace.
+
 When no instance-admin token is configured, local development accepts requests without authentication. Configure an instance-admin token for any shared environment.
 
 ## Lifecycle
