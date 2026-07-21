@@ -28,15 +28,16 @@ describe("UserMenu", () => {
     );
   }
 
-  test("shows the signed-out browser state in the user menu", async () => {
+  test("offers logout when only an audit actor is stored", async () => {
     const user = userEvent.setup();
     renderMenu();
 
     await user.click(screen.getByRole("button", { name: "User menu for local-dev" }));
 
-    expect(screen.getByText("No browser credential")).toBeTruthy();
-    const signedOut = screen.getByRole("menuitem", { name: "Signed out" });
-    expect(signedOut.getAttribute("data-disabled")).not.toBeNull();
+    expect(screen.getByText("API token not configured")).toBeTruthy();
+    expect(
+      screen.getByRole("menuitem", { name: "Log out" }).getAttribute("data-disabled"),
+    ).toBeNull();
   });
 
   test("offers logout when a browser token is stored", async () => {
@@ -46,7 +47,7 @@ describe("UserMenu", () => {
 
     await user.click(screen.getByRole("button", { name: "User menu for local-dev" }));
 
-    expect(screen.getByText("Browser credential connected")).toBeTruthy();
+    expect(screen.getByText("API token configured")).toBeTruthy();
     expect(screen.getByRole("menuitem", { name: "Log out" })).toBeTruthy();
   });
 });

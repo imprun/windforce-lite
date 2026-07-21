@@ -28,7 +28,7 @@ describe("AppProvider logout", () => {
     localStorage.setItem("wf.token", "workspace-secret");
   });
 
-  test("removes browser authentication while preserving workspace context", async () => {
+  test("removes browser identity while preserving workspace context", async () => {
     const user = userEvent.setup();
     const queryClient = new QueryClient();
     queryClient.setQueryData(["private"], { value: "cached" });
@@ -46,11 +46,11 @@ describe("AppProvider logout", () => {
     await user.click(screen.getByRole("button", { name: "Log out" }));
 
     await waitFor(() => {
-      expect(screen.getByTestId("session").textContent).toBe("gale:operator:signed-out");
+      expect(screen.getByTestId("session").textContent).toBe("gale::signed-out");
       expect(localStorage.getItem("wf.token")).toBe("");
+      expect(localStorage.getItem("wf.actor")).toBe("");
     });
     expect(localStorage.getItem("wf.workspace")).toBe("gale");
-    expect(localStorage.getItem("wf.actor")).toBe("operator");
     expect(queryClient.getQueryData(["private"])).toBeUndefined();
   });
 });

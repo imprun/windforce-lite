@@ -58,7 +58,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(() => {
     queryClient.clear();
     setToasts([]);
-    setSettings((current) => ({ ...current, token: "" }));
+    setSettings((current) => ({ ...current, actor: "", token: "" }));
   }, [queryClient]);
 
   const api = useMemo(() => new WindforceApi(settings), [settings]);

@@ -82,12 +82,13 @@ function ThemeToggle() {
 export function UserMenu() {
   const { settings, logout, notify } = useApp();
   const { navigate } = useRouter();
-  const authenticated = Boolean(settings.token);
+  const hasApiToken = Boolean(settings.token);
+  const hasBrowserIdentity = Boolean(settings.actor || settings.token);
 
   function handleLogout() {
     logout();
     navigate("/settings");
-    notify("info", "Signed out. The API token was removed from this browser.");
+    notify("info", "Signed out. The audit actor and API token were removed from this browser.");
   }
 
   const itemClass =
@@ -120,7 +121,7 @@ export function UserMenu() {
           <DropdownMenuPrimitive.Label className="px-2 py-2">
             <span className="block text-sm font-medium">{settings.actor || "system"}</span>
             <span className="block text-xs text-muted-foreground">
-              {authenticated ? "Browser credential connected" : "No browser credential"}
+              {hasApiToken ? "API token configured" : "API token not configured"}
             </span>
           </DropdownMenuPrimitive.Label>
           <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
@@ -130,11 +131,11 @@ export function UserMenu() {
           </DropdownMenuPrimitive.Item>
           <DropdownMenuPrimitive.Item
             className={itemClass}
-            disabled={!authenticated}
+            disabled={!hasBrowserIdentity}
             onSelect={handleLogout}
           >
             <LogOut size={16} />
-            {authenticated ? "Log out" : "Signed out"}
+            {hasBrowserIdentity ? "Log out" : "Signed out"}
           </DropdownMenuPrimitive.Item>
         </DropdownMenuPrimitive.Content>
       </DropdownMenuPrimitive.Portal>
