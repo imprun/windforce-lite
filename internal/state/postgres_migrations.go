@@ -2,6 +2,7 @@ package state
 
 import (
 	"context"
+	"regexp"
 )
 
 const postgresMigrationAdvisoryLockID int64 = 0x57464c4d49475241
@@ -148,9 +149,18 @@ BEGIN
         WHERE table_schema = current_schema() AND table_name = 'client_registry' AND column_name = 'client_key'
     ) AND NOT EXISTS (
         SELECT 1 FROM information_schema.columns
-        WHERE table_schema = current_schema() AND table_name = 'client_registry' AND column_name = 'external_key'
+        WHERE table_schema = current_schema() AND table_name = 'client_registry' AND column_name = 'token_hash'
     ) THEN
-        ALTER TABLE client_registry RENAME COLUMN client_key TO external_key;
+        ALTER TABLE client_registry RENAME COLUMN client_key TO token_hash;
+    END IF;
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = current_schema() AND table_name = 'client_registry' AND column_name = 'external_key'
+    ) AND NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = current_schema() AND table_name = 'client_registry' AND column_name = 'token_hash'
+    ) THEN
+        ALTER TABLE client_registry RENAME COLUMN external_key TO token_hash;
     END IF;
     IF EXISTS (
         SELECT 1 FROM information_schema.columns
@@ -167,14 +177,19 @@ CREATE TABLE IF NOT EXISTS client_registry (
     workspace_id TEXT NOT NULL,
     id TEXT NOT NULL,
     name TEXT NOT NULL,
-    external_key TEXT NOT NULL,
+    token_hash TEXT NOT NULL DEFAULT '',
     created_by TEXT NOT NULL,
     updated_by TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    PRIMARY KEY (workspace_id, id),
-    UNIQUE (workspace_id, external_key)
+    PRIMARY KEY (workspace_id, id)
 );
+
+ALTER TABLE client_registry DROP CONSTRAINT IF EXISTS client_registry_workspace_id_external_key_key;
+ALTER TABLE client_registry DROP CONSTRAINT IF EXISTS client_registry_workspace_id_client_key_key;
+ALTER TABLE client_registry DROP CONSTRAINT IF EXISTS api_client_workspace_id_client_key_key;
+CREATE UNIQUE INDEX IF NOT EXISTS client_registry_active_token_idx
+    ON client_registry (workspace_id, token_hash) WHERE token_hash <> '';
 
 CREATE TABLE IF NOT EXISTS client_registry_audit (
     id BIGSERIAL PRIMARY KEY,
@@ -427,6 +442,37 @@ WHERE workspace_id <> ''
 ON CONFLICT (id) DO NOTHING;
 `); err != nil {
 		return err
+	}
+	rows, err := tx.Query(ctx, `SELECT workspace_id, id, token_hash FROM client_registry WHERE token_hash <> ''`)
+	if err != nil {
+		return err
+	}
+	type legacyClientToken struct {
+		workspaceID string
+		id          string
+		tokenHash   string
+	}
+	var legacyTokens []legacyClientToken
+	sha256Pattern := regexp.MustCompile(`^[0-9a-f]{64}$`)
+	for rows.Next() {
+		var item legacyClientToken
+		if err := rows.Scan(&item.workspaceID, &item.id, &item.tokenHash); err != nil {
+			rows.Close()
+			return err
+		}
+		if !sha256Pattern.MatchString(item.tokenHash) {
+			legacyTokens = append(legacyTokens, item)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+	for _, item := range legacyTokens {
+		if _, err := tx.Exec(ctx, `UPDATE client_registry SET token_hash=$3 WHERE workspace_id=$1 AND id=$2`, item.workspaceID, item.id, HashClientToken(item.tokenHash)); err != nil {
+			return err
+		}
 	}
 	return tx.Commit(ctx)
 }

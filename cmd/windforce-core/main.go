@@ -114,8 +114,14 @@ func runServer(args []string, mode string) int {
 	jobFailureRetention := flags.Duration("job-failure-retention", envDays("WINDFORCE_LITE_JOB_FAILURE_RETENTION_DAYS", defaultJobFailureRetention), "how long failed/canceled/expired job records are kept; 0 keeps them forever")
 	jobStuckAfter := flags.Duration("job-stuck-after", envHours("WINDFORCE_LITE_JOB_STUCK_AFTER_HOURS", defaultJobStuckAfter), "expire queued/running jobs with no progress for this long; 0 disables")
 	jobRetentionInterval := flags.Duration("job-retention-interval", defaultJobRetentionInterval, "how often the retention pruner runs")
+	publicAPIRPS := flags.Float64("public-api-rps", 100, "maximum public API requests per second per instance")
+	publicAPIBurst := flags.Int("public-api-burst", 100, "maximum public API request burst per instance")
 	webhookDispatcherFlags := bindWebhookDispatcherFlags(flags, "webhook-")
 	if err := flags.Parse(args); err != nil {
+		return 2
+	}
+	if *publicAPIRPS <= 0 || *publicAPIBurst <= 0 {
+		fmt.Fprintln(os.Stderr, "public API rate and burst must be greater than zero")
 		return 2
 	}
 
@@ -204,7 +210,10 @@ func runServer(args []string, mode string) int {
 		GitSources:         gitSources,
 		EnableControlAPI:   mode == "control-plane" || combinedMode,
 		EnableExecutionAPI: mode == "execution-api" || combinedMode,
+		EnablePublicAPI:    mode == "execution-api" || combinedMode,
 		EnableWebUI:        mode == "control-plane" || combinedMode,
+		PublicAPIRPS:       *publicAPIRPS,
+		PublicAPIBurst:     *publicAPIBurst,
 		ManagedWorkspaces:  true,
 		AdminToken:         adminToken,
 		WorkerToken:        firstNonEmpty(tokenFromEnv(*workerTokenEnv), adminToken),

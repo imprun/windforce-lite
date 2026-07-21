@@ -110,11 +110,11 @@ WHERE workspace_id=$1 AND app_key='shop' AND action_key='' AND client_id IS NULL
 func exerciseInputConfigStore(t *testing.T, store Store, workspaceID string) {
 	t.Helper()
 	ctx := context.Background()
-	client, err := store.CreateClient(ctx, workspaceID, "Client A", "external-a", "alice")
+	client, err := store.CreateClient(ctx, workspaceID, "Client A", HashClientToken("external-a"), "alice")
 	if err != nil {
 		t.Fatal(err)
 	}
-	byKey, err := store.GetClientByExternalKey(ctx, workspaceID, "external-a")
+	byKey, err := store.GetClientByTokenHash(ctx, workspaceID, HashClientToken("external-a"))
 	if err != nil || byKey.ID != client.ID {
 		t.Fatalf("client by key = %#v, %v", byKey, err)
 	}
@@ -174,6 +174,9 @@ func exerciseInputConfigStore(t *testing.T, store Store, workspaceID string) {
 	}
 	if !foundActionChange {
 		t.Fatal("missing action input-setting audit detail")
+	}
+	if _, err := store.RevokeClientToken(ctx, workspaceID, client.ID, "alice"); err != nil {
+		t.Fatal(err)
 	}
 	if err := store.DeleteClient(ctx, workspaceID, client.ID, "alice"); err != nil {
 		t.Fatal(err)

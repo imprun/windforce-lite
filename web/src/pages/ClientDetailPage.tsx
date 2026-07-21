@@ -130,12 +130,12 @@ function ClientOverview({ client, configs }: { client: Client; configs: InputCon
     <>
       <Panel
         title="Client identity"
-        subtitle="Used by trusted trigger adapters to select client-specific settings."
+        subtitle="Used by public API calls to select client-specific settings."
       >
         <DefinitionList
           items={[
             ["Name", client.name],
-            ["External key", <span className="mono">{client.external_key}</span>],
+            ["API token", client.has_token ? "Active" : "Not issued"],
             ["Updated", formatTime(client.updated_at)],
             ["Updated by", client.updated_by],
           ]}

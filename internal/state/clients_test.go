@@ -24,10 +24,10 @@ func TestLocalStoreMigratesLegacyClientSnapshot(t *testing.T) {
 	}
 	store := NewLocalStore(path)
 	clients, err := store.ListClients(context.Background(), "default")
-	if err != nil || len(clients) != 1 || clients[0].ExternalKey != "external-legacy" {
+	if err != nil || len(clients) != 1 || !ClientTokenMatches(clients[0], "external-legacy") {
 		t.Fatalf("clients = %#v, %v", clients, err)
 	}
-	if _, err := store.UpdateClient(context.Background(), "default", "client_legacy", "Migrated client", "external-current", "bob"); err != nil {
+	if _, err := store.UpdateClient(context.Background(), "default", "client_legacy", "Migrated client", "bob"); err != nil {
 		t.Fatal(err)
 	}
 	data, err := os.ReadFile(path)
@@ -38,7 +38,7 @@ func TestLocalStoreMigratesLegacyClientSnapshot(t *testing.T) {
 	if err := json.Unmarshal(data, &snapshot); err != nil {
 		t.Fatal(err)
 	}
-	if snapshot["clients"] == nil || snapshot["apiClients"] != nil || strings.Contains(string(data), `"client_key"`) {
+	if snapshot["clients"] == nil || snapshot["apiClients"] != nil || strings.Contains(string(data), `"client_key"`) || strings.Contains(string(data), `"external_key"`) || strings.Contains(string(data), "external-legacy") {
 		t.Fatalf("legacy client fields remain after write: %s", data)
 	}
 }
@@ -110,7 +110,7 @@ VALUES ('default', 'client_legacy', 'Legacy client', 'external-legacy', 'alice',
 		t.Fatal(err)
 	}
 	client, err := store.GetClient(context.Background(), "default", "client_legacy")
-	if err != nil || client.ExternalKey != "external-legacy" {
+	if err != nil || !ClientTokenMatches(client, "external-legacy") {
 		t.Fatalf("client = %#v, %v", client, err)
 	}
 }
@@ -118,39 +118,54 @@ VALUES ('default', 'client_legacy', 'Legacy client', 'external-legacy', 'alice',
 func exerciseClientStore(t *testing.T, store Store, workspaceID string) {
 	t.Helper()
 	ctx := context.Background()
-	created, err := store.CreateClient(ctx, workspaceID, "Client A", "client-key-a", "alice")
+	created, err := store.CreateClient(ctx, workspaceID, "Client A", HashClientToken("client-key-a"), "alice")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if created.ID == "" || created.WorkspaceID != workspaceID || created.CreatedBy != "alice" {
 		t.Fatalf("created = %#v", created)
 	}
-	if _, err := store.CreateClient(ctx, workspaceID, "Duplicate", "client-key-a", "alice"); !errors.Is(err, ErrConflict) {
+	if _, err := store.CreateClient(ctx, workspaceID, "Duplicate", HashClientToken("client-key-a"), "alice"); !errors.Is(err, ErrConflict) {
 		t.Fatalf("duplicate error = %v, want conflict", err)
 	}
 	got, err := store.GetClient(ctx, workspaceID, created.ID)
 	if err != nil || got.ID != created.ID {
 		t.Fatalf("get = %#v, %v", got, err)
 	}
-	updated, err := store.UpdateClient(ctx, workspaceID, created.ID, "Client B", "client-key-b", "bob")
+	byToken, err := store.GetClientByTokenHash(ctx, workspaceID, HashClientToken("client-key-a"))
+	if err != nil || byToken.ID != created.ID {
+		t.Fatalf("get by token = %#v, %v", byToken, err)
+	}
+	updated, err := store.UpdateClient(ctx, workspaceID, created.ID, "Client B", "bob")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if updated.ID != created.ID || updated.UpdatedBy != "bob" || updated.ExternalKey != "client-key-b" {
+	if updated.ID != created.ID || updated.UpdatedBy != "bob" || !ClientTokenMatches(updated, "client-key-a") {
 		t.Fatalf("updated = %#v", updated)
+	}
+	rotated, err := store.RotateClientToken(ctx, workspaceID, created.ID, HashClientToken("client-key-b"), "bob")
+	if err != nil || !ClientTokenMatches(rotated, "client-key-b") || ClientTokenMatches(rotated, "client-key-a") {
+		t.Fatalf("rotated = %#v, %v", rotated, err)
 	}
 	clients, err := store.ListClients(ctx, workspaceID)
 	if err != nil || len(clients) != 1 || clients[0].ID != created.ID {
 		t.Fatalf("clients = %#v, %v", clients, err)
 	}
 	audit, err := store.ListClientAudit(ctx, workspaceID, created.ID)
-	if err != nil || len(audit) != 2 || audit[0].Kind != "updated" {
+	if err != nil || len(audit) != 3 || audit[0].Kind != "token_rotated" {
 		t.Fatalf("audit = %#v, %v", audit, err)
 	}
 	for _, record := range audit {
 		if strings.Contains(record.Detail, "client-key-") {
 			t.Fatalf("audit exposes client key: %#v", record)
 		}
+	}
+	if err := store.DeleteClient(ctx, workspaceID, created.ID, "carol"); !errors.Is(err, ErrConflict) {
+		t.Fatalf("delete with active token error = %v, want conflict", err)
+	}
+	revoked, err := store.RevokeClientToken(ctx, workspaceID, created.ID, "carol")
+	if err != nil || revoked.TokenHash != "" {
+		t.Fatalf("revoked = %#v, %v", revoked, err)
 	}
 	if err := store.DeleteClient(ctx, workspaceID, created.ID, "carol"); err != nil {
 		t.Fatal(err)

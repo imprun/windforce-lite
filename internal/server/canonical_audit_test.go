@@ -131,7 +131,7 @@ func TestCanonicalAuditEventsAggregateAndFilter(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	client, err := store.CreateClient(ctx, "ws-a", "Client A", "external-secret", actor)
+	client, err := store.CreateClient(ctx, "ws-a", "Client A", state.HashClientToken("external-secret"), actor)
 	if err != nil {
 		t.Fatal(err)
 	}

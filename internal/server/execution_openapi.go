@@ -25,7 +25,7 @@ func (h *Handler) handleExecutionOpenAPI(w http.ResponseWriter, r *http.Request)
 							"app":          oapiStringSchema(),
 							"action":       oapiStringSchema(),
 							"input":        map[string]any{"type": "object", "additionalProperties": true},
-							"client_key":   map[string]any{"type": "string", "description": "External Client Registry key asserted by a trusted trigger adapter. It is not a Windforce API credential."},
+							"client_id":    map[string]any{"type": "string", "description": "Client Registry identity asserted by a trusted trigger adapter."},
 							"adapter":      oapiStringSchema(),
 							"trigger_kind": oapiStringSchema(),
 						},

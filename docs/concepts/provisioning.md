@@ -5,8 +5,7 @@ YAML resources. It is useful for bootstrapping a workspace, moving app
 configuration between environments, and keeping local development close to the
 same API contract used by operations.
 
-Provisioning manages control-plane configuration only. It registers repository
-sources, external client identifiers, workspace variables, and input settings.
+Provisioning manages control-plane configuration only. It registers repository sources, client identities, workspace variables, and input settings.
 It does not publish a release by itself. Use Sync and Publish Release after a
 source is registered.
 
@@ -43,10 +42,6 @@ resources:
     kind: Client
     metadata:
       name: Example Client
-    spec:
-      externalKey:
-        valueFrom:
-          env: EXAMPLE_CLIENT_KEY
 
   - apiVersion: windforce-lite.imprun.dev/v1
     kind: InputSettings
@@ -116,5 +111,4 @@ Export the current workspace as provisioning resources:
 python tools/windforce_control.py provision-export --format yaml
 ```
 
-By default, exported clients and variables use redaction markers. Add
-`--include-values` only for local, non-secret review workflows.
+Client API tokens are not provisioning resources and are never exported. Issue or rotate them through the Client Registry control-plane API. Exported secret variables use redaction markers. Add `--include-values` only for local, non-secret review workflows.

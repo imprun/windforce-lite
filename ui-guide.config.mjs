@@ -131,22 +131,22 @@ export default {
       await waitForWebhookDelivery(api, webhook.subscription.id);
       await advanceSampleRepository(exec);
     }
-    const client = await api("/clients", {
+    const clientToken = await api("/clients", {
       method: "POST",
       headers: { "x-windforce-actor": "ui-guide@example.test" },
-      body: { name: "Example Retailer", external_key: "ui-guide-client" },
+      body: { name: "Example Retailer" },
     });
     await api("/apps/echo/input-configs", {
       method: "PUT",
       headers: { "x-windforce-actor": "ui-guide@example.test" },
       body: {
         action_key: "echo",
-        client_id: client.id,
+        client_id: clientToken.client.id,
         config: { message: "configured for Example Retailer", response_mode: "compact" },
         locked_keys: ["message"],
       },
     });
-    await waitForClientConfigRun();
+    await waitForClientConfigRun(clientToken.client.id, clientToken.api_token);
     // The standalone local store replaces its JSON file after the worker
     // publishes the terminal result. Let that final Windows file operation
     // settle before browser scenarios begin issuing concurrent reads.
@@ -179,21 +179,23 @@ async function waitForWebhookDelivery(api, subscriptionID) {
   throw new Error("UI guide webhook delivery did not succeed");
 }
 
-async function waitForClientConfigRun() {
+async function waitForClientConfigRun(clientID, apiToken) {
   const runsURL = `http://127.0.0.1:${port}/execution/v1/workspaces/default/runs`;
-  const rejected = await fetch(runsURL, {
+  const publicURL = `http://127.0.0.1:${port}/api/v1/w/default/run/echo/echo`;
+  const headers = { "authorization": `Bearer ${apiToken}`, "content-type": "application/json" };
+  const rejected = await fetch(publicURL, {
     method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ app: "echo", action: "echo", client_key: "ui-guide-client", input: { message: "caller value" } }),
+    headers,
+    body: JSON.stringify({ message: "caller value" }),
   });
   if (rejected.status !== 400) {
     throw new Error(`locked input was not rejected: HTTP ${rejected.status}`);
   }
 
-  const admitted = await fetch(runsURL, {
+  const admitted = await fetch(publicURL, {
     method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ app: "echo", action: "echo", client_key: "ui-guide-client", input: {} }),
+    headers,
+    body: JSON.stringify({}),
   });
   if (!admitted.ok) {
     throw new Error(`client-config run admission failed: HTTP ${admitted.status} ${await admitted.text()}`);
@@ -201,7 +203,7 @@ async function waitForClientConfigRun() {
   const run = await admitted.json();
 
   for (let attempt = 0; attempt < 60; attempt += 1) {
-    const response = await fetch(`${runsURL}/${encodeURIComponent(run.run_id)}/result`);
+    const response = await fetch(`${runsURL}/${encodeURIComponent(run.job_id)}/result`);
     const result = await response.json();
     if (response.status === 202) {
       await sleep(250);
@@ -212,6 +214,9 @@ async function waitForClientConfigRun() {
     }
     if (result.output?.input?.message !== "configured for Example Retailer") {
       throw new Error(`worker did not apply client input settings: ${JSON.stringify(result)}`);
+    }
+    if (result.client_id && result.client_id !== clientID) {
+      throw new Error(`public run used the wrong client: ${JSON.stringify(result)}`);
     }
     return;
   }

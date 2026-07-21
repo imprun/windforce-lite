@@ -145,6 +145,10 @@ The app description endpoint returns the active release and materialized action
 schemas. Protocol adapters use it to generate their own customer-facing API
 documentation without mounting the Windforce catalog.
 
+## Public API Plane
+
+The Public API Plane is rooted at `/api/v1/w/{workspace}` and accepts only engine-issued `wfk_` client bearer tokens. It maps an authenticated client to client-scoped input settings, applies admission through the Execution Plane, and never writes the queue or catalog directly. Its async and wait routes return the admitted Job identifier in `X-WF-Job-Id`; the wait route returns the action result as the response body. See [Public API](concepts/public-api.md).
+
 ## SDK Boundary
 
 The Python package under `sdk/python` is the reference execution client. It

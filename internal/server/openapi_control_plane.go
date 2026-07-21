@@ -145,7 +145,7 @@ func buildControlPlaneOpenAPI(baseURL string, workspaceID string) map[string]any
 				"parameters":  []any{oapiWorkspaceParam(workspaceID)},
 				"requestBody": oapiJSONBody(oapiSchemaRef("CreateClientRequest"), true),
 				"responses": withErrors(map[string]any{
-					"201": oapiResponse("Registered client.", oapiSchemaRef("Client")),
+					"201": oapiResponse("Registered client and its one-time API token.", oapiSchemaRef("ClientTokenResult")),
 				}, "400", "401", "403", "409"),
 			},
 		},
@@ -173,7 +173,25 @@ func buildControlPlaneOpenAPI(baseURL string, workspaceID string) map[string]any
 				"parameters":  []any{oapiWorkspaceParam(workspaceID), oapiPathParam("client_id", "Client id.")},
 				"responses": withErrors(map[string]any{
 					"204": oapiResponse("Client deleted.", nil),
-				}, "401", "403", "404"),
+				}, "401", "403", "404", "409"),
+			},
+		},
+		"/api/w/{workspace}/clients/{client_id}/token": map[string]any{
+			"post": map[string]any{
+				"operationId": "rotateClientToken",
+				"summary":     "Rotate a client API token",
+				"parameters":  []any{oapiWorkspaceParam(workspaceID), oapiPathParam("client_id", "Client id.")},
+				"responses": withErrors(map[string]any{
+					"200": oapiResponse("Client and its new one-time API token.", oapiSchemaRef("ClientTokenResult")),
+				}, "401", "403", "404", "409"),
+			},
+			"delete": map[string]any{
+				"operationId": "revokeClientToken",
+				"summary":     "Revoke a client API token",
+				"parameters":  []any{oapiWorkspaceParam(workspaceID), oapiPathParam("client_id", "Client id.")},
+				"responses": withErrors(map[string]any{
+					"200": oapiResponse("Client with no active API token.", oapiSchemaRef("Client")),
+				}, "401", "403", "404", "409"),
 			},
 		},
 		"/api/w/{workspace}/clients/{client_id}/audit": map[string]any{
@@ -872,7 +890,6 @@ func controlPlaneSchemas() map[string]any {
 						"appKey":      oapiStringSchema(),
 						"actionKey":   oapiStringSchema(),
 						"clientRef":   oapiStringSchema(),
-						"externalKey": oapiSchemaRef("ProvisioningValueSource"),
 						"method":      oapiStringEnumSchema("none", "pat", "basic"),
 						"storageRef":  oapiStringSchema(),
 						"username":    oapiSchemaRef("ProvisioningValueSource"),
@@ -938,28 +955,35 @@ func controlPlaneSchemas() map[string]any {
 				"id":           oapiStringSchema(),
 				"workspace_id": oapiStringSchema(),
 				"name":         oapiStringSchema(),
-				"external_key": oapiStringSchema(),
+				"has_token":    map[string]any{"type": "boolean"},
 				"created_by":   oapiStringSchema(),
 				"updated_by":   oapiStringSchema(),
 				"created_at":   oapiDateTimeSchema(),
 				"updated_at":   oapiDateTimeSchema(),
 			},
-			"required": []any{"id", "workspace_id", "name", "external_key", "created_by", "updated_by", "created_at", "updated_at"},
+			"required": []any{"id", "workspace_id", "name", "has_token", "created_by", "updated_by", "created_at", "updated_at"},
 		},
 		"CreateClientRequest": map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"name":         oapiStringSchema(),
-				"external_key": oapiStringSchema(),
+				"name": oapiStringSchema(),
 			},
-			"required": []any{"name", "external_key"},
+			"required": []any{"name"},
 		},
 		"UpdateClientRequest": map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"name":         oapiStringSchema(),
-				"external_key": oapiStringSchema(),
+				"name": oapiStringSchema(),
 			},
+			"required": []any{"name"},
+		},
+		"ClientTokenResult": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"client":    oapiSchemaRef("Client"),
+				"api_token": oapiStringSchema(),
+			},
+			"required": []any{"client", "api_token"},
 		},
 		"ClientAudit": map[string]any{
 			"type": "object",

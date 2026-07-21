@@ -272,6 +272,7 @@ Implemented control-plane endpoints:
 - `GET /api/w/{workspace}/apps/{app}/input-config-audit`
 - `GET /api/w/{workspace}/clients/{clientId}/input-configs`
 - `GET /api/w/{workspace}/clients/{clientId}/input-config-audit`
+- `POST|DELETE /api/w/{workspace}/clients/{clientId}/token` (rotate or revoke the one-time client API token)
 - `GET /api/w/{workspace}/worker-tags`
 - `POST /api/w/{workspace}/jobs/run/{app}/{action}`
 - `POST /api/w/{workspace}/jobs/run/{app}/{action}/wait?timeout_ms={ms}`
@@ -299,10 +300,14 @@ model:
 - `GET /execution/v1/workspaces/{workspace}/apps/{app}`
 - `GET /execution/v1/openapi.json`
 
-Trusted protocol adapters may include `client_key` when creating a Run. The
-value identifies a Client Registry record and selects client-scoped input
-settings; it is not an API credential. Run admission rejects unknown client
-keys and caller-supplied values for locked input keys.
+Trusted protocol adapters may include `client_id` when creating a Run. The value selects a Client Registry identity and its client-scoped input settings. Run admission rejects unknown client identities and caller-supplied values for locked input keys.
+
+External callers use the client-authenticated Public API:
+
+- `POST /api/v1/w/{workspace}/run/{app}/{action}`
+- `POST /api/v1/w/{workspace}/run/{app}/{action}/wait?timeout={duration}`
+
+Both routes require an engine-issued `wfk_` bearer and return the admitted Job identifier in `X-WF-Job-Id`. See [Public API](docs/concepts/public-api.md) for token lifecycle, input merging, and response semantics.
 
 The core script context exposes the implemented basic helpers:
 `ctx.variables`, `ctx.resources`, `ctx.state`, `ctx.http`, `ctx.logger`,

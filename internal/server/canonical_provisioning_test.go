@@ -14,7 +14,6 @@ import (
 )
 
 func TestCanonicalProvisioningImportExport(t *testing.T) {
-	t.Setenv("TEST_CLIENT_KEY", "client-a")
 	store := state.NewLocalStore(filepath.Join(t.TempDir(), "state.json"))
 	registry := gitsource.NewFileRegistry(filepath.Join(t.TempDir(), "git-sources.json"))
 	server := httptest.NewServer(New(Config{
@@ -36,10 +35,6 @@ resources:
   - kind: Client
     metadata:
       name: Client A
-    spec:
-      externalKey:
-        valueFrom:
-          env: TEST_CLIENT_KEY
 `
 	req, err := http.NewRequest(http.MethodPost, server.URL+"/api/w/default/provisioning/import", bytes.NewBufferString(body))
 	if err != nil {

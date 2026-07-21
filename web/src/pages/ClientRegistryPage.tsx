@@ -16,11 +16,7 @@ export function ClientRegistryPage() {
   const clients = useMemo(() => {
     const query = search.trim().toLowerCase();
     if (!state.data || !query) return state.data || [];
-    return state.data.filter(
-      (client) =>
-        client.name.toLowerCase().includes(query) ||
-        client.external_key.toLowerCase().includes(query),
-    );
+    return state.data.filter((client) => client.name.toLowerCase().includes(query));
   }, [search, state.data]);
 
   function finishChange() {
@@ -51,8 +47,8 @@ export function ClientRegistryPage() {
       }
     >
       <div className="inlineNotice">
-        External Key identifies an external client for app- and action-specific configuration. It is
-        not a Windforce API credential.
+        Each client can hold one workspace-scoped API token. Raw tokens are shown only when issued
+        or rotated.
       </div>
       {state.error ? <ErrorNotice message={state.error} onRetry={state.reload} /> : null}
       {state.loading && !state.data ? <Loading /> : null}
@@ -67,7 +63,7 @@ export function ClientRegistryPage() {
               <thead>
                 <tr>
                   <th>Name</th>
-                  <th>External key</th>
+                  <th>API token</th>
                   <th>Updated</th>
                   <th>Updated by</th>
                   <th aria-label="Row actions" />
@@ -81,7 +77,7 @@ export function ClientRegistryPage() {
                         {client.name}
                       </Link>
                     </td>
-                    <td className="mono">{client.external_key}</td>
+                    <td>{client.has_token ? "Active" : "Not issued"}</td>
                     <td title={formatTime(client.updated_at)}>
                       <span className="cellTitle">{formatRelative(client.updated_at)}</span>
                       <span className="cellSub">{formatTime(client.updated_at)}</span>

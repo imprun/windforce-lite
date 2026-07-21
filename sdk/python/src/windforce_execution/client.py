@@ -87,7 +87,7 @@ class WindforceExecutionClient:
         trigger_headers: Mapping[str, Any] | None = None,
         correlation_id: str = "",
         idempotency_key: str = "",
-        client_key: str = "",
+        client_id: str = "",
         env: Sequence[str] = (),
     ) -> Run:
         payload: dict[str, Any] = {
@@ -100,7 +100,7 @@ class WindforceExecutionClient:
             "trigger_kind": trigger_kind,
             "correlation_id": correlation_id,
             "idempotency_key": idempotency_key,
-            "client_key": client_key,
+            "client_id": client_id,
         }
         payload.update({key: value for key, value in optional.items() if str(value).strip()})
         if trigger_headers:

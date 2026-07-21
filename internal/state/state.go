@@ -283,7 +283,7 @@ type Client struct {
 	ID          string    `json:"id"`
 	WorkspaceID string    `json:"workspace_id"`
 	Name        string    `json:"name"`
-	ExternalKey string    `json:"external_key"`
+	TokenHash   string    `json:"token_hash,omitempty"`
 	CreatedBy   string    `json:"created_by"`
 	UpdatedBy   string    `json:"updated_by"`
 	CreatedAt   time.Time `json:"created_at"`
@@ -295,14 +295,15 @@ func (client *Client) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, (*clientAlias)(client)); err != nil {
 		return err
 	}
-	if client.ExternalKey == "" {
+	if client.TokenHash == "" {
 		var legacy struct {
-			ExternalKey string `json:"client_key"`
+			ExternalKey string `json:"external_key"`
+			ClientKey   string `json:"client_key"`
 		}
 		if err := json.Unmarshal(data, &legacy); err != nil {
 			return err
 		}
-		client.ExternalKey = legacy.ExternalKey
+		client.TokenHash = HashClientToken(firstNonEmpty(legacy.ExternalKey, legacy.ClientKey))
 	}
 	return nil
 }
@@ -446,10 +447,13 @@ type Store interface {
 	GetResource(ctx context.Context, workspaceID string, path string) (Resource, bool, error)
 	ListClients(ctx context.Context, workspaceID string) ([]Client, error)
 	GetClient(ctx context.Context, workspaceID string, id string) (Client, error)
-	GetClientByExternalKey(ctx context.Context, workspaceID string, externalKey string) (Client, error)
-	CreateClient(ctx context.Context, workspaceID string, name string, externalKey string, actor string) (Client, error)
-	UpdateClient(ctx context.Context, workspaceID string, id string, name string, externalKey string, actor string) (Client, error)
+	GetClientByTokenHash(ctx context.Context, workspaceID string, tokenHash string) (Client, error)
+	CreateClient(ctx context.Context, workspaceID string, name string, tokenHash string, actor string) (Client, error)
+	UpdateClient(ctx context.Context, workspaceID string, id string, name string, actor string) (Client, error)
+	RotateClientToken(ctx context.Context, workspaceID string, id string, tokenHash string, actor string) (Client, error)
+	RevokeClientToken(ctx context.Context, workspaceID string, id string, actor string) (Client, error)
 	DeleteClient(ctx context.Context, workspaceID string, id string, actor string) error
+	AppendClientAudit(ctx context.Context, workspaceID string, id string, kind string, detail string, actor string) error
 	ListClientAudit(ctx context.Context, workspaceID string, id string) ([]ClientAudit, error)
 	ListInputConfigsForApp(ctx context.Context, workspaceID string, appKey string) ([]InputConfig, error)
 	ListInputConfigsForClient(ctx context.Context, workspaceID string, clientID string) ([]InputConfig, error)

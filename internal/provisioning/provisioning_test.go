@@ -14,7 +14,6 @@ import (
 
 func TestApplyProvisioningResources(t *testing.T) {
 	t.Setenv("TEST_GIT_TOKEN", "token-a")
-	t.Setenv("TEST_CLIENT_KEY", "client-a")
 	t.Setenv("TEST_PROXY", "http://proxy.local:8080")
 	dir := t.TempDir()
 	docs, err := Decode([]byte(`
@@ -40,10 +39,6 @@ resources:
   - kind: Client
     metadata:
       name: Client A
-    spec:
-      externalKey:
-        valueFrom:
-          env: TEST_CLIENT_KEY
   - kind: InputSettings
     metadata:
       name: app-default
@@ -94,7 +89,7 @@ resources:
 	if err != nil {
 		t.Fatalf("ListClients: %v", err)
 	}
-	if len(clients) != 1 || clients[0].ExternalKey != "client-a" {
+	if len(clients) != 1 || clients[0].TokenHash != "" {
 		t.Fatalf("clients = %#v", clients)
 	}
 	configs, err := store.ListInputConfigsForClient(context.Background(), "default", clients[0].ID)
@@ -120,7 +115,7 @@ func TestExportRedactsSensitiveProvisioningValues(t *testing.T) {
 	if err := store.SetVariable(context.Background(), "default", "", "secret/token", "encrypted", true, "secret"); err != nil {
 		t.Fatalf("SetVariable: %v", err)
 	}
-	if _, err := store.CreateClient(context.Background(), "default", "Client A", "external-a", "tester"); err != nil {
+	if _, err := store.CreateClient(context.Background(), "default", "Client A", state.HashClientToken("external-a"), "tester"); err != nil {
 		t.Fatalf("CreateClient: %v", err)
 	}
 	if _, err := registry.Create(context.Background(), gitsource.Source{
@@ -156,7 +151,7 @@ func TestExportedRedactedProvisioningCanRoundTrip(t *testing.T) {
 	if err := store.SetVariable(ctx, "default", "", "git/app/credential", "stored-secret", true, "credential"); err != nil {
 		t.Fatalf("SetVariable credential: %v", err)
 	}
-	client, err := store.CreateClient(ctx, "default", "Client A", "external-a", "tester")
+	client, err := store.CreateClient(ctx, "default", "Client A", state.HashClientToken("external-a"), "tester")
 	if err != nil {
 		t.Fatalf("CreateClient: %v", err)
 	}
@@ -253,10 +248,10 @@ spec:
 
 func TestLoadDirReadsJSONAndYAML(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "a.yaml"), []byte("kind: Client\nmetadata:\n  name: A\nspec:\n  externalKey:\n    value: a\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "a.yaml"), []byte("kind: Client\nmetadata:\n  name: A\n"), 0o644); err != nil {
 		t.Fatalf("write yaml: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "b.json"), []byte(`{"kind":"Client","metadata":{"name":"B"},"spec":{"externalKey":{"value":"b"}}}`), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "b.json"), []byte(`{"kind":"Client","metadata":{"name":"B"}}`), 0o644); err != nil {
 		t.Fatalf("write json: %v", err)
 	}
 	docs, err := LoadDir(dir)

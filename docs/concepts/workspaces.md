@@ -19,13 +19,14 @@ Windforce Lite recognizes three API principals:
 | --- | --- | --- |
 | Instance administrator | Global workspace lifecycle and every workspace | Token configured by `--admin-token-env` |
 | Workspace principal | One workspace only | Token returned once at workspace creation or rotation |
+| Client principal | Public action invocation for one client in one workspace | Token returned once at client creation or rotation |
 | Job principal | SDK callback endpoints for one job and workspace | Short-lived job token |
 
 Workspace tokens are stored as SHA-256 hashes. The raw token is returned only when the workspace is created or its token is rotated. Rotation invalidates the current token immediately. Workspace principals cannot list, create, archive, or rotate workspaces and cannot access another workspace path.
 
 ### Bearer prefix contract for fronting proxies
 
-Every bearer token the engine mints carries a `wf`-family prefix: `wfjob_` for job tokens and `wfw_` for workspace tokens. These credentials can only be verified by the engine that minted them — the signing secret and token hashes never leave the instance. A fronting platform or proxy that terminates its own authentication classifies an engine-minted bearer by this prefix and forwards it unswapped for the engine to enforce. New token kinds extend the same family; platform layers must not mint tokens in the `wf` namespace.
+Every bearer token the engine mints carries a `wf`-family prefix: `wfjob_` for job tokens, `wfw_` for workspace tokens, and `wfk_` for client tokens. These credentials can only be verified by the engine that minted them — the signing secret and token hashes never leave the instance. A fronting platform or proxy that terminates its own authentication classifies an engine-minted bearer by this prefix and forwards it unswapped for the engine to enforce. New token kinds extend the same family; platform layers must not mint tokens in the `wf` namespace.
 
 When no instance-admin token is configured, local development accepts requests without authentication. Configure an instance-admin token for any shared environment.
 
@@ -49,4 +50,4 @@ The instance administration page does not render the active workspace's applicat
 
 The administration page is instance-scoped and is separate from Settings, which applies to the currently selected workspace. Each workspace has dedicated Overview, Access, Audit, and Lifecycle tabs.
 
-The global lifecycle API is rooted at `/api/workspaces`. Workspace resources remain rooted at `/api/w/{workspace}` and execution requests at `/execution/v1/workspaces/{workspace}`.
+The global lifecycle API is rooted at `/api/workspaces`. Workspace resources remain rooted at `/api/w/{workspace}`, public client calls at `/api/v1/w/{workspace}`, and trusted execution requests at `/execution/v1/workspaces/{workspace}`.

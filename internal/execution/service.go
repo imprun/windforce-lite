@@ -21,7 +21,7 @@ type Store interface {
 	CreateRunAndEnqueue(ctx context.Context, run state.Run, job state.Job) error
 	GetRun(ctx context.Context, runID string) (state.Run, error)
 	CancelRun(ctx context.Context, runID string, reason string) (state.Run, error)
-	GetClientByExternalKey(ctx context.Context, workspaceID string, externalKey string) (state.Client, error)
+	GetClient(ctx context.Context, workspaceID string, id string) (state.Client, error)
 	ResolveInput(ctx context.Context, workspaceID string, appKey string, actionKey string, clientID string, request json.RawMessage) (json.RawMessage, error)
 }
 
@@ -84,7 +84,7 @@ type CreateRunRequest struct {
 	CorrelationID  string
 	IdempotencyKey string
 	Env            []string
-	ClientKey      string
+	ClientID       string
 	CreatedBy      string
 	PermissionedAs string
 }
@@ -136,12 +136,12 @@ func (s *Service) CreateRun(ctx context.Context, request CreateRunRequest) (Admi
 			Message: "active release has no execution bundle; publish the synchronized source again",
 		}
 	}
-	clientID := ""
-	if clientKey := strings.TrimSpace(request.ClientKey); clientKey != "" {
-		client, err := s.store.GetClientByExternalKey(ctx, request.Workspace, clientKey)
+	clientID := strings.TrimSpace(request.ClientID)
+	if clientID != "" {
+		client, err := s.store.GetClient(ctx, request.Workspace, clientID)
 		if err != nil {
 			if errors.Is(err, state.ErrNotFound) {
-				return Admission{}, &Fault{Kind: FaultInvalidRequest, Message: "unknown client key"}
+				return Admission{}, &Fault{Kind: FaultInvalidRequest, Message: "unknown client"}
 			}
 			return Admission{}, &Fault{Kind: FaultInternal, Message: "could not resolve client", Err: err}
 		}

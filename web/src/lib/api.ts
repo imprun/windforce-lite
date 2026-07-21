@@ -48,7 +48,7 @@ export type Client = {
   id: string;
   workspace_id: string;
   name: string;
-  external_key: string;
+  has_token: boolean;
   created_by: string;
   updated_by: string;
   created_at: string;
@@ -57,7 +57,11 @@ export type Client = {
 
 export type ClientPayload = {
   name: string;
-  external_key: string;
+};
+
+export type ClientTokenResult = {
+  client: Client;
+  api_token: string;
 };
 
 export type InputConfig = {
@@ -495,7 +499,7 @@ export class WindforceApi {
     return this.request(`/clients/${encodeURIComponent(id)}`);
   }
 
-  createClient(payload: ClientPayload): Promise<Client> {
+  createClient(payload: ClientPayload): Promise<ClientTokenResult> {
     return this.request("/clients", { method: "POST", body: payload });
   }
 
@@ -505,6 +509,14 @@ export class WindforceApi {
 
   async deleteClient(id: string): Promise<void> {
     await this.request(`/clients/${encodeURIComponent(id)}`, { method: "DELETE" });
+  }
+
+  rotateClientToken(id: string): Promise<ClientTokenResult> {
+    return this.request(`/clients/${encodeURIComponent(id)}/token`, { method: "POST" });
+  }
+
+  revokeClientToken(id: string): Promise<Client> {
+    return this.request(`/clients/${encodeURIComponent(id)}/token`, { method: "DELETE" });
   }
 
   clientInputConfigs(id: string): Promise<InputConfig[]> {

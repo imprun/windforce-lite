@@ -1,20 +1,39 @@
 package server
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"net/http"
 	"strings"
-	"unicode"
 	"unicode/utf8"
+
+	"github.com/imprun/windforce-core/internal/contract"
+	"github.com/imprun/windforce-core/internal/state"
 )
 
-const (
-	maxClientNameRunes  = 200
-	maxExternalKeyRunes = 512
-)
+const maxClientNameRunes = 200
 
 type canonicalClientRequest struct {
-	Name        *string `json:"name"`
-	ExternalKey *string `json:"external_key"`
+	Name *string `json:"name"`
+}
+
+type clientView struct {
+	ID          string `json:"id"`
+	WorkspaceID string `json:"workspace_id"`
+	Name        string `json:"name"`
+	HasToken    bool   `json:"has_token"`
+	CreatedBy   string `json:"created_by"`
+	UpdatedBy   string `json:"updated_by"`
+	CreatedAt   string `json:"created_at"`
+	UpdatedAt   string `json:"updated_at"`
+}
+
+func clientResponse(client state.Client) clientView {
+	return clientView{
+		ID: client.ID, WorkspaceID: client.WorkspaceID, Name: client.Name, HasToken: client.TokenHash != "",
+		CreatedBy: client.CreatedBy, UpdatedBy: client.UpdatedBy,
+		CreatedAt: client.CreatedAt.UTC().Format(timeLayout), UpdatedAt: client.UpdatedAt.UTC().Format(timeLayout),
+	}
 }
 
 func (h *Handler) handleCanonicalClients(w http.ResponseWriter, r *http.Request, workspaceID string) {
@@ -23,7 +42,11 @@ func (h *Handler) handleCanonicalClients(w http.ResponseWriter, r *http.Request,
 		writeStateError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, clients)
+	views := make([]clientView, 0, len(clients))
+	for _, client := range clients {
+		views = append(views, clientResponse(client))
+	}
+	writeJSON(w, http.StatusOK, views)
 }
 
 func (h *Handler) handleCanonicalClient(w http.ResponseWriter, r *http.Request, workspaceID string, id string) {
@@ -32,7 +55,7 @@ func (h *Handler) handleCanonicalClient(w http.ResponseWriter, r *http.Request, 
 		writeStateError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, client)
+	writeJSON(w, http.StatusOK, clientResponse(client))
 }
 
 func (h *Handler) handleCanonicalCreateClient(w http.ResponseWriter, r *http.Request, workspaceID string) {
@@ -41,26 +64,30 @@ func (h *Handler) handleCanonicalCreateClient(w http.ResponseWriter, r *http.Req
 		writeError(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
-	if request.Name == nil || request.ExternalKey == nil {
-		writeError(w, http.StatusBadRequest, "name and external_key are required")
+	if request.Name == nil {
+		writeError(w, http.StatusBadRequest, "name is required")
 		return
 	}
-	name, externalKey, ok := normalizeClientValues(w, *request.Name, *request.ExternalKey)
+	name, ok := normalizeClientName(w, *request.Name)
 	if !ok {
 		return
 	}
-	client, err := h.store.CreateClient(r.Context(), workspaceID, name, externalKey, clientActor(r))
+	value, err := newClientToken()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not generate client token")
+		return
+	}
+	client, err := h.store.CreateClient(r.Context(), workspaceID, name, state.HashClientToken(value), clientActor(r))
 	if err != nil {
 		writeStateError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, client)
+	writeJSON(w, http.StatusCreated, map[string]any{"client": clientResponse(client), "api_token": value})
 }
 
 func (h *Handler) handleCanonicalUpdateClient(w http.ResponseWriter, r *http.Request, workspaceID string, id string) {
 	id = strings.TrimSpace(id)
-	current, err := h.store.GetClient(r.Context(), workspaceID, id)
-	if err != nil {
+	if _, err := h.store.GetClient(r.Context(), workspaceID, id); err != nil {
 		writeStateError(w, err)
 		return
 	}
@@ -69,28 +96,43 @@ func (h *Handler) handleCanonicalUpdateClient(w http.ResponseWriter, r *http.Req
 		writeError(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
-	if request.Name == nil && request.ExternalKey == nil {
-		writeError(w, http.StatusBadRequest, "name or external_key is required")
+	if request.Name == nil {
+		writeError(w, http.StatusBadRequest, "name is required")
 		return
 	}
-	name := current.Name
-	externalKey := current.ExternalKey
-	if request.Name != nil {
-		name = *request.Name
-	}
-	if request.ExternalKey != nil {
-		externalKey = *request.ExternalKey
-	}
-	name, externalKey, ok := normalizeClientValues(w, name, externalKey)
+	name, ok := normalizeClientName(w, *request.Name)
 	if !ok {
 		return
 	}
-	client, err := h.store.UpdateClient(r.Context(), workspaceID, id, name, externalKey, clientActor(r))
+	client, err := h.store.UpdateClient(r.Context(), workspaceID, id, name, clientActor(r))
 	if err != nil {
 		writeStateError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, client)
+	writeJSON(w, http.StatusOK, clientResponse(client))
+}
+
+func (h *Handler) handleCanonicalRotateClientToken(w http.ResponseWriter, r *http.Request, workspaceID string, id string) {
+	value, err := newClientToken()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not generate client token")
+		return
+	}
+	client, err := h.store.RotateClientToken(r.Context(), workspaceID, strings.TrimSpace(id), state.HashClientToken(value), clientActor(r))
+	if err != nil {
+		writeStateError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"client": clientResponse(client), "api_token": value})
+}
+
+func (h *Handler) handleCanonicalRevokeClientToken(w http.ResponseWriter, r *http.Request, workspaceID string, id string) {
+	client, err := h.store.RevokeClientToken(r.Context(), workspaceID, strings.TrimSpace(id), clientActor(r))
+	if err != nil {
+		writeStateError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, clientResponse(client))
 }
 
 func (h *Handler) handleCanonicalDeleteClient(w http.ResponseWriter, r *http.Request, workspaceID string, id string) {
@@ -111,30 +153,25 @@ func (h *Handler) handleCanonicalClientAudit(w http.ResponseWriter, r *http.Requ
 	writeJSON(w, http.StatusOK, records)
 }
 
-func normalizeClientValues(w http.ResponseWriter, name string, externalKey string) (string, string, bool) {
+func normalizeClientName(w http.ResponseWriter, name string) (string, bool) {
 	name = strings.TrimSpace(name)
-	externalKey = strings.TrimSpace(externalKey)
 	if name == "" {
 		writeError(w, http.StatusBadRequest, "name is required")
-		return "", "", false
+		return "", false
 	}
 	if utf8.RuneCountInString(name) > maxClientNameRunes {
 		writeError(w, http.StatusBadRequest, "name is too long")
-		return "", "", false
+		return "", false
 	}
-	if externalKey == "" {
-		writeError(w, http.StatusBadRequest, "external_key is required")
-		return "", "", false
+	return name, true
+}
+
+func newClientToken() (string, error) {
+	data := make([]byte, 32)
+	if _, err := rand.Read(data); err != nil {
+		return "", err
 	}
-	if utf8.RuneCountInString(externalKey) > maxExternalKeyRunes {
-		writeError(w, http.StatusBadRequest, "external_key is too long")
-		return "", "", false
-	}
-	if strings.IndexFunc(externalKey, unicode.IsSpace) >= 0 || strings.IndexFunc(externalKey, unicode.IsControl) >= 0 {
-		writeError(w, http.StatusBadRequest, "external_key must not contain whitespace or control characters")
-		return "", "", false
-	}
-	return name, externalKey, true
+	return contract.ClientTokenPrefix + base64.RawURLEncoding.EncodeToString(data), nil
 }
 
 func clientActor(r *http.Request) string {

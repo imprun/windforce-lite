@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/imprun/windforce-core/internal/contract"
 	"github.com/imprun/windforce-core/internal/state"
 )
 
@@ -51,58 +52,73 @@ func TestCanonicalClientLifecycle(t *testing.T) {
 		return payload.Bytes()
 	}
 
-	var created state.Client
-	createdBody := do(http.MethodPost, "/api/w/ws-a/clients", "alice@example.test", `{"name":"Acme Operations","external_key":"client-key-a"}`, http.StatusCreated, &created)
-	if created.ID == "" || created.WorkspaceID != "ws-a" || created.Name != "Acme Operations" || created.ExternalKey != "client-key-a" {
+	var issued struct {
+		Client   clientView `json:"client"`
+		APIToken string     `json:"api_token"`
+	}
+	createdBody := do(http.MethodPost, "/api/w/ws-a/clients", "alice@example.test", `{"name":"Acme Operations"}`, http.StatusCreated, &issued)
+	created := issued.Client
+	if created.ID == "" || created.WorkspaceID != "ws-a" || created.Name != "Acme Operations" || !created.HasToken || !strings.HasPrefix(issued.APIToken, contract.ClientTokenPrefix) {
 		t.Fatalf("created = %#v", created)
 	}
 	if created.CreatedBy != "alice@example.test" || created.UpdatedBy != "alice@example.test" {
 		t.Fatalf("created actors = %#v", created)
 	}
-	if bytes.Contains(createdBody, []byte("client_key")) || !bytes.Contains(createdBody, []byte("external_key")) {
-		t.Fatalf("created response uses legacy field: %s", createdBody)
+	if bytes.Contains(createdBody, []byte("token_hash")) || bytes.Contains(createdBody, []byte("external_key")) {
+		t.Fatalf("created response exposes stored credential data: %s", createdBody)
 	}
 
-	do(http.MethodPost, "/api/w/ws-a/clients", "alice@example.test", `{"name":"Duplicate","external_key":"client-key-a"}`, http.StatusConflict, nil)
-	do(http.MethodPost, "/api/w/ws-b/clients", "alice@example.test", `{"name":"Other workspace","external_key":"client-key-a"}`, http.StatusCreated, nil)
-	do(http.MethodPost, "/api/w/ws-a/clients", "alice@example.test", `{"name":"Whitespace","external_key":"bad key"}`, http.StatusBadRequest, nil)
+	do(http.MethodPost, "/api/w/ws-a/clients", "alice@example.test", `{"name":"   "}`, http.StatusBadRequest, nil)
 
-	var clients []state.Client
+	var clients []clientView
 	do(http.MethodGet, "/api/w/ws-a/clients", "", "", http.StatusOK, &clients)
 	if len(clients) != 1 || clients[0].ID != created.ID {
 		t.Fatalf("clients = %#v", clients)
 	}
 
-	var updated state.Client
+	var updated clientView
 	clientPath := "/api/w/ws-a/clients/" + created.ID
-	do(http.MethodPatch, clientPath, "bob@example.test", `{"name":"Acme Korea","external_key":"client-key-b"}`, http.StatusOK, &updated)
-	if updated.ID != created.ID || updated.Name != "Acme Korea" || updated.ExternalKey != "client-key-b" || updated.UpdatedBy != "bob@example.test" {
+	do(http.MethodPatch, clientPath, "bob@example.test", `{"name":"Acme Korea"}`, http.StatusOK, &updated)
+	if updated.ID != created.ID || updated.Name != "Acme Korea" || !updated.HasToken || updated.UpdatedBy != "bob@example.test" {
 		t.Fatalf("updated = %#v", updated)
+	}
+	var rotated struct {
+		Client   clientView `json:"client"`
+		APIToken string     `json:"api_token"`
+	}
+	do(http.MethodPost, clientPath+"/token", "bob@example.test", "", http.StatusOK, &rotated)
+	if rotated.APIToken == issued.APIToken || !strings.HasPrefix(rotated.APIToken, contract.ClientTokenPrefix) {
+		t.Fatalf("rotated token was not replaced")
 	}
 
 	var audit []state.ClientAudit
 	auditBody := do(http.MethodGet, clientPath+"/audit", "", "", http.StatusOK, &audit)
-	if len(audit) != 2 || audit[0].Kind != "updated" || audit[0].Actor != "bob@example.test" || audit[1].Kind != "created" {
+	if len(audit) != 3 || audit[0].Kind != "token_rotated" || audit[1].Kind != "updated" || audit[2].Kind != "created" {
 		t.Fatalf("audit = %#v", audit)
 	}
-	if bytes.Contains(auditBody, []byte("client-key-a")) || bytes.Contains(auditBody, []byte("client-key-b")) {
+	if bytes.Contains(auditBody, []byte(issued.APIToken)) || bytes.Contains(auditBody, []byte(rotated.APIToken)) {
 		t.Fatalf("audit exposes client key: %s", auditBody)
 	}
 
+	do(http.MethodDelete, clientPath, "carol@example.test", "", http.StatusConflict, nil)
+	do(http.MethodDelete, clientPath+"/token", "carol@example.test", "", http.StatusOK, &updated)
+	if updated.HasToken {
+		t.Fatalf("revoked client still has a token: %#v", updated)
+	}
 	do(http.MethodDelete, clientPath, "carol@example.test", "", http.StatusNoContent, nil)
 	do(http.MethodGet, clientPath, "", "", http.StatusNotFound, nil)
 	auditBody = do(http.MethodGet, clientPath+"/audit", "", "", http.StatusOK, &audit)
-	if len(audit) != 3 || audit[0].Kind != "deleted" || audit[0].Actor != "carol@example.test" {
+	if len(audit) != 5 || audit[0].Kind != "deleted" || audit[1].Kind != "token_revoked" || audit[0].Actor != "carol@example.test" {
 		t.Fatalf("audit after delete = %#v", audit)
 	}
-	if strings.Contains(string(auditBody), "client-key-") {
+	if bytes.Contains(auditBody, []byte(issued.APIToken)) || bytes.Contains(auditBody, []byte(rotated.APIToken)) {
 		t.Fatalf("audit exposes deleted client key: %s", auditBody)
 	}
 }
 
 func TestControlPlaneOpenAPIIncludesClients(t *testing.T) {
 	schemas := controlPlaneSchemas()
-	for _, name := range []string{"Client", "CreateClientRequest", "UpdateClientRequest", "ClientAudit", "AuditChanges", "AuditEvent", "InputConfig", "SetInputConfigRequest", "InputConfigAudit", "ProvisioningResource", "ProvisioningImportRequest", "ProvisioningResult"} {
+	for _, name := range []string{"Client", "ClientTokenResult", "CreateClientRequest", "UpdateClientRequest", "ClientAudit", "AuditChanges", "AuditEvent", "InputConfig", "SetInputConfigRequest", "InputConfigAudit", "ProvisioningResource", "ProvisioningImportRequest", "ProvisioningResult"} {
 		if schemas[name] == nil {
 			t.Fatalf("missing schema %s", name)
 		}
@@ -114,6 +130,7 @@ func TestControlPlaneOpenAPIIncludesClients(t *testing.T) {
 		"/api/w/{workspace}/provisioning/export",
 		"/api/w/{workspace}/clients",
 		"/api/w/{workspace}/clients/{client_id}",
+		"/api/w/{workspace}/clients/{client_id}/token",
 		"/api/w/{workspace}/clients/{client_id}/audit",
 		"/api/w/{workspace}/clients/{client_id}/input-configs",
 		"/api/w/{workspace}/clients/{client_id}/input-config-audit",

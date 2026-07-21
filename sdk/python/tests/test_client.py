@@ -31,7 +31,7 @@ class WindforceExecutionClientTest(TestCase):
                 input={"message": "hello"},
                 adapter="queue",
                 idempotency_key="message-1",
-                client_key="external-client-a",
+                client_id="client_a",
             )
 
         self.assertEqual(run.run_id, "run_a")
@@ -45,7 +45,7 @@ class WindforceExecutionClientTest(TestCase):
                 "input": {"message": "hello"},
                 "adapter": "queue",
                 "idempotency_key": "message-1",
-                "client_key": "external-client-a",
+                "client_id": "client_a",
             },
         )
 

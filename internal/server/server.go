@@ -48,7 +48,10 @@ type Config struct {
 	EnableAPI          bool
 	EnableControlAPI   bool
 	EnableExecutionAPI bool
+	EnablePublicAPI    bool
 	EnableWebUI        bool
+	PublicAPIRPS       float64
+	PublicAPIBurst     int
 	ManagedWorkspaces  bool
 	AdminToken         string
 	WorkerToken        string
@@ -69,7 +72,9 @@ type Handler struct {
 	gitSources         GitSourceRegistry
 	enableControlAPI   bool
 	enableExecutionAPI bool
+	enablePublicAPI    bool
 	enableWebUI        bool
+	publicAPILimiter   *requestRateLimiter
 	managedWorkspaces  bool
 	adminToken         string
 	workerToken        string
@@ -148,6 +153,7 @@ func New(config Config) http.Handler {
 	}
 	enableControlAPI := config.EnableAPI || config.EnableControlAPI
 	enableExecutionAPI := config.EnableAPI || config.EnableExecutionAPI
+	enablePublicAPI := config.EnableAPI || config.EnablePublicAPI
 	enableWebUI := config.EnableAPI || config.EnableWebUI
 	return &Handler{
 		store:              config.Store,
@@ -157,7 +163,9 @@ func New(config Config) http.Handler {
 		gitSources:         config.GitSources,
 		enableControlAPI:   enableControlAPI,
 		enableExecutionAPI: enableExecutionAPI,
+		enablePublicAPI:    enablePublicAPI,
 		enableWebUI:        enableWebUI,
+		publicAPILimiter:   newRequestRateLimiter(config.PublicAPIRPS, config.PublicAPIBurst),
 		managedWorkspaces:  config.ManagedWorkspaces,
 		adminToken:         config.AdminToken,
 		workerToken:        config.WorkerToken,
@@ -188,6 +196,15 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path == "/metrics" && r.Method == http.MethodGet && h.metricsHandler != nil {
 		h.metricsHandler.ServeHTTP(w, r)
 		return
+	}
+	if h.enablePublicAPI && strings.HasPrefix(r.URL.Path, "/api/v1/") {
+		if !h.publicAPILimiter.Allow(time.Now()) {
+			writeError(w, http.StatusTooManyRequests, "rate limit exceeded")
+			return
+		}
+		if h.handlePublicAPI(w, r) {
+			return
+		}
 	}
 	if h.enableWebUI && h.handleWebUI(w, r) {
 		return
@@ -307,6 +324,14 @@ func (h *Handler) handleAPI(w http.ResponseWriter, r *http.Request) bool {
 	}
 	if len(parts) == 5 && parts[0] == "api" && parts[1] == "w" && parts[3] == "clients" && r.Method == http.MethodDelete {
 		h.handleCanonicalDeleteClient(w, r, parts[2], parts[4])
+		return true
+	}
+	if len(parts) == 6 && parts[0] == "api" && parts[1] == "w" && parts[3] == "clients" && parts[5] == "token" && r.Method == http.MethodPost {
+		h.handleCanonicalRotateClientToken(w, r, parts[2], parts[4])
+		return true
+	}
+	if len(parts) == 6 && parts[0] == "api" && parts[1] == "w" && parts[3] == "clients" && parts[5] == "token" && r.Method == http.MethodDelete {
+		h.handleCanonicalRevokeClientToken(w, r, parts[2], parts[4])
 		return true
 	}
 	if len(parts) == 6 && parts[0] == "api" && parts[1] == "w" && parts[3] == "clients" && parts[5] == "audit" && r.Method == http.MethodGet {

@@ -25,10 +25,6 @@ resources:
     kind: Client
     metadata:
       name: Example Client
-    spec:
-      externalKey:
-        valueFrom:
-          env: EXAMPLE_CLIENT_KEY
 
   - apiVersion: windforce-lite.imprun.dev/v1
     kind: InputSettings

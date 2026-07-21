@@ -292,16 +292,11 @@ func (s Service) Export(ctx context.Context, workspace string, includeValues boo
 		return nil, err
 	}
 	for _, client := range clients {
-		externalKey := ValueSource{Redacted: true}
-		if includeValues {
-			externalKey.Value = client.ExternalKey
-			externalKey.Redacted = false
-		}
 		docs = append(docs, Document{
 			APIVersion: APIVersion,
 			Kind:       "Client",
 			Metadata:   Metadata{Name: client.Name},
-			Spec:       Spec{Name: client.Name, ExternalKey: externalKey},
+			Spec:       Spec{Name: client.Name},
 		})
 	}
 	variables, err := s.Store.ListVariables(ctx, workspace)
@@ -410,42 +405,23 @@ func EncodeYAML(docs []Document) ([]byte, error) {
 
 func (s Service) applyClient(ctx context.Context, doc Document, options Options) (state.Client, string, error) {
 	name := firstNonEmpty(doc.Spec.Name, doc.Metadata.Name)
-	if valueSourceIsRedacted(doc.Spec.ExternalKey) || valueSourceIsRedacted(doc.Spec.ClientKey) {
-		client, err := s.clientByName(ctx, options.Workspace, name)
-		if err != nil {
-			return state.Client{}, "", fmt.Errorf("redacted externalKey requires an existing client named %q", name)
-		}
-		if options.DryRun {
-			return client, "validated", nil
-		}
-		if client.Name == name {
-			return client, "unchanged", nil
-		}
-		updated, err := s.Store.UpdateClient(ctx, options.Workspace, client.ID, name, client.ExternalKey, options.Actor)
-		return updated, "updated", err
+	if name == "" {
+		return state.Client{}, "", errors.New("client name is required")
 	}
-	externalKey, err := resolveString(doc.Spec.ExternalKey, doc.Spec.ClientKey)
-	if err != nil {
-		return state.Client{}, "", err
+	if valueSourceHasCredential(doc.Spec.ExternalKey) || valueSourceHasCredential(doc.Spec.ClientKey) {
+		return state.Client{}, "", errors.New("client credentials are issued and rotated through the control plane API")
 	}
-	if name == "" || externalKey == "" {
-		return state.Client{}, "", errors.New("client name and externalKey are required")
-	}
-	if options.DryRun {
-		return state.Client{ID: stableID("client", externalKey), Name: name, ExternalKey: externalKey}, "validated", nil
-	}
-	client, err := s.Store.GetClientByExternalKey(ctx, options.Workspace, externalKey)
+	client, err := s.clientByName(ctx, options.Workspace, name)
 	if err == nil {
-		if client.Name == name {
-			return client, "unchanged", nil
-		}
-		updated, err := s.Store.UpdateClient(ctx, options.Workspace, client.ID, name, externalKey, options.Actor)
-		return updated, "updated", err
+		return client, "unchanged", nil
 	}
 	if !errors.Is(err, state.ErrNotFound) {
 		return state.Client{}, "", err
 	}
-	created, err := s.Store.CreateClient(ctx, options.Workspace, name, externalKey, options.Actor)
+	if options.DryRun {
+		return state.Client{ID: stableID("client", name), Name: name}, "validated", nil
+	}
+	created, err := s.Store.CreateClient(ctx, options.Workspace, name, "", options.Actor)
 	return created, "created", err
 }
 
@@ -788,6 +764,10 @@ func (s Service) findInputConfig(ctx context.Context, workspace string, appKey s
 
 func valueSourceIsRedacted(source ValueSource) bool {
 	return source.Redacted && source.Value == nil && source.ValueFrom == nil
+}
+
+func valueSourceHasCredential(source ValueSource) bool {
+	return source.Value != nil || source.ValueFrom != nil
 }
 
 func redactedAny(raw any) bool {

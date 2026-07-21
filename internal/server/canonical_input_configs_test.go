@@ -66,8 +66,12 @@ func TestCanonicalInputConfigLifecycleAndExecutionAdmission(t *testing.T) {
 		return payload.Bytes()
 	}
 
-	var client state.Client
-	do(http.MethodPost, "/api/w/ws-a/clients", `{"name":"Client A","external_key":"external-a"}`, http.StatusCreated, &client)
+	var created struct {
+		Client   clientView `json:"client"`
+		APIToken string     `json:"api_token"`
+	}
+	do(http.MethodPost, "/api/w/ws-a/clients", `{"name":"Client A"}`, http.StatusCreated, &created)
+	client := created.Client
 	do(http.MethodPut, "/api/w/ws-a/apps/shop/input-configs", `{"config":{"region":"kr"},"locked_keys":[]}`, http.StatusOK, nil)
 	do(http.MethodPut, "/api/w/ws-a/apps/shop/input-configs", `{"config":{"_SCRAPING_RUNTIME":{"authSession":{"serviceUrl":"http://example.invalid"}}},"locked_keys":[]}`, http.StatusBadRequest, nil)
 	do(http.MethodPut, "/api/w/ws-a/apps/shop/input-configs", `{"action_key":"orders","client_id":"`+client.ID+`","config":{"tenant":"server-only"},"locked_keys":["tenant"]}`, http.StatusOK, nil)
@@ -84,9 +88,9 @@ func TestCanonicalInputConfigLifecycleAndExecutionAdmission(t *testing.T) {
 		t.Fatalf("client configs = %#v", clientConfigs)
 	}
 
-	do(http.MethodPost, "/execution/v1/workspaces/ws-a/runs", `{"app":"shop","action":"orders","client_key":"external-a","input":{"tenant":"spoofed"}}`, http.StatusBadRequest, nil)
+	do(http.MethodPost, "/execution/v1/workspaces/ws-a/runs", `{"app":"shop","action":"orders","client_id":"`+client.ID+`","input":{"tenant":"spoofed"}}`, http.StatusBadRequest, nil)
 	var admitted executionRunView
-	do(http.MethodPost, "/execution/v1/workspaces/ws-a/runs", `{"app":"shop","action":"orders","client_key":"external-a","input":{"message":"hello"}}`, http.StatusCreated, &admitted)
+	do(http.MethodPost, "/execution/v1/workspaces/ws-a/runs", `{"app":"shop","action":"orders","client_id":"`+client.ID+`","input":{"message":"hello"}}`, http.StatusCreated, &admitted)
 	job, run, _, err := store.GetJob(context.Background(), "ws-a", admitted.JobID)
 	if err != nil {
 		t.Fatal(err)

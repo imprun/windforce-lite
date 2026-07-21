@@ -151,6 +151,9 @@ func TestCellBearerTokenPrefixContract(t *testing.T) {
 			t.Fatalf("IsCellBearerToken must accept %q tokens", prefix)
 		}
 	}
+	if !seen[ClientTokenPrefix] {
+		t.Fatalf("client token prefix %q is missing from the cell bearer contract", ClientTokenPrefix)
+	}
 	if IsCellBearerToken("imp_platform-token") {
 		t.Fatal("platform namespace must not classify as a cell bearer")
 	}
