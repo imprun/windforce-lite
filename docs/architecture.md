@@ -121,9 +121,10 @@ Run admission performs one atomic decision:
 
 1. Resolve the active app release in the requested workspace.
 2. Validate the action and worker capability routing.
-3. Materialize the action input and output schemas.
-4. Pin the deployment, commit, entrypoint, runtime, schemas, route, and timeout.
-5. Create the caller-visible Run and its first internal Job in one transaction.
+3. Resolve InputConfig once, enforce LockedKeys, and validate the merged input against the active action schema.
+4. Materialize the action input and output schemas.
+5. Pin the effective input, deployment, commit, entrypoint, runtime, schemas, route, and timeout.
+6. Create the caller-visible Run and its first internal Job in one transaction.
 
 A Run is the stable caller-visible invocation. A Job is an internal execution
 attempt. Workers execute only the deployment pinned in the Job payload; they do
@@ -147,7 +148,7 @@ documentation without mounting the Windforce catalog.
 
 ## Public API Plane
 
-The Public API Plane is rooted at `/api/v1/w/{workspace}` and accepts only engine-issued `wfk_` client bearer tokens. It maps an authenticated client to client-scoped input settings, applies admission through the Execution Plane, and never writes the queue or catalog directly. Its async and wait routes return the admitted Job identifier in `X-WF-Job-Id`; the wait route returns the action result as the response body. See [Public API](concepts/public-api.md).
+The Public API Plane is rooted at `/api/v1/w/{workspace}` and accepts only engine-issued `wfk_` client bearer tokens. It maps an authenticated client to client-scoped input settings, applies admission through the Execution Plane, and never writes the queue or catalog directly. Its async and wait routes return the admitted Job identifier in `X-WF-Job-Id`; an idempotent replay preserves that Job identifier, and the wait route returns its action result as the response body. See [Public API](concepts/public-api.md).
 
 ## SDK Boundary
 

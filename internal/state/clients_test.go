@@ -24,8 +24,12 @@ func TestLocalStoreMigratesLegacyClientSnapshot(t *testing.T) {
 	}
 	store := NewLocalStore(path)
 	clients, err := store.ListClients(context.Background(), "default")
-	if err != nil || len(clients) != 1 || !ClientTokenMatches(clients[0], "external-legacy") {
+	if err != nil || len(clients) != 1 || clients[0].TokenHash != "" {
 		t.Fatalf("clients = %#v, %v", clients, err)
+	}
+	audit, err := store.ListClientAudit(context.Background(), "default", "client_legacy")
+	if err != nil || len(audit) != 1 || audit[0].Kind != "token_revoked_migration" {
+		t.Fatalf("migration audit = %#v, %v", audit, err)
 	}
 	if _, err := store.UpdateClient(context.Background(), "default", "client_legacy", "Migrated client", "bob"); err != nil {
 		t.Fatal(err)
@@ -110,8 +114,23 @@ VALUES ('default', 'client_legacy', 'Legacy client', 'external-legacy', 'alice',
 		t.Fatal(err)
 	}
 	client, err := store.GetClient(context.Background(), "default", "client_legacy")
-	if err != nil || !ClientTokenMatches(client, "external-legacy") {
+	if err != nil || client.TokenHash != "" {
 		t.Fatalf("client = %#v, %v", client, err)
+	}
+	audit, err := store.ListClientAudit(context.Background(), "default", "client_legacy")
+	if err != nil || len(audit) != 1 || audit[0].Kind != "token_revoked_migration" {
+		t.Fatalf("migration audit = %#v, %v", audit, err)
+	}
+	issued := "wfk_post_migration"
+	if _, err := store.RotateClientToken(context.Background(), "default", "client_legacy", HashClientToken(issued), "admin"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Migrate(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	client, err = store.GetClient(context.Background(), "default", "client_legacy")
+	if err != nil || !ClientTokenMatches(client, issued) {
+		t.Fatalf("issued token did not survive repeated migration: %#v, %v", client, err)
 	}
 }
 

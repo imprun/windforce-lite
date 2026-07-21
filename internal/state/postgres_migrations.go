@@ -2,7 +2,6 @@ package state
 
 import (
 	"context"
-	"regexp"
 )
 
 const postgresMigrationAdvisoryLockID int64 = 0x57464c4d49475241
@@ -35,6 +34,11 @@ CREATE TABLE IF NOT EXISTS runs (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     expires_at TIMESTAMPTZ
+);
+
+CREATE TABLE IF NOT EXISTS schema_migration (
+    name TEXT PRIMARY KEY,
+    applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS jobs (
@@ -443,34 +447,26 @@ ON CONFLICT (id) DO NOTHING;
 `); err != nil {
 		return err
 	}
-	rows, err := tx.Query(ctx, `SELECT workspace_id, id, token_hash FROM client_registry WHERE token_hash <> ''`)
-	if err != nil {
+	const clientTokenMigration = "client-token-prefix-v1"
+	var applied bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM schema_migration WHERE name=$1)`, clientTokenMigration).Scan(&applied); err != nil {
 		return err
 	}
-	type legacyClientToken struct {
-		workspaceID string
-		id          string
-		tokenHash   string
-	}
-	var legacyTokens []legacyClientToken
-	sha256Pattern := regexp.MustCompile(`^[0-9a-f]{64}$`)
-	for rows.Next() {
-		var item legacyClientToken
-		if err := rows.Scan(&item.workspaceID, &item.id, &item.tokenHash); err != nil {
-			rows.Close()
+	if !applied {
+		if _, err := tx.Exec(ctx, `
+INSERT INTO client_registry_audit (workspace_id, client_id, kind, detail, actor)
+SELECT workspace_id, id, 'token_revoked_migration', 'issue a wfk_ token before using the public API', 'system:migration'
+FROM client_registry
+WHERE token_hash <> ''`); err != nil {
 			return err
 		}
-		if !sha256Pattern.MatchString(item.tokenHash) {
-			legacyTokens = append(legacyTokens, item)
+		if _, err := tx.Exec(ctx, `
+UPDATE client_registry
+SET token_hash='', updated_by='system:migration', updated_at=now()
+WHERE token_hash <> ''`); err != nil {
+			return err
 		}
-	}
-	if err := rows.Err(); err != nil {
-		rows.Close()
-		return err
-	}
-	rows.Close()
-	for _, item := range legacyTokens {
-		if _, err := tx.Exec(ctx, `UPDATE client_registry SET token_hash=$3 WHERE workspace_id=$1 AND id=$2`, item.workspaceID, item.id, HashClientToken(item.tokenHash)); err != nil {
+		if _, err := tx.Exec(ctx, `INSERT INTO schema_migration (name) VALUES ($1)`, clientTokenMigration); err != nil {
 			return err
 		}
 	}

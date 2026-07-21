@@ -79,25 +79,26 @@ var (
 )
 
 type Run struct {
-	ID             string              `json:"id"`
-	Adapter        string              `json:"adapter,omitempty"`
-	App            string              `json:"app"`
-	Action         string              `json:"action"`
-	State          RunState            `json:"state"`
-	Deployment     contract.Deployment `json:"deployment"`
-	Input          json.RawMessage     `json:"input,omitempty"`
-	Output         json.RawMessage     `json:"output,omitempty"`
-	Result         *contract.JobResult `json:"result,omitempty"`
-	Error          json.RawMessage     `json:"error,omitempty"`
-	TaskID         string              `json:"taskId,omitempty"`
-	CorrelationID  string              `json:"correlationId,omitempty"`
-	Env            []string            `json:"env,omitempty"`
-	CreatedBy      string              `json:"createdBy,omitempty"`
-	PermissionedAs string              `json:"permissionedAs,omitempty"`
-	ClientID       string              `json:"clientId,omitempty"`
-	CreatedAt      time.Time           `json:"createdAt"`
-	UpdatedAt      time.Time           `json:"updatedAt"`
-	ExpiresAt      *time.Time          `json:"expiresAt,omitempty"`
+	ID                  string              `json:"id"`
+	Adapter             string              `json:"adapter,omitempty"`
+	App                 string              `json:"app"`
+	Action              string              `json:"action"`
+	State               RunState            `json:"state"`
+	Deployment          contract.Deployment `json:"deployment"`
+	Input               json.RawMessage     `json:"input,omitempty"`
+	InputConfigResolved bool                `json:"inputConfigResolved,omitempty"`
+	Output              json.RawMessage     `json:"output,omitempty"`
+	Result              *contract.JobResult `json:"result,omitempty"`
+	Error               json.RawMessage     `json:"error,omitempty"`
+	TaskID              string              `json:"taskId,omitempty"`
+	CorrelationID       string              `json:"correlationId,omitempty"`
+	Env                 []string            `json:"env,omitempty"`
+	CreatedBy           string              `json:"createdBy,omitempty"`
+	PermissionedAs      string              `json:"permissionedAs,omitempty"`
+	ClientID            string              `json:"clientId,omitempty"`
+	CreatedAt           time.Time           `json:"createdAt"`
+	UpdatedAt           time.Time           `json:"updatedAt"`
+	ExpiresAt           *time.Time          `json:"expiresAt,omitempty"`
 }
 
 type JobPayload struct {
@@ -127,6 +128,7 @@ type JobPayload struct {
 	InputSchema           json.RawMessage `json:"inputSchema,omitempty"`
 	OutputSchema          json.RawMessage `json:"outputSchema,omitempty"`
 	Input                 json.RawMessage `json:"input,omitempty"`
+	InputConfigResolved   bool            `json:"inputConfigResolved,omitempty"`
 	// Deployment is retained only to decode jobs created before compact pins.
 	Deployment     *contract.Deployment `json:"deployment,omitempty"`
 	CorrelationID  string               `json:"correlationId,omitempty"`
@@ -303,7 +305,9 @@ func (client *Client) UnmarshalJSON(data []byte) error {
 		if err := json.Unmarshal(data, &legacy); err != nil {
 			return err
 		}
-		client.TokenHash = HashClientToken(firstNonEmpty(legacy.ExternalKey, legacy.ClientKey))
+		if firstNonEmpty(legacy.ExternalKey, legacy.ClientKey) != "" {
+			client.TokenHash = legacyClientTokenMarker
+		}
 	}
 	return nil
 }
@@ -405,6 +409,7 @@ type Snapshot struct {
 	Resources            map[string]map[string]Resource        `json:"resources"`
 	Clients              map[string]map[string]Client          `json:"clients"`
 	ClientAudits         map[string][]ClientAudit              `json:"clientAudits"`
+	ClientTokenVersion   int                                   `json:"clientTokenVersion,omitempty"`
 	InputConfigs         map[string]map[string]InputConfig     `json:"inputConfigs"`
 	InputConfigAudits    map[string][]InputConfigAudit         `json:"inputConfigAudits"`
 	LegacyClients        map[string]map[string]Client          `json:"apiClients,omitempty"`
@@ -430,6 +435,7 @@ type Store interface {
 	CreateRunAndEnqueue(ctx context.Context, run Run, job Job) error
 	GetRun(ctx context.Context, runID string) (Run, error)
 	GetJob(ctx context.Context, workspaceID string, jobID string) (Job, Run, bool, error)
+	GetJobByRunID(ctx context.Context, workspaceID string, runID string) (Job, Run, bool, error)
 	ListJobs(ctx context.Context, query JobListQuery) ([]JobListItem, error)
 	JobSummary(ctx context.Context, workspaceID string, recent time.Duration) (JobSummary, error)
 	RequeueQueuedJobsForApp(ctx context.Context, spec RequeueAppSpec) (int64, error)
@@ -572,6 +578,7 @@ func NewActionJob(run Run, input json.RawMessage) Job {
 			InputSchema:           inputSchema,
 			OutputSchema:          outputSchema,
 			Input:                 cloneRaw(input),
+			InputConfigResolved:   run.InputConfigResolved,
 			CorrelationID:         run.CorrelationID,
 			Env:                   append([]string(nil), run.Env...),
 			CreatedBy:             actorCreatedBy(run),

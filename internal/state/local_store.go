@@ -217,6 +217,27 @@ func (s *LocalStore) GetJob(ctx context.Context, workspaceID string, jobID strin
 	return job, run, true, nil
 }
 
+func (s *LocalStore) GetJobByRunID(ctx context.Context, workspaceID string, runID string) (Job, Run, bool, error) {
+	snapshot, err := s.Load(ctx)
+	if err != nil {
+		return Job{}, Run{}, false, err
+	}
+	workspaceID = contract.NormalizeWorkspace(workspaceID)
+	selected := Job{}
+	for _, job := range snapshot.Jobs {
+		if job.RunID != runID || normalizedJobWorkspace("", job) != workspaceID {
+			continue
+		}
+		if selected.ID == "" || job.CreatedAt.Before(selected.CreatedAt) || (job.CreatedAt.Equal(selected.CreatedAt) && job.ID < selected.ID) {
+			selected = job
+		}
+	}
+	if selected.ID == "" {
+		return Job{}, Run{}, false, nil
+	}
+	return s.GetJob(ctx, workspaceID, selected.ID)
+}
+
 func (s *LocalStore) ListJobs(ctx context.Context, query JobListQuery) ([]JobListItem, error) {
 	snapshot, err := s.Load(ctx)
 	if err != nil {
@@ -1014,6 +1035,7 @@ func ensureSnapshot(snapshot *Snapshot) {
 			snapshot.ClientAudits = map[string][]ClientAudit{}
 		}
 	}
+	migrateLocalClientTokens(snapshot)
 	if snapshot.InputConfigs == nil {
 		snapshot.InputConfigs = map[string]map[string]InputConfig{}
 	}
@@ -1041,6 +1063,31 @@ func ensureSnapshot(snapshot *Snapshot) {
 	ensureLocalWorkspaces(snapshot)
 	snapshot.LegacyClients = nil
 	snapshot.LegacyClientAudits = nil
+}
+
+const (
+	clientTokenVersion      = 1
+	legacyClientTokenMarker = "__legacy_client_credential__"
+)
+
+func migrateLocalClientTokens(snapshot *Snapshot) {
+	if snapshot.ClientTokenVersion >= clientTokenVersion {
+		return
+	}
+	now := time.Now().UTC()
+	for workspaceID, clients := range snapshot.Clients {
+		for id, client := range clients {
+			if client.TokenHash == "" {
+				continue
+			}
+			client.TokenHash = ""
+			client.UpdatedBy = "system:migration"
+			client.UpdatedAt = now
+			clients[id] = client
+			appendLocalClientAudit(snapshot, workspaceID, id, "token_revoked_migration", "issue a wfk_ token before using the public API", "system:migration", now)
+		}
+	}
+	snapshot.ClientTokenVersion = clientTokenVersion
 }
 
 func variableKey(appKey string, path string) string {

@@ -161,6 +161,26 @@ WHERE id=$1
 	return job, run, true, nil
 }
 
+func (s *PostgresStore) GetJobByRunID(ctx context.Context, workspaceID string, runID string) (Job, Run, bool, error) {
+	workspaceID = contract.NormalizeWorkspace(workspaceID)
+	var jobID string
+	err := s.pool.QueryRow(ctx, `
+SELECT id
+FROM jobs
+WHERE run_id=$1
+  AND COALESCE(NULLIF(payload->>'workspace', ''), NULLIF(payload->'deployment'->>'workspace', ''), 'default')=$2
+ORDER BY created_at ASC, id ASC
+LIMIT 1
+`, runID, workspaceID).Scan(&jobID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Job{}, Run{}, false, nil
+	}
+	if err != nil {
+		return Job{}, Run{}, false, err
+	}
+	return s.GetJob(ctx, workspaceID, jobID)
+}
+
 func (s *PostgresStore) ListJobs(ctx context.Context, query JobListQuery) ([]JobListItem, error) {
 	workspaceID := contract.NormalizeWorkspace(query.WorkspaceID)
 	rows, err := s.pool.Query(ctx, `

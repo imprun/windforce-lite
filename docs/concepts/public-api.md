@@ -17,7 +17,7 @@ Content-Type: application/json
 {"name":"Example Client"}
 ```
 
-The response contains `client` and `api_token`. The raw token is stored by the caller; Windforce Core stores only its SHA-256 hash. Rotate a token with `POST /api/w/{workspace}/clients/{client_id}/token` and revoke it with `DELETE /api/w/{workspace}/clients/{client_id}/token`. Rotation and revocation invalidate the active token immediately. Revoke the active token before deleting a client.
+The response contains `client` and `api_token`. The raw token is stored by the caller; Windforce Core stores only its SHA-256 hash. A Client Registry entry without an active token cannot call the Public API; issue or rotate one with `POST /api/w/{workspace}/clients/{client_id}/token`. Revoke it with `DELETE /api/w/{workspace}/clients/{client_id}/token`. Rotation and revocation invalidate the active token immediately. Revoke the active token before deleting a client.
 
 ## Invoke an action
 
@@ -32,6 +32,8 @@ Content-Type: application/json
 ```
 
 The response is `201 {"job_id":"..."}`. `X-WF-Job-Id` contains the same Job identifier.
+
+Send `Idempotency-Key` when a caller may retry an invocation. The key is scoped to the workspace, client, app, and action. Replaying it returns the original Job identifier and result instead of admitting a second Job, including when the active release or input settings have changed since the first admission.
 
 Wait invocation keeps the HTTP request open and returns the action result body:
 
@@ -57,6 +59,8 @@ Input settings are applied from least specific to most specific:
 
 Later layers override earlier layers. A caller field named in any effective `locked_keys` list is rejected with HTTP 400; the stored operator value is not silently replaced.
 
+Admission validates the merged input against the active release's action input schema from `windforce.json` and its companion JSON Schema files. From the caller's perspective, locked properties are supplied by InputConfig and are therefore absent from the writable request contract. The merged, validated input and release schemas are pinned in the Run and Job, so a queued execution is not changed by later catalog or InputConfig updates.
+
 ## HTTP status policy
 
 | Status | Meaning |
@@ -71,4 +75,4 @@ Later layers override earlier layers. A caller field named in any effective `loc
 | 429 | Instance Public API rate limit exceeded |
 | 503 | Execution admission is unavailable |
 
-Authentication failures are recorded in the Client Audit stream without storing the presented token. The Public API applies an instance-wide token-bucket limiter before authentication. Configure it with `--public-api-rps` and `--public-api-burst`. The `standalone` and `execution-api` commands expose this plane; `standalone` requires no additional enablement.
+Authentication failures are recorded in the workspace Client Audit stream without storing the presented token. Authenticated admission and rejection records include the client, app, action, Job identifier when available, and replay state, but never the request input or credential. The Public API applies an instance-wide token-bucket limiter before authentication. Configure it with `--public-api-rps` and `--public-api-burst`. The `standalone` and `execution-api` commands expose this plane; `standalone` requires no additional enablement.

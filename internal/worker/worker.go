@@ -13,9 +13,13 @@ import (
 	"github.com/imprun/windforce-core/internal/state"
 )
 
+type Runner interface {
+	Run(ctx context.Context, request actionruntime.RunRequest) (contract.JobResult, error)
+}
+
 type Processor struct {
 	Store    Backend
-	Runner   actionruntime.Runner
+	Runner   Runner
 	WorkerID string
 	Group    string
 	Tags     []string
@@ -86,26 +90,28 @@ func (p *Processor) ProcessOne(ctx context.Context) (bool, error) {
 		}
 		return completeProcessed(p.Store.CompleteJobFailed(ctx, lease, result))
 	}
-	input, err = p.Store.ResolveInput(runCtx, workspaceID, job.Payload.App, job.Payload.Action, job.Payload.ClientID, input)
-	if err != nil {
-		outcome = "failed"
-		name := "InputConfigError"
-		message := "could not resolve input settings"
-		var locked *state.LockedKeysError
-		if errors.As(err, &locked) {
-			name = "InputConfigLocked"
-			message = locked.Error()
+	if !job.Payload.InputConfigResolved {
+		input, err = p.Store.ResolveInput(runCtx, workspaceID, job.Payload.App, job.Payload.Action, job.Payload.ClientID, input)
+		if err != nil {
+			outcome = "failed"
+			name := "InputConfigError"
+			message := "could not resolve input settings"
+			var locked *state.LockedKeysError
+			if errors.As(err, &locked) {
+				name = "InputConfigLocked"
+				message = locked.Error()
+			}
+			jobError = message
+			result := contract.JobResult{
+				JobID:    job.ID,
+				App:      job.Payload.App,
+				Action:   job.Payload.Action,
+				Output:   actionruntime.ErrorResult(name, message),
+				ExitCode: -1,
+				Error:    message,
+			}
+			return completeProcessed(p.Store.CompleteJobFailed(ctx, lease, result))
 		}
-		jobError = message
-		result := contract.JobResult{
-			JobID:    job.ID,
-			App:      job.Payload.App,
-			Action:   job.Payload.Action,
-			Output:   actionruntime.ErrorResult(name, message),
-			ExitCode: -1,
-			Error:    message,
-		}
-		return completeProcessed(p.Store.CompleteJobFailed(ctx, lease, result))
 	}
 	logJobInput(p.LogJobPayloads, job.ID, job.Payload.App, job.Payload.Action, input)
 	input = state.StripReservedRuntimeInput(input)

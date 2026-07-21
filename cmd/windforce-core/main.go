@@ -179,7 +179,7 @@ func runServer(args []string, mode string) int {
 	}
 	bundleStore := bundle.NewLocalStore(*storeDir)
 	executionBundleStore := executionbundle.NewLocalStore(executionBundleStoreRoot(*storeDir))
-	runtimeRunner := runtime.Runner{
+	runtimeRunner := &runtime.Runner{
 		Store:          bundleStore,
 		ArtifactStore:  executionBundleStore,
 		CacheRoot:      *cacheRoot,
@@ -206,7 +206,7 @@ func runServer(args []string, mode string) int {
 		Store:              stateStore,
 		Catalog:            releaseCatalog,
 		Syncer:             &syncer.Syncer{Store: bundleStore},
-		ExecutionBundles:   &runtimeRunner,
+		ExecutionBundles:   runtimeRunner,
 		GitSources:         gitSources,
 		EnableControlAPI:   mode == "control-plane" || combinedMode,
 		EnableExecutionAPI: mode == "execution-api" || combinedMode,
@@ -348,7 +348,7 @@ func runWorker(args []string) int {
 		backend := remoteworker.New(remoteURL, apiToken)
 		processor := worker.Processor{
 			Store: backend,
-			Runner: runtime.Runner{
+			Runner: &runtime.Runner{
 				ArtifactStore:  remoteworker.ArtifactStore{Client: backend},
 				CacheRoot:      *cacheRoot,
 				BaseURL:        firstNonEmpty(strings.TrimSpace(*baseURL), remoteURL),
@@ -396,7 +396,7 @@ func runWorker(args []string) int {
 	configureInputCrypto(stateStore, secretKey, secretKeyPrevious)
 	processor := worker.Processor{
 		Store: stateStore,
-		Runner: runtime.Runner{
+		Runner: &runtime.Runner{
 			ArtifactStore:  executionbundle.NewLocalStore(executionBundleStoreRoot(*storeDir)),
 			CacheRoot:      *cacheRoot,
 			BaseURL:        strings.TrimSpace(*baseURL),

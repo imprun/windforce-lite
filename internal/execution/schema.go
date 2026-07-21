@@ -6,11 +6,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/imprun/windforce-core/internal/contract"
+	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
 // BundleStore materializes a source bundle pinned by workspace, source, and commit.
@@ -27,6 +29,16 @@ type SchemaReader struct {
 	err        error
 }
 
+type InputValidationError struct {
+	Err error
+}
+
+func (e *InputValidationError) Error() string {
+	return "input does not match action schema: " + e.Err.Error()
+}
+
+func (e *InputValidationError) Unwrap() error { return e.Err }
+
 func NewSchemaReader(ctx context.Context, store BundleStore, deployment contract.Deployment) *SchemaReader {
 	return &SchemaReader{ctx: ctx, store: store, deployment: deployment}
 }
@@ -38,6 +50,9 @@ func (r *SchemaReader) Close() {
 }
 
 func (r *SchemaReader) Read(schemaPath string, schemaBody json.RawMessage) (json.RawMessage, error) {
+	if err := validateSchemaPath(schemaPath); err != nil {
+		return nil, err
+	}
 	trimmed := bytes.TrimSpace(schemaBody)
 	if len(trimmed) > 0 && string(trimmed) != "null" {
 		if !json.Valid(trimmed) {
@@ -47,9 +62,6 @@ func (r *SchemaReader) Read(schemaPath string, schemaBody json.RawMessage) (json
 	}
 	if schemaPath == "" {
 		return json.RawMessage([]byte("{}")), nil
-	}
-	if filepath.IsAbs(schemaPath) || strings.HasPrefix(schemaPath, "/") || strings.Contains(schemaPath, "..") {
-		return nil, fmt.Errorf("schema path %q must be a relative path inside the app", schemaPath)
 	}
 	if r.store == nil {
 		return nil, errors.New("source storage is not configured")
@@ -69,6 +81,54 @@ func (r *SchemaReader) Read(schemaPath string, schemaBody json.RawMessage) (json
 		return nil, fmt.Errorf("schema %q is not valid JSON", schemaPath)
 	}
 	return json.RawMessage(append([]byte(nil), data...)), nil
+}
+
+func (r *SchemaReader) Validate(schemaPath string, schemaBody json.RawMessage, input json.RawMessage) error {
+	if err := validateSchemaPath(schemaPath); err != nil {
+		return err
+	}
+	schemaDocument, err := jsonschema.UnmarshalJSON(bytes.NewReader(schemaBody))
+	if err != nil {
+		return fmt.Errorf("decode input schema: %w", err)
+	}
+	resourceURL := "urn:windforce:input-schema"
+	if strings.TrimSpace(schemaPath) != "" && r.store != nil {
+		sourceDir, err := r.EnsureSourceDir()
+		if err != nil {
+			return err
+		}
+		absolutePath := filepath.ToSlash(filepath.Join(sourceDir, filepath.FromSlash(schemaPath)))
+		if !strings.HasPrefix(absolutePath, "/") {
+			absolutePath = "/" + absolutePath
+		}
+		resourceURL = (&url.URL{Scheme: "file", Path: absolutePath}).String()
+	}
+	compiler := jsonschema.NewCompiler()
+	if err := compiler.AddResource(resourceURL, schemaDocument); err != nil {
+		return fmt.Errorf("register input schema: %w", err)
+	}
+	compiled, err := compiler.Compile(resourceURL)
+	if err != nil {
+		return fmt.Errorf("compile input schema: %w", err)
+	}
+	instance, err := jsonschema.UnmarshalJSON(bytes.NewReader(input))
+	if err != nil {
+		return fmt.Errorf("decode input: %w", err)
+	}
+	if err := compiled.Validate(instance); err != nil {
+		return &InputValidationError{Err: err}
+	}
+	return nil
+}
+
+func validateSchemaPath(schemaPath string) error {
+	if schemaPath == "" {
+		return nil
+	}
+	if filepath.IsAbs(schemaPath) || strings.HasPrefix(schemaPath, "/") || strings.Contains(schemaPath, "..") {
+		return fmt.Errorf("schema path %q must be a relative path inside the app", schemaPath)
+	}
+	return nil
 }
 
 func (r *SchemaReader) EnsureSourceDir() (string, error) {

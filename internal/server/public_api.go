@@ -1,7 +1,9 @@
 package server
 
 import (
+	"encoding/json"
 	"errors"
+	"log"
 	"math"
 	"net/http"
 	"strings"
@@ -76,15 +78,26 @@ func (h *Handler) handlePublicAPI(w http.ResponseWriter, r *http.Request) bool {
 	}
 	workspace, err := h.store.GetWorkspace(r.Context(), workspaceID)
 	if err != nil {
+		h.recordPublicTriggerAudit(r, workspaceID, client.ID, "trigger_rejected", app, action, "", false, "workspace unavailable")
 		writeStateError(w, err)
 		return true
 	}
 	if workspace.Status == state.WorkspaceArchived {
+		h.recordPublicTriggerAudit(r, workspaceID, client.ID, "trigger_rejected", app, action, "", false, "workspace is archived")
 		writeError(w, http.StatusConflict, "workspace is archived")
 		return true
 	}
+	var timeout time.Duration
+	if len(parts) == 8 {
+		timeout, ok = parsePublicWaitTimeout(w, r)
+		if !ok {
+			h.recordPublicTriggerAudit(r, workspaceID, client.ID, "trigger_rejected", app, action, "", false, "invalid wait timeout")
+			return true
+		}
+	}
 	input, ok := readRunInput(w, r)
 	if !ok {
+		h.recordPublicTriggerAudit(r, workspaceID, client.ID, "trigger_rejected", app, action, "", false, "invalid request body")
 		return true
 	}
 	actor := "client:" + client.ID
@@ -102,20 +115,20 @@ func (h *Handler) handlePublicAPI(w http.ResponseWriter, r *http.Request) bool {
 		PermissionedAs: actor,
 	})
 	if err != nil {
+		h.recordPublicTriggerAudit(r, workspaceID, client.ID, "trigger_rejected", app, action, "", false, publicTriggerRejectionReason(err))
 		writeLegacyExecutionFault(w, err)
 		return true
 	}
 	jobID := admission.Job.ID
 	if jobID == "" {
-		jobID = admission.Run.ID
+		h.recordPublicTriggerAudit(r, workspaceID, client.ID, "trigger_rejected", app, action, "", admission.Replayed, "admission did not return a job")
+		writeError(w, http.StatusInternalServerError, "admission did not return a job")
+		return true
 	}
+	h.recordPublicTriggerAudit(r, workspaceID, client.ID, "trigger_admitted", app, action, jobID, admission.Replayed, "")
 	w.Header().Set(publicJobIDHeader, jobID)
 	if len(parts) == 7 {
 		writeJSON(w, http.StatusCreated, map[string]string{"job_id": jobID})
-		return true
-	}
-	timeout, ok := parsePublicWaitTimeout(w, r)
-	if !ok {
 		return true
 	}
 	h.waitForPublicResult(w, r, workspaceID, jobID, timeout)
@@ -162,7 +175,49 @@ func (h *Handler) recordPublicAuthFailure(r *http.Request, workspaceID string) {
 	if h.store == nil {
 		return
 	}
-	_ = h.store.AppendClientAudit(r.Context(), workspaceID, "", "trigger_auth_failed", "invalid client token", publicAPITriggerActor)
+	if err := h.store.AppendClientAudit(r.Context(), workspaceID, "", "trigger_auth_failed", "invalid client token", publicAPITriggerActor); err != nil {
+		log.Printf("public API auth audit failed workspace=%s error=%q", contract.NormalizeWorkspace(workspaceID), err)
+	}
+}
+
+func (h *Handler) recordPublicTriggerAudit(r *http.Request, workspaceID string, clientID string, kind string, app string, action string, jobID string, replayed bool, reason string) {
+	if h.store == nil {
+		return
+	}
+	detail, err := json.Marshal(map[string]any{
+		"action":   strings.TrimSpace(action),
+		"app":      strings.TrimSpace(app),
+		"job_id":   strings.TrimSpace(jobID),
+		"reason":   strings.TrimSpace(reason),
+		"replayed": replayed,
+	})
+	if err != nil {
+		log.Printf("public API trigger audit encoding failed workspace=%s client=%s error=%q", contract.NormalizeWorkspace(workspaceID), clientID, err)
+		return
+	}
+	if err := h.store.AppendClientAudit(r.Context(), workspaceID, clientID, kind, string(detail), publicAPITriggerActor); err != nil {
+		log.Printf("public API trigger audit failed workspace=%s client=%s kind=%s error=%q", contract.NormalizeWorkspace(workspaceID), clientID, kind, err)
+	}
+}
+
+func publicTriggerRejectionReason(err error) string {
+	var locked *state.LockedKeysError
+	if errors.As(err, &locked) {
+		return "locked input keys"
+	}
+	var fault *executionpkg.Fault
+	if !errors.As(err, &fault) {
+		return "admission failed"
+	}
+	if fault.Kind == executionpkg.FaultInvalidRequest {
+		switch {
+		case strings.HasPrefix(fault.Message, "input does not match action schema"):
+			return "input does not match action schema"
+		default:
+			return "invalid request"
+		}
+	}
+	return string(fault.Kind)
 }
 
 func (h *Handler) waitForPublicResult(w http.ResponseWriter, r *http.Request, workspaceID string, jobID string, timeout time.Duration) {

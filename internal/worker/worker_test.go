@@ -354,7 +354,8 @@ func TestProcessorPromotesActionFailurePayload(t *testing.T) {
 
 func TestProcessorStoresExecutionBundleFetchErrorResult(t *testing.T) {
 	processor, stateStore, run := newProcessorTestHarness(t, "echo")
-	processor.Runner.ArtifactStore = executionbundle.NewLocalStore(filepath.Join(t.TempDir(), "empty-artifact-store"))
+	runtimeRunner := processor.Runner.(*actionruntime.Runner)
+	runtimeRunner.ArtifactStore = executionbundle.NewLocalStore(filepath.Join(t.TempDir(), "empty-artifact-store"))
 
 	processed, err := processor.ProcessOne(context.Background())
 	if err != nil {
@@ -506,7 +507,7 @@ func newProcessorTestHarness(t *testing.T, helperMode string) (Processor, *state
 		},
 	}
 	executionBundleStore := executionbundle.NewLocalStore(filepath.Join(tempDir, "artifacts"))
-	runner := actionruntime.Runner{
+	runner := &actionruntime.Runner{
 		Store:         bundleStore,
 		ArtifactStore: executionBundleStore,
 		CacheRoot:     filepath.Join(tempDir, "cache"),

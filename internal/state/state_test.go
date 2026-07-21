@@ -832,6 +832,13 @@ func exerciseStoreLifecycle(t *testing.T, store Store) {
 	if !found || storedJob.ID != job.ID || storedRun.ID != run.ID {
 		t.Fatalf("GetJob found=%v job=%q run=%q", found, storedJob.ID, storedRun.ID)
 	}
+	storedJob, storedRun, found, err = store.GetJobByRunID(context.Background(), "default", run.ID)
+	if err != nil {
+		t.Fatalf("GetJobByRunID returned error: %v", err)
+	}
+	if !found || storedJob.ID != job.ID || storedRun.ID != run.ID {
+		t.Fatalf("GetJobByRunID found=%v job=%q run=%q", found, storedJob.ID, storedRun.ID)
+	}
 
 	claimed, lease, err := store.ClaimJob(context.Background(), "worker-a", time.Minute)
 	if err != nil {

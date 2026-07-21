@@ -4,17 +4,18 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/imprun/windforce-core/internal/contract"
+	actionruntime "github.com/imprun/windforce-core/internal/runtime"
 	"github.com/imprun/windforce-core/internal/state"
+	"github.com/imprun/windforce-core/internal/worker"
 )
 
 func TestPublicAPIClientAuthenticationRotationInputAndArchive(t *testing.T) {
@@ -47,7 +48,15 @@ func TestPublicAPIClientAuthenticationRotationInputAndArchive(t *testing.T) {
 	}
 	deployment := contract.Deployment{
 		Workspace: "ws-a", App: "shop", Commit: "commit-a", BundleDigest: testExecutionBundleDigest,
-		Actions: map[string]contract.Action{"orders": {Action: "orders"}},
+		Actions: map[string]contract.Action{"orders": {
+			Action: "orders",
+			InputSchemaBody: json.RawMessage(`{
+				"type":"object",
+				"required":["message","region","tenant"],
+				"properties":{"message":{"type":"string"},"region":{"type":"string"},"tenant":{"type":"string"}},
+				"additionalProperties":false
+			}`),
+		}},
 	}
 	httpServer := httptest.NewServer(New(Config{
 		Store: store, Catalog: inputConfigTestCatalog{deployment: deployment}, EnablePublicAPI: true,
@@ -90,6 +99,14 @@ func TestPublicAPIClientAuthenticationRotationInputAndArchive(t *testing.T) {
 	if resp.StatusCode != http.StatusBadRequest || !bytes.Contains(body, []byte("locked input keys")) {
 		t.Fatalf("locked input status=%d body=%s", resp.StatusCode, body)
 	}
+	resp, body = do(path, firstToken, `{"message":42}`)
+	if resp.StatusCode != http.StatusBadRequest || !bytes.Contains(body, []byte("input does not match action schema")) {
+		t.Fatalf("schema validation status=%d body=%s", resp.StatusCode, body)
+	}
+	rejectedJobs, err := store.ListJobs(ctx, state.JobListQuery{WorkspaceID: "ws-a", Limit: 100})
+	if err != nil || len(rejectedJobs) != 0 {
+		t.Fatalf("rejected inputs admitted jobs=%#v err=%v", rejectedJobs, err)
+	}
 	resp, body = do(path, firstToken, `{"message":"hello"}`)
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("valid trigger status=%d body=%s", resp.StatusCode, body)
@@ -104,12 +121,11 @@ func TestPublicAPIClientAuthenticationRotationInputAndArchive(t *testing.T) {
 		t.Fatalf("job identity body=%q header=%q", admitted.JobID, resp.Header.Get(publicJobIDHeader))
 	}
 	job, run, found, err := store.GetJob(ctx, "ws-a", admitted.JobID)
-	if err != nil || !found || run.ClientID != client.ID || job.Payload.ClientID != client.ID || job.Payload.TriggerKind != "http" {
+	if err != nil || !found || run.ClientID != client.ID || job.Payload.ClientID != client.ID || job.Payload.TriggerKind != "http" || !job.Payload.InputConfigResolved {
 		t.Fatalf("public job=%#v run=%#v found=%v err=%v", job, run, found, err)
 	}
-	effective, err := store.ResolveInput(ctx, "ws-a", "shop", "orders", client.ID, json.RawMessage(`{"message":"hello"}`))
-	if err != nil || !bytes.Contains(effective, []byte(`"region":"kr"`)) || !bytes.Contains(effective, []byte(`"tenant":"fixed"`)) {
-		t.Fatalf("effective input=%s err=%v", effective, err)
+	if jsonStringField(job.Payload.Input, "region") != "kr" || jsonStringField(job.Payload.Input, "tenant") != "fixed" || !equalJSON(job.Payload.Input, run.Input) {
+		t.Fatalf("pinned input job=%s run=%s", job.Payload.Input, run.Input)
 	}
 
 	controlReq, err := http.NewRequest(http.MethodGet, httpServer.URL+"/api/w/ws-a/clients", nil)
@@ -145,8 +161,14 @@ func TestPublicAPIClientAuthenticationRotationInputAndArchive(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if !hasClientAudit(audit, "trigger_rejected", "locked input keys") || !hasClientAudit(audit, "trigger_rejected", "input does not match action schema") || !hasClientAudit(audit, "trigger_admitted", admitted.JobID) {
+		t.Fatalf("trigger audit=%#v", audit)
+	}
 	failures := 0
 	for _, record := range audit {
+		if strings.Contains(record.Detail, `"message":42`) {
+			t.Fatal("client audit exposed rejected input")
+		}
 		if record.Kind == "trigger_auth_failed" {
 			failures++
 			if strings.Contains(record.Detail, firstToken) {
@@ -190,19 +212,29 @@ func TestPublicAPIClientAuthenticationRotationInputAndArchive(t *testing.T) {
 	}
 }
 
-func TestPublicAPIWaitReturnsRawResult(t *testing.T) {
+func TestPublicAPIWaitRunsWorkerWithPinnedInputAndReplaysJob(t *testing.T) {
 	ctx := context.Background()
 	store := state.NewLocalStore(filepath.Join(t.TempDir(), "state.json"))
 	value, err := newClientToken()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.CreateClient(ctx, "default", "Client A", state.HashClientToken(value), "admin"); err != nil {
+	client, err := store.CreateClient(ctx, "default", "Client A", state.HashClientToken(value), "admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.SetInputConfig(ctx, state.InputConfig{
+		WorkspaceID: "default", AppKey: "echo", ActionKey: "run", ClientID: client.ID,
+		Config: json.RawMessage(`{"tenant":"fixed"}`), LockedKeys: []string{"tenant"},
+	}, "admin"); err != nil {
 		t.Fatal(err)
 	}
 	deployment := contract.Deployment{
 		Workspace: "default", App: "echo", Commit: "commit-a", BundleDigest: testExecutionBundleDigest,
-		Actions: map[string]contract.Action{"run": {Action: "run"}},
+		Actions: map[string]contract.Action{"run": {
+			Action:          "run",
+			InputSchemaBody: json.RawMessage(`{"type":"object","required":["message","tenant"],"properties":{"message":{"type":"string"},"tenant":{"type":"string"}},"additionalProperties":false}`),
+		}},
 	}
 	httpServer := httptest.NewServer(New(Config{
 		Store: store, Catalog: inputConfigTestCatalog{deployment: deployment}, EnablePublicAPI: true,
@@ -210,53 +242,111 @@ func TestPublicAPIWaitReturnsRawResult(t *testing.T) {
 	}))
 	defer httpServer.Close()
 
-	done := make(chan error, 1)
-	go func() {
-		deadline := time.Now().Add(2 * time.Second)
-		for time.Now().Before(deadline) {
-			job, lease, err := store.ClaimJob(ctx, "worker-a", time.Second)
-			if errors.Is(err, state.ErrNoQueuedJob) {
-				time.Sleep(10 * time.Millisecond)
-				continue
-			}
-			if err != nil {
-				done <- err
-				return
-			}
-			done <- store.CompleteJobSucceeded(ctx, lease, contract.JobResult{
-				JobID: job.ID, App: job.Payload.App, Action: job.Payload.Action,
-				Output: json.RawMessage(`{"echo":"hello"}`), ExitCode: 0,
-			})
-			return
+	do := func(path string, idempotencyKey string) (*http.Response, []byte) {
+		t.Helper()
+		req, err := http.NewRequest(http.MethodPost, httpServer.URL+path, bytes.NewBufferString(`{"message":"hello"}`))
+		if err != nil {
+			t.Fatal(err)
 		}
-		done <- errors.New("timed out waiting for public job")
-	}()
+		req.Header.Set("Authorization", "Bearer "+value)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Idempotency-Key", idempotencyKey)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return resp, body
+	}
 
-	req, err := http.NewRequest(http.MethodPost, httpServer.URL+"/api/v1/w/default/run/echo/run/wait?timeout=2s", bytes.NewBufferString(`{"message":"hello"}`))
+	resp, body := do("/api/v1/w/default/run/echo/run/wait?timeout=invalid", "invalid-timeout")
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("invalid timeout status=%d body=%s", resp.StatusCode, body)
+	}
+	jobs, err := store.ListJobs(ctx, state.JobListQuery{WorkspaceID: "default", Limit: 100})
+	if err != nil || len(jobs) != 0 {
+		t.Fatalf("invalid timeout admitted jobs=%#v err=%v", jobs, err)
+	}
+
+	resp, body = do("/api/v1/w/default/run/echo/run", "replay-a")
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("async status=%d body=%s", resp.StatusCode, body)
+	}
+	var admitted struct {
+		JobID string `json:"job_id"`
+	}
+	if err := json.Unmarshal(body, &admitted); err != nil || admitted.JobID == "" {
+		t.Fatalf("admission body=%s err=%v", body, err)
+	}
+	if _, err := store.SetInputConfig(ctx, state.InputConfig{
+		WorkspaceID: "default", AppKey: "echo", ActionKey: "run", ClientID: client.ID,
+		Config: json.RawMessage(`{"tenant":"changed"}`), LockedKeys: []string{"tenant"},
+	}, "admin"); err != nil {
+		t.Fatal(err)
+	}
+	runner := &publicAPIRecordingRunner{inputs: make(chan json.RawMessage, 1)}
+	processed, err := (&worker.Processor{Store: store, Runner: runner, WorkerID: "worker-a"}).ProcessOne(ctx)
+	if err != nil || !processed {
+		t.Fatalf("worker processed=%v err=%v", processed, err)
+	}
+	workerInput := <-runner.inputs
+	if jsonStringField(workerInput, "tenant") != "fixed" {
+		t.Fatalf("worker input was not pinned at admission: %s", workerInput)
+	}
+
+	resp, body = do("/api/v1/w/default/run/echo/run/wait?timeout=1s", "replay-a")
+	if resp.StatusCode != http.StatusOK || resp.Header.Get(publicJobIDHeader) != admitted.JobID || !equalJSON(body, workerInput) {
+		t.Fatalf("replay wait status=%d header=%q want=%q body=%s input=%s", resp.StatusCode, resp.Header.Get(publicJobIDHeader), admitted.JobID, body, workerInput)
+	}
+	jobs, err = store.ListJobs(ctx, state.JobListQuery{WorkspaceID: "default", Limit: 100})
+	if err != nil || len(jobs) != 1 || jobs[0].ID != admitted.JobID {
+		t.Fatalf("idempotent jobs=%#v err=%v", jobs, err)
+	}
+	audit, err := store.ListClientAudit(ctx, "default", client.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	req.Header.Set("Authorization", "Bearer "+value)
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatal(err)
+	if !hasClientAudit(audit, "trigger_rejected", `"reason":"invalid wait timeout"`) || !hasClientAudit(audit, "trigger_admitted", `"replayed":true`) {
+		t.Fatalf("public trigger audit=%#v", audit)
 	}
-	body, err := io.ReadAll(resp.Body)
-	resp.Body.Close()
-	if err != nil {
-		t.Fatal(err)
+}
+
+type publicAPIRecordingRunner struct {
+	inputs chan json.RawMessage
+}
+
+func (r *publicAPIRecordingRunner) Run(_ context.Context, request actionruntime.RunRequest) (contract.JobResult, error) {
+	input := append(json.RawMessage(nil), request.Input...)
+	r.inputs <- input
+	return contract.JobResult{Output: input, ExitCode: 0}, nil
+}
+
+func hasClientAudit(records []state.ClientAudit, kind string, detail string) bool {
+	for _, record := range records {
+		if record.Kind == kind && strings.Contains(record.Detail, detail) {
+			return true
+		}
 	}
-	if workerErr := <-done; workerErr != nil {
-		t.Fatal(workerErr)
+	return false
+}
+
+func equalJSON(left []byte, right []byte) bool {
+	var leftValue any
+	var rightValue any
+	return json.Unmarshal(left, &leftValue) == nil && json.Unmarshal(right, &rightValue) == nil && reflect.DeepEqual(leftValue, rightValue)
+}
+
+func jsonStringField(data []byte, key string) string {
+	var value map[string]any
+	if json.Unmarshal(data, &value) != nil {
+		return ""
 	}
-	var result map[string]string
-	if err := json.Unmarshal(body, &result); err != nil {
-		t.Fatal(err)
-	}
-	if resp.StatusCode != http.StatusOK || result["echo"] != "hello" || resp.Header.Get(publicJobIDHeader) == "" {
-		t.Fatalf("wait status=%d header=%q body=%s", resp.StatusCode, resp.Header.Get(publicJobIDHeader), body)
-	}
+	result, _ := value[key].(string)
+	return result
 }
 
 func TestPublicAPIRateLimitRunsBeforeAuthentication(t *testing.T) {

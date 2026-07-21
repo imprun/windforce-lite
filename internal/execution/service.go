@@ -20,6 +20,7 @@ type Catalog interface {
 type Store interface {
 	CreateRunAndEnqueue(ctx context.Context, run state.Run, job state.Job) error
 	GetRun(ctx context.Context, runID string) (state.Run, error)
+	GetJobByRunID(ctx context.Context, workspaceID string, runID string) (state.Job, state.Run, bool, error)
 	CancelRun(ctx context.Context, runID string, reason string) (state.Run, error)
 	GetClient(ctx context.Context, workspaceID string, id string) (state.Client, error)
 	ResolveInput(ctx context.Context, workspaceID string, appKey string, actionKey string, clientID string, request json.RawMessage) (json.RawMessage, error)
@@ -122,6 +123,32 @@ func (s *Service) CreateRun(ctx context.Context, request CreateRunRequest) (Admi
 	if !json.Valid(request.Input) {
 		return Admission{}, &Fault{Kind: FaultInvalidRequest, Message: "input must be valid JSON"}
 	}
+	clientID := strings.TrimSpace(request.ClientID)
+	if clientID != "" {
+		client, err := s.store.GetClient(ctx, request.Workspace, clientID)
+		if err != nil {
+			if errors.Is(err, state.ErrNotFound) {
+				return Admission{}, &Fault{Kind: FaultInvalidRequest, Message: "unknown client"}
+			}
+			return Admission{}, &Fault{Kind: FaultInternal, Message: "could not resolve client", Err: err}
+		}
+		clientID = client.ID
+	}
+	runID := ""
+	if key := strings.TrimSpace(request.IdempotencyKey); key != "" {
+		if clientID != "" {
+			key += "\x00client:" + clientID
+		}
+		runID = deterministicRunID(request.Workspace, request.App, request.Action, key)
+		existingJob, existingRun, found, err := s.store.GetJobByRunID(ctx, request.Workspace, runID)
+		if err != nil {
+			return Admission{}, &Fault{Kind: FaultInternal, Message: "could not resolve idempotent run", Err: err}
+		}
+		if found {
+			return Admission{Run: existingRun, Job: existingJob, Replayed: true}, nil
+		}
+	}
+
 	deployment, err := s.lookupDeployment(ctx, request.Workspace, request.App)
 	if err != nil {
 		return Admission{}, &Fault{Kind: FaultAppNotFound, Message: "app not found: " + request.App, Err: err}
@@ -136,64 +163,60 @@ func (s *Service) CreateRun(ctx context.Context, request CreateRunRequest) (Admi
 			Message: "active release has no execution bundle; publish the synchronized source again",
 		}
 	}
-	clientID := strings.TrimSpace(request.ClientID)
-	if clientID != "" {
-		client, err := s.store.GetClient(ctx, request.Workspace, clientID)
-		if err != nil {
-			if errors.Is(err, state.ErrNotFound) {
-				return Admission{}, &Fault{Kind: FaultInvalidRequest, Message: "unknown client"}
-			}
-			return Admission{}, &Fault{Kind: FaultInternal, Message: "could not resolve client", Err: err}
-		}
-		clientID = client.ID
-	}
-	if _, err := s.store.ResolveInput(ctx, request.Workspace, request.App, request.Action, clientID, request.Input); err != nil {
+	resolvedInput, err := s.store.ResolveInput(ctx, request.Workspace, request.App, request.Action, clientID, request.Input)
+	if err != nil {
 		var locked *state.LockedKeysError
 		if errors.As(err, &locked) {
-			return Admission{}, &Fault{Kind: FaultInvalidRequest, Message: locked.Error()}
+			return Admission{}, &Fault{Kind: FaultInvalidRequest, Message: locked.Error(), Err: err}
 		}
 		return Admission{}, &Fault{Kind: FaultInternal, Message: "could not validate input settings", Err: err}
 	}
 
-	runID := ""
-	if key := strings.TrimSpace(request.IdempotencyKey); key != "" {
-		if clientID != "" {
-			key += "\x00client:" + clientID
-		}
-		runID = deterministicRunID(request.Workspace, request.App, request.Action, key)
-	}
 	adapter := strings.TrimSpace(request.Adapter)
 	if adapter == "" {
 		adapter = "http"
 	}
-	run := state.NewRun(adapter, runID, request.App, request.Action, deployment, cloneRaw(request.Input))
+	reader := NewSchemaReader(ctx, s.bundles, deployment)
+	defer reader.Close()
+	inputSchema, err := reader.Read(actionSpec.InputSchema, actionSpec.InputSchemaBody)
+	if err != nil {
+		return Admission{}, &Fault{Kind: FaultInternal, Message: fmt.Sprintf("input schema for %s/%s: %v", request.App, request.Action, err), Err: err}
+	}
+	if err := reader.Validate(actionSpec.InputSchema, inputSchema, resolvedInput); err != nil {
+		var validation *InputValidationError
+		if errors.As(err, &validation) {
+			return Admission{}, &Fault{Kind: FaultInvalidRequest, Message: validation.Error(), Err: err}
+		}
+		return Admission{}, &Fault{Kind: FaultInternal, Message: fmt.Sprintf("input schema for %s/%s could not be evaluated", request.App, request.Action), Err: err}
+	}
+
+	run := state.NewRun(adapter, runID, request.App, request.Action, deployment, cloneRaw(resolvedInput))
+	run.InputConfigResolved = true
 	run.CorrelationID = state.CleanID(request.CorrelationID)
 	run.Env = cloneStrings(request.Env)
 	run.CreatedBy = strings.TrimSpace(request.CreatedBy)
 	run.PermissionedAs = strings.TrimSpace(request.PermissionedAs)
 	run.ClientID = clientID
-	job := state.NewActionJob(run, cloneRaw(request.Input))
+	job := state.NewActionJob(run, cloneRaw(resolvedInput))
 	job.Payload.TriggerKind = strings.TrimSpace(request.TriggerKind)
 	if job.Payload.TriggerKind == "" {
 		job.Payload.TriggerKind = adapter
 	}
 	job.Payload.TriggerHeaders = cloneRaw(request.TriggerHeaders)
 
-	reader := NewSchemaReader(ctx, s.bundles, deployment)
-	defer reader.Close()
-	job.Payload.InputSchema, err = reader.Read(actionSpec.InputSchema, actionSpec.InputSchemaBody)
-	if err != nil {
-		return Admission{}, &Fault{Kind: FaultInternal, Message: fmt.Sprintf("input schema for %s/%s: %v", request.App, request.Action, err), Err: err}
-	}
+	job.Payload.InputSchema = inputSchema
 	job.Payload.OutputSchema, err = reader.Read(actionSpec.OutputSchema, actionSpec.OutputSchemaBody)
 	if err != nil {
 		return Admission{}, &Fault{Kind: FaultInternal, Message: fmt.Sprintf("output schema for %s/%s: %v", request.App, request.Action, err), Err: err}
 	}
 	if err := s.store.CreateRunAndEnqueue(ctx, run, job); err != nil {
 		if errors.Is(err, state.ErrConflict) && runID != "" {
-			existing, getErr := s.GetRun(ctx, request.Workspace, runID)
-			if getErr == nil {
-				return Admission{Run: existing, Replayed: true}, nil
+			existingJob, existingRun, found, getErr := s.store.GetJobByRunID(ctx, request.Workspace, runID)
+			if getErr != nil {
+				return Admission{}, &Fault{Kind: FaultInternal, Message: "could not resolve idempotent run", Err: getErr}
+			}
+			if found {
+				return Admission{Run: existingRun, Job: existingJob, Replayed: true}, nil
 			}
 			return Admission{}, &Fault{Kind: FaultConflict, Message: "idempotent run already exists", Err: err}
 		}
