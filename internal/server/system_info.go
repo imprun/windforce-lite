@@ -26,9 +26,11 @@ func (h *Handler) handleSystemInfo(w http.ResponseWriter, _ *http.Request, works
 		Workspace: contract.NormalizeWorkspace(workspaceID),
 		Ready:     h.store != nil,
 		Planes: map[string]bool{
-			"control_api":   h.enableControlAPI,
-			"execution_api": h.enableExecutionAPI,
-			"web_ui":        h.enableWebUI,
+			"control_api":   true,
+			"execution_api": true,
+			"public_api":    true,
+			"worker_api":    true,
+			"web_ui":        true,
 			"metrics":       h.metricsHandler != nil,
 		},
 		Backends: map[string]bool{

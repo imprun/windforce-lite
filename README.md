@@ -1,7 +1,6 @@
 # windforce-core
 
-`windforce-core` is the Windforce Lite control plane and execution runtime for
-apps described by `windforce.json`.
+`windforce-core` is the Windforce Lite execution engine for apps described by `windforce.json`.
 
 It keeps the useful core of Windforce:
 
@@ -67,23 +66,18 @@ runtime toolchain, while a failed deployment leaves the active release
 unchanged. Webhook HTTP requests are not made in the publication transaction.
 
 The state backend is the source of truth for the active release catalog. Local
-mode stores it in the state JSON file; PostgreSQL mode stores it in control-plane
+mode stores it in the state JSON file; PostgreSQL mode stores it in shared state
 tables. `--catalog` names an optional catalog snapshot that is imported
 idempotently at startup.
 
-The Docker Compose control plane maps its API to `127.0.0.1:18091`. The
-execution API is a separate service mapped to `127.0.0.1:18092`. The local Web
-UI is a Vite development server (run with Bun) on `127.0.0.1:18090/ui/` and
-proxies control-plane API calls to the backend. The supported `windforce` CLI
-uses the same control-plane API for local and hosted workspaces. See the
-[Control Plane CLI guide](docs/cli.md).
+The Docker Compose server maps every HTTP plane to `127.0.0.1:18091`. The local Web UI is a Vite development server (run with Bun) on `127.0.0.1:18090/ui/` and proxies API calls to the server. The supported `windforce` CLI uses the same control-plane API for local and hosted workspaces. See the [Control Plane CLI guide](docs/cli.md).
 
 The Web UI is live during local development. Run `make web-dev` for a host dev
 server, or `make compose-up` for the Compose-managed dev server. The production
 UI is a static Vite build embedded into the Go binary: `make web-embed`
 refreshes `internal/webui/assets` from `web/dist`, and the Dockerfile performs
 the same build inside the image so the embedded assets are always rebuilt from
-source. The API process serves the UI at `/ui/` with an SPA fallback for
+source. The server serves the UI at `/ui/` with an SPA fallback for
 client-side routes. See [ADR 0004](docs/adr/0004-web-ui-rewrite.md).
 
 Repository sources, external client identifiers, variables, and input settings
@@ -93,21 +87,16 @@ can also be bootstrapped from JSON/YAML provisioning files. See
 
 ## Docker Compose profiles
 
-The Compose file keeps PostgreSQL, the control plane, the execution API, and the
-worker as separate processes.
+The Compose file provides the three process roles directly.
 
 ```bash
 docker compose --profile standalone up -d
 docker compose --profile pg up -d postgres
-docker compose --profile backend up -d control-plane execution-api
+docker compose --profile backend up -d server web
 docker compose --profile worker up -d worker
 ```
 
-`standalone` starts PostgreSQL, backend, and worker together. External protocol
-adapters join the Compose network and call the backend's versioned Execution
-API. PostgreSQL and the active catalog remain private to Windforce Core. The
-compose `volume-init` service fixes the mounted data volume ownership before the
-control-plane or worker starts.
+`standalone` starts one process containing the server and worker. The `backend` profile starts the server without an execution worker, while the `worker` profile starts a server and worker as separate processes. External protocol adapters join the Compose network and call the server's versioned Execution API. PostgreSQL and the active catalog remain private to Windforce Core. The compose `volume-init` service fixes the mounted data volume ownership before a role starts.
 
 ## Run
 
@@ -181,7 +170,7 @@ worker records the Job as failed and keeps the output payload intact for callers
 
 ## Try it locally
 
-Run the combined local control-plane and worker:
+Run the combined local standalone role:
 
 ```powershell
 go run ./cmd/windforce-core standalone --dev `
@@ -224,11 +213,10 @@ Invoke-RestMethod `
   -Body '{"message":"hello"}'
 ```
 
-Separated local processes use the same state file and bundle store:
+Separated local roles use the same state file and bundle store:
 
 ```powershell
-go run ./cmd/windforce-core control-plane --addr :8081 --state .tmp/state.json --store .tmp/store
-go run ./cmd/windforce-core execution-api --addr :8082 --state .tmp/state.json --store .tmp/store
+go run ./cmd/windforce-core server --addr :8081 --state .tmp/state.json --store .tmp/store
 go run ./cmd/windforce-core worker --state .tmp/state.json --store .tmp/store
 ```
 
@@ -290,8 +278,7 @@ Implemented control-plane endpoints:
 - `POST /api/w/{workspace}/resources`
 - `GET /api/w/{workspace}/resources/get/p/{path}`
 
-Protocol adapters use the Execution API instead of the control-plane storage
-model:
+In-tree protocol adapters call `execution.Service.CreateRun` directly. External adapters use the equivalent trusted Execution API instead of the control-plane storage model:
 
 - `POST /execution/v1/workspaces/{workspace}/runs`
 - `GET /execution/v1/workspaces/{workspace}/runs/{runId}`
@@ -414,22 +401,18 @@ option / `WINDFORCE_LITE_ACTOR` environment variable. `created_by`,
 `permissioned_as`, and `canceled_by` fall back to `system` only when no actor is
 present.
 
-PostgreSQL is the production state backend. All runtime modes accept
+PostgreSQL is the production state backend. All process roles accept
 `--state-backend postgres`, `--database-url`, and `--migrate`:
 
 ```powershell
 $env:WINDFORCE_DATABASE_URL = "postgres://user:pass@host:5432/windforce_core?sslmode=disable"
 
-go run ./cmd/windforce-core control-plane `
+go run ./cmd/windforce-core server `
   --state-backend postgres `
   --database-url $env:WINDFORCE_DATABASE_URL `
   --migrate
 
 go run ./cmd/windforce-core worker `
-  --state-backend postgres `
-  --database-url $env:WINDFORCE_DATABASE_URL
-
-go run ./cmd/windforce-core webhook-dispatcher `
   --state-backend postgres `
   --database-url $env:WINDFORCE_DATABASE_URL
 ```
@@ -447,26 +430,19 @@ reused as the local signing secret so the raw admin token is not injected into
 scripts:
 
 ```powershell
-go run ./cmd/windforce-core control-plane `
+go run ./cmd/windforce-core server `
   --admin-token-env WINDFORCE_ADMIN_TOKEN `
   --job-token-secret-env WINDFORCE_JOB_TOKEN_SECRET
 ```
 
 Job input and job result output are stored with the same Windforce
 `{"__wf_enc":1,"ct":"..."}` envelope used by the canonical worker when
-`SECRET_KEY` is configured. The core API and worker must use the same
+`SECRET_KEY` is configured. The server and worker must use the same
 `--secret-key-env` / `--secret-key-previous-env` values; when omitted, both use
 the local development default so standalone and compose runs continue to work
 without extra setup.
 
-Input settings are resolved in this order: app default, action default, client
-app, client action, then request input. Each layer performs a shallow top-level
-merge. Locked keys are the union of all applied layers, and their configured
-values cannot be overridden by the request. Setting values are encrypted at
-rest and are merged by the worker after it decrypts the persisted job input, so
-configured values are not copied into Run or Job records. Keys under
-`_SCRAPING_RUNTIME` are reserved for worker-owned runtime service metadata and
-cannot be stored as app input settings.
+Input settings are resolved in this order: app default, action default, client app, client action, then request input. Each layer performs a shallow top-level merge. Locked keys are the union of all applied layers, and their configured values cannot be overridden by the request. Admission resolves and validates the effective input once and pins it in the Run and Job, so later InputConfig changes cannot alter queued execution. Keys under `_SCRAPING_RUNTIME` are reserved for worker-owned runtime service metadata and cannot be stored as app input settings.
 
 Runtime service bindings are worker configuration. For example, an
 auth-session-capable worker is started with `--auth-session-url` plus either
@@ -475,10 +451,7 @@ that binding into the action input immediately before execution. Run and Job
 records keep only the caller input and the pinned release; platform service
 tokens are not part of app configuration.
 
-Release publication stores a CloudEvents event and matching Webhook deliveries
-in the same state transaction as the active release. The separate
-`webhook-dispatcher` process claims those deliveries and sends signed HTTP
-requests after the release transaction commits. Delivery uses
+Release publication stores a CloudEvents event and matching Webhook deliveries in the same state transaction as the active release. Every server replica runs the dispatcher loop that claims those deliveries and sends signed HTTP requests after the release transaction commits. Delivery uses
 `X-Windforce-Event` (event ID), `X-Windforce-Event-Type`,
 `X-Windforce-Delivery`, `X-Windforce-Timestamp`, and `X-Windforce-Signature`
 headers. The signature is
@@ -496,10 +469,7 @@ redirects are not followed. A host-run local receiver may use HTTP loopback only
 when `WINDFORCE_LITE_WEBHOOK_ALLOW_INSECURE_LOOPBACK=true`. Endpoint paths,
 queries, signing secrets, and response bodies are not written to delivery logs.
 
-The dedicated dispatcher exposes Prometheus metrics on
-`WINDFORCE_LITE_WEBHOOK_METRICS_ADDR` (default `:9090`); `standalone` exposes
-the same metrics at `/metrics` on its existing HTTP listener. Metric labels are
-limited to event type, delivery state, and attempt outcome. Useful alert rules
+The server and standalone roles expose webhook Prometheus metrics at `/metrics` on their HTTP listener. Metric labels are limited to event type, delivery state, and attempt outcome. Useful alert rules
 include a nonzero increase of
 `windforce_webhook_deliveries_total{state="failed"}` and
 `windforce_webhook_oldest_pending_seconds` exceeding the expected delivery
@@ -541,18 +511,18 @@ install dependencies, compile source, or contact Git while processing a Job.
 See [Core concepts](docs/concepts/core-concepts.md) for the distinction between
 the two markers.
 
-Process roles are separated:
+Process roles are:
 
-- `windforce-core control-plane`: source, release, configuration, audit, and Web UI APIs
-- `windforce-core execution-api`: run admission and job-scoped runtime callbacks
-- `windforce-core worker`: job polling and action execution
-- `windforce-core webhook-dispatcher`: signed Control Plane event delivery and retry
-- `windforce-core standalone`: local/dev combined mode
+- `windforce-core server`: every HTTP plane, embedded Web UI, webhook delivery, and retention
+- `windforce-core worker`: job polling and action execution, including remote `--api-url` operation
+- `windforce-core standalone`: server and worker in one process
 
 Protocol adapters adapt routes, request terms, environment variables, and
-response envelopes at the edge. They call the Execution API through an SDK and
-do not own source sync, queue records, or the Windforce catalog model. See
-[Architecture](docs/architecture.md) for the dependency rules.
+response envelopes at the edge. In-tree adapters call
+`execution.Service.CreateRun` in-process; external adapters call the equivalent
+HTTP contract through an SDK. Neither path owns source sync, queue records, or
+the Windforce catalog model. See [Architecture](docs/architecture.md) for the
+dependency rules.
 
 ## Lightweight Admin UI
 
@@ -578,7 +548,7 @@ scheduler UI, workflow designer, or marketplace. The screen model is documented
 in [docs/web-ui-model.md](docs/web-ui-model.md) and the generated user guide in
 [docs/user-guide/web-ui.md](docs/user-guide/web-ui.md).
 
-Raw job records are retained per outcome and pruned by the API process:
+Raw job records are retained per outcome and pruned by the server process:
 succeeded runs for 7 days, failed/canceled runs for 30 days, and queued or
 running runs that make no progress for 24 hours are expired into the failure
 family first. Tune with `--job-success-retention`, `--job-failure-retention`,

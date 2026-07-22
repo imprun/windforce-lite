@@ -3,34 +3,24 @@ title: Architecture
 description: Control, Trigger, and Execution Plane ownership in Windforce Lite.
 ---
 
-Windforce Core separates deployment management, protocol ingress, and action
-execution into three planes. Compose runs the Control Plane, Execution API,
-workers, and Webhook Dispatcher as distinct processes. The `standalone` command
-combines them for single-process development without changing their contracts.
+Windforce Core separates deployment management, protocol ingress, and action execution into planes with package and HTTP contracts. Those contracts are deployed through three process roles: `server`, `worker`, and `standalone`.
 
 ```text
-operators / CI / Web UI
-          |
+operators / CI / clients / external adapters
+                    |
+                    v
+       server: HTTP planes + Web UI
+          |                 |
+          |                 +-- Webhook Dispatcher ---> signed HTTPS endpoint
           v
-    Control Plane ---> Source Store ---> Execution Artifact Store
-          |                 |                       |
-          |                 +-- Publish Release ----+
-          v                                         |
- active release catalog                             |
-          |                                         |
-          v                                         |
- event + delivery outbox                            |
-          |                                         |
-          v                                         |
- Webhook Dispatcher ---> signed HTTPS endpoint      |
-                                                    |
-HTTP / queue / scheduler                            |
-protocol adapters                                   |
-          |                                         |
-          v                                         v
-    Execution API ----> PostgreSQL queue ----> runtime workers
-          |                                         |
-          +-- pins active release into Job          +-- local bundle cache
+ Source Store ---> active release catalog ---> Execution Artifact Store
+                          |
+                          +-- admission ---> PostgreSQL queue
+                                                   |
+                                                   v
+                                             runtime workers
+                                                   |
+                                                   +-- local bundle cache
 ```
 
 ## Control Plane
@@ -64,8 +54,7 @@ transitions.
 The selected state backend owns the active release catalog. A publication writes
 the active release, immutable release history, source release marker, and audit
 record in one transaction. Local mode persists the catalog in its state JSON
-file; PostgreSQL mode persists it in control-plane tables shared by the Control
-Plane and Execution API.
+file; PostgreSQL mode persists it in tables shared by the server and workers.
 
 The same publication transaction stores a CloudEvents-compatible Control Plane
 event and one pending delivery for each enabled matching Webhook subscription.
@@ -81,12 +70,7 @@ explicit history query while pending deliveries are canceled.
 
 ## Webhook Dispatcher
 
-The Webhook Dispatcher reads only encrypted subscriptions, immutable event
-bodies, and delivery state. It claims work with a lease, signs the CloudEvents
-body, sends it outside the release transaction, and records success, terminal
-failure, or a scheduled retry. Multiple PostgreSQL-backed dispatchers may run
-at once; row locks prevent duplicate active claims while expired leases remain
-recoverable.
+The server runs a Webhook Dispatcher alongside its HTTP listener. The dispatcher reads only encrypted subscriptions, immutable event bodies, and delivery state. It claims work with a lease, signs the CloudEvents body, sends it outside the release transaction, and records success, terminal failure, or a scheduled retry. Every server replica may run the loop; PostgreSQL row locks prevent duplicate active claims while expired leases remain recoverable.
 
 Each attempt resolves DNS again and connects directly to an address that passed
 the egress policy. HTTPS is required except for explicitly enabled local HTTP
@@ -106,9 +90,7 @@ its inbound protocol and compatibility policy:
 - correlation and idempotency metadata
 - mapping the generic run result to a protocol response
 
-HTTP contracts, message queues, schedulers, and webhooks call the versioned
-Execution API through an execution SDK. They do not write queue tables or read
-catalog files.
+In-tree adapters running in the server call `execution.Service.CreateRun` in-process. External adapters and other languages call the versioned Execution API through an execution SDK. Both transports preserve the same `CreateRunRequest` semantics. Adapters do not write queue tables or read catalog files.
 
 ## Execution Plane
 
@@ -156,3 +138,13 @@ The Python package under `sdk/python` is the reference execution client. It
 provides create, status, wait, result, cancel, and app-description operations.
 SDK implementations are HTTP clients only. PostgreSQL schemas, bundle paths,
 and catalog storage are private implementation details of Windforce Core.
+
+## Process Roles
+
+| Role | Responsibility |
+|---|---|
+| `server` | Control `/api/w`, trusted execution `/execution/v1`, public `/api/v1`, worker `/worker/v1`, embedded Web UI, Webhook Dispatcher, and retention loops |
+| `worker` | Queue claim and action execution, using shared PostgreSQL state or the remote worker API selected by `--api-url` |
+| `standalone` | `server` and `worker` in one process |
+
+The HTTP plane boundaries separate caller trust and API contracts, not processes. Server replicas expose every HTTP plane and may safely run the dispatcher concurrently. Internal package boundaries remain independent so an adapter can move between in-process and HTTP deployment without changing admission semantics.

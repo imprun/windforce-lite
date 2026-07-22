@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -11,6 +13,38 @@ import (
 	"github.com/imprun/windforce-core/internal/gitsource"
 	"github.com/imprun/windforce-core/internal/state"
 )
+
+func TestCanonicalCommandExposesThreeRolesAndAcceptsServerAliases(t *testing.T) {
+	for _, alias := range []string{"api", "control-plane", "execution-api"} {
+		if got := canonicalCommand(alias); got != "server" {
+			t.Fatalf("canonicalCommand(%q) = %q, want server", alias, got)
+		}
+	}
+	for _, command := range []string{"server", "worker", "standalone"} {
+		if got := canonicalCommand(command); got != command {
+			t.Fatalf("canonicalCommand(%q) = %q", command, got)
+		}
+	}
+	if got := canonicalCommand("webhook-dispatcher"); got != "webhook-dispatcher" {
+		t.Fatalf("removed command unexpectedly mapped to %q", got)
+	}
+}
+
+func TestUsageShowsOnlyServerWorkerAndStandaloneRoles(t *testing.T) {
+	var output bytes.Buffer
+	printUsage(&output)
+	usage := output.String()
+	for _, role := range []string{"windforce-core server", "windforce-core worker", "windforce-core standalone"} {
+		if !strings.Contains(usage, role) {
+			t.Fatalf("usage missing %q:\n%s", role, usage)
+		}
+	}
+	for _, hidden := range []string{"control-plane", "execution-api", "webhook-dispatcher"} {
+		if strings.Contains(usage, hidden) {
+			t.Fatalf("usage exposed %q:\n%s", hidden, usage)
+		}
+	}
+}
 
 func TestImportReleaseCatalogMigratesFileStateIdempotently(t *testing.T) {
 	ctx := context.Background()

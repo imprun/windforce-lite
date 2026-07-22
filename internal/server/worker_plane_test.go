@@ -26,7 +26,6 @@ func newWorkerPlaneServer(t *testing.T) (*httptest.Server, *state.LocalStore) {
 	server := httptest.NewServer(New(Config{
 		Store:      store,
 		Catalog:    catalog.NewFileCatalog(filepath.Join(tempDir, "catalog.json")),
-		EnableAPI:  true,
 		AdminToken: "admin-secret",
 	}))
 	t.Cleanup(server.Close)
@@ -144,7 +143,6 @@ func TestWorkerPlaneArtifactStreamsTar(t *testing.T) {
 	server := httptest.NewServer(New(Config{
 		Store:         store,
 		Catalog:       catalog.NewFileCatalog(filepath.Join(tempDir, "catalog.json")),
-		EnableAPI:     true,
 		AdminToken:    "admin-secret",
 		ArtifactStore: artifacts,
 	}))

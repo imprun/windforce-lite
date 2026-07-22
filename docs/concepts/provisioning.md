@@ -94,8 +94,8 @@ Validate without writing state:
 python tools/windforce_control.py provision-import --file provisioning.yaml --dry-run
 ```
 
-Apply a directory at process startup by mounting it into the control-plane or
-standalone process and setting:
+Apply a directory at process startup by mounting it into the server or
+standalone role and setting:
 
 ```bash
 WINDFORCE_LITE_PROVISION_DIR=/etc/windforce-lite/provisioning

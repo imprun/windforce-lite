@@ -60,7 +60,7 @@ internal/event       event type, envelope, schema validation
 internal/webhook     subscription, signature, request policy, delivery state
 internal/state       transactional event/delivery persistence and claim lease
 internal/controlapi  subscription and delivery management endpoints
-cmd/windforce-core   webhook-dispatcher process mode
+cmd/windforce-core   dispatcher lifecycle embedded in server and standalone
 web/src              Webhook settings and delivery history UI
 ```
 
@@ -258,15 +258,15 @@ Event payload의 `previous_release_id`와 `previous_commit`은 transaction 시�
 
 - 상태: Completed ([#72](https://github.com/imprun/windforce-core/issues/72))
 
-### Process mode
+### Server lifecycle
 
 ```text
-windforce-core webhook-dispatcher \
+windforce-core server \
   --state-backend postgres \
   --database-url "$WINDFORCE_LITE_DATABASE_URL"
 ```
 
-`standalone`은 같은 dispatcher loop를 내부에서 시작한다. 운영 Compose와 Kubernetes manifest는 전용 process를 실행한다.
+`server`와 `standalone`은 같은 dispatcher loop를 내부에서 시작한다. 여러 server replica가 같은 PostgreSQL state를 사용해도 lease claim으로 delivery 소유권을 조정한다.
 
 ### Claim과 상태 전이
 
@@ -463,13 +463,14 @@ WINDFORCE_LITE_WEBHOOK_LEASE_TTL
 WINDFORCE_LITE_WEBHOOK_ALLOWED_HOSTS
 WINDFORCE_LITE_WEBHOOK_ALLOWED_CIDRS
 WINDFORCE_LITE_WEBHOOK_ALLOW_INSECURE_LOOPBACK
-WINDFORCE_LITE_WEBHOOK_METRICS_ADDR
 WINDFORCE_LITE_WEBHOOK_SUCCESS_RETENTION_DAYS
 WINDFORCE_LITE_WEBHOOK_FAILURE_RETENTION_DAYS
 WINDFORCE_LITE_WEBHOOK_RETENTION_INTERVAL
 WINDFORCE_LITE_WEBHOOK_RETENTION_BATCH_SIZE
 WINDFORCE_LITE_WEBHOOK_RETENTION_TIME_BUDGET
 ```
+
+Dispatcher metric은 server의 `/metrics` 표면에서 제공한다.
 
 ### 완료 조건
 

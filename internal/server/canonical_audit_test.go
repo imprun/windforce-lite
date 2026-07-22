@@ -23,7 +23,6 @@ func TestCanonicalGitSourceAuditTrail(t *testing.T) {
 		Syncer:     &syncer.Syncer{CloneRoot: tempDir},
 		GitSources: gitsource.NewFileRegistry(filepath.Join(tempDir, "git-sources.json")),
 		Catalog:    catalog.NewFileCatalog(filepath.Join(tempDir, "catalog.json")),
-		EnableAPI:  true,
 	})
 	server := httptest.NewServer(handler)
 	defer server.Close()
@@ -142,7 +141,7 @@ func TestCanonicalAuditEventsAggregateAndFilter(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	server := httptest.NewServer(New(Config{Store: store, Catalog: catalogStore, EnableAPI: true}))
+	server := httptest.NewServer(New(Config{Store: store, Catalog: catalogStore}))
 	defer server.Close()
 	get := func(path string) []canonicalAuditEvent {
 		t.Helper()

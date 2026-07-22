@@ -29,9 +29,9 @@ func TestClientLifecycleAgainstRealServer(t *testing.T) {
 	tempDir := t.TempDir()
 	store := state.NewLocalStore(filepath.Join(tempDir, "state.json"))
 	srv := httptest.NewServer(server.New(server.Config{
-		Store:          store,
-		Catalog:        catalog.NewFileCatalog(filepath.Join(tempDir, "catalog.json")),
-		EnableAPI:      true,
+		Store:   store,
+		Catalog: catalog.NewFileCatalog(filepath.Join(tempDir, "catalog.json")),
+
 		AdminToken:     "admin-secret",
 		JobTokenSecret: "job-secret",
 	}))
@@ -122,9 +122,9 @@ func TestArtifactStoreFetchesAndExtracts(t *testing.T) {
 		t.Fatal(err)
 	}
 	srv := httptest.NewServer(server.New(server.Config{
-		Store:         state.NewLocalStore(filepath.Join(tempDir, "state.json")),
-		Catalog:       catalog.NewFileCatalog(filepath.Join(tempDir, "catalog.json")),
-		EnableAPI:     true,
+		Store:   state.NewLocalStore(filepath.Join(tempDir, "state.json")),
+		Catalog: catalog.NewFileCatalog(filepath.Join(tempDir, "catalog.json")),
+
 		AdminToken:    "admin-secret",
 		ArtifactStore: artifacts,
 	}))
@@ -163,9 +163,9 @@ func TestArtifactStoreRoundTripsSymlinks(t *testing.T) {
 		t.Fatal(err)
 	}
 	srv := httptest.NewServer(server.New(server.Config{
-		Store:         state.NewLocalStore(filepath.Join(tempDir, "state.json")),
-		Catalog:       catalog.NewFileCatalog(filepath.Join(tempDir, "catalog.json")),
-		EnableAPI:     true,
+		Store:   state.NewLocalStore(filepath.Join(tempDir, "state.json")),
+		Catalog: catalog.NewFileCatalog(filepath.Join(tempDir, "catalog.json")),
+
 		AdminToken:    "admin-secret",
 		ArtifactStore: artifacts,
 	}))

@@ -14,16 +14,13 @@ import (
 func TestSystemInfoExposesSafeServiceConfiguration(t *testing.T) {
 	store := state.NewLocalStore(filepath.Join(t.TempDir(), "state.json"))
 	server := httptest.NewServer(New(Config{
-		Store:              store,
-		EnableControlAPI:   true,
-		EnableExecutionAPI: true,
-		EnableWebUI:        true,
-		AdminToken:         "secret-admin-token",
-		WorkerToken:        "secret-worker-token",
-		JobTokenSecret:     "secret-job-token",
-		SecretKey:          "secret-key-value",
-		Wait:               250 * time.Millisecond,
-		ManagedWorkspaces:  true,
+		Store:             store,
+		AdminToken:        "secret-admin-token",
+		WorkerToken:       "secret-worker-token",
+		JobTokenSecret:    "secret-job-token",
+		SecretKey:         "secret-key-value",
+		Wait:              250 * time.Millisecond,
+		ManagedWorkspaces: true,
 	}))
 	defer server.Close()
 
@@ -58,7 +55,7 @@ func TestSystemInfoExposesSafeServiceConfiguration(t *testing.T) {
 	if body.Service != "windforce-lite" || body.Workspace != "default" || !body.Ready {
 		t.Fatalf("body identity = %#v", body)
 	}
-	if !body.Planes["control_api"] || !body.Planes["execution_api"] || !body.Planes["web_ui"] {
+	if !body.Planes["control_api"] || !body.Planes["execution_api"] || !body.Planes["public_api"] || !body.Planes["worker_api"] || !body.Planes["web_ui"] {
 		t.Fatalf("planes = %#v", body.Planes)
 	}
 	if !body.Backends["state_store"] {

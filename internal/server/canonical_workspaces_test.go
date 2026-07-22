@@ -15,7 +15,7 @@ import (
 func TestManagedWorkspaceAPIAndAuthorizationBoundary(t *testing.T) {
 	store := state.NewLocalStore(filepath.Join(t.TempDir(), "state.json"))
 	server := httptest.NewServer(New(Config{
-		Store: store, EnableAPI: true, ManagedWorkspaces: true, AdminToken: "instance-admin",
+		Store: store, ManagedWorkspaces: true, AdminToken: "instance-admin",
 	}))
 	defer server.Close()
 
@@ -117,7 +117,7 @@ func TestManagedWorkspaceAPIAndAuthorizationBoundary(t *testing.T) {
 
 func TestManagedWorkspaceRejectsInvalidIDAndDefaultArchive(t *testing.T) {
 	store := state.NewLocalStore(filepath.Join(t.TempDir(), "state.json"))
-	server := httptest.NewServer(New(Config{Store: store, EnableAPI: true, ManagedWorkspaces: true}))
+	server := httptest.NewServer(New(Config{Store: store, ManagedWorkspaces: true}))
 	defer server.Close()
 
 	invalid := workspaceRequest(t, server.URL, http.MethodPost, "/api/workspaces", "", `{"id":"Team A","name":"Team A"}`)

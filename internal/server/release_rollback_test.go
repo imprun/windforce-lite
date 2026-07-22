@@ -56,7 +56,6 @@ func TestReleaseRollbackMovesActivePointerWithoutRebuildingOrChangingCandidate(t
 		Store:            store,
 		Catalog:          store,
 		ExecutionBundles: manager,
-		EnableAPI:        true,
 	}))
 	defer httpServer.Close()
 
@@ -190,7 +189,6 @@ func TestReleaseRollbackRejectsBundlelessAndAlreadyActiveReleases(t *testing.T) 
 		ExecutionBundles: executionBundleManagerStub{build: func(_ context.Context, deployment contract.Deployment) (contract.Deployment, error) {
 			return deployment, nil
 		}},
-		EnableAPI: true,
 	}))
 	defer httpServer.Close()
 

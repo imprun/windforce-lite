@@ -34,7 +34,6 @@ func TestCanonicalInputConfigLifecycleAndExecutionAdmission(t *testing.T) {
 	}
 	server := httptest.NewServer(New(Config{
 		Store: store, Catalog: inputConfigTestCatalog{deployment: deployment},
-		EnableAPI: true, EnableExecutionAPI: true,
 	}))
 	defer server.Close()
 

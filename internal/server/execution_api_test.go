@@ -40,7 +40,7 @@ func TestExecutionAPICreatesPinnedRunAndReplaysIdempotencyKey(t *testing.T) {
 	if _, err := store.PublishRelease(context.Background(), deployment, time.Now().UTC()); err != nil {
 		t.Fatal(err)
 	}
-	httpServer := httptest.NewServer(New(Config{Store: store, Catalog: store, EnableAPI: true}))
+	httpServer := httptest.NewServer(New(Config{Store: store, Catalog: store}))
 	defer httpServer.Close()
 
 	body := []byte(`{"app":"echo","action":"run","input":{"message":"hello"},"adapter":"queue","correlation_id":"request-a","idempotency_key":"message-a","env":["TRACE=value"]}`)
@@ -117,7 +117,7 @@ func TestExecutionAPIRejectsReleaseWithoutExecutionBundleBeforeEnqueue(t *testin
 	if _, err := store.PublishRelease(context.Background(), deployment, time.Now().UTC()); err != nil {
 		t.Fatal(err)
 	}
-	httpServer := httptest.NewServer(New(Config{Store: store, Catalog: store, EnableAPI: true}))
+	httpServer := httptest.NewServer(New(Config{Store: store, Catalog: store}))
 	defer httpServer.Close()
 
 	response, err := http.Post(
@@ -171,9 +171,8 @@ func TestExecutionAPIDescribesMaterializedActionSchemas(t *testing.T) {
 		t.Fatal(err)
 	}
 	httpServer := httptest.NewServer(New(Config{
-		Store:     state.NewLocalStore(filepath.Join(tempDir, "state.json")),
-		Catalog:   fileCatalog,
-		EnableAPI: true,
+		Store:   state.NewLocalStore(filepath.Join(tempDir, "state.json")),
+		Catalog: fileCatalog,
 	}))
 	defer httpServer.Close()
 

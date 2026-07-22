@@ -40,53 +40,44 @@ type ArtifactStore interface {
 }
 
 type Config struct {
-	Store              state.Store
-	Catalog            Catalog
-	Syncer             *syncer.Syncer
-	ExecutionBundles   ExecutionBundleManager
-	GitSources         GitSourceRegistry
-	EnableAPI          bool
-	EnableControlAPI   bool
-	EnableExecutionAPI bool
-	EnablePublicAPI    bool
-	EnableWebUI        bool
-	PublicAPIRPS       float64
-	PublicAPIBurst     int
-	ManagedWorkspaces  bool
-	AdminToken         string
-	WorkerToken        string
-	JobTokenSecret     string
-	SecretKey          string
-	SecretKeyPrevious  string
-	SampleRoot         string
-	Wait               time.Duration
-	MetricsHandler     http.Handler
-	ArtifactStore      ArtifactStore
+	Store             state.Store
+	Catalog           Catalog
+	Syncer            *syncer.Syncer
+	ExecutionBundles  ExecutionBundleManager
+	GitSources        GitSourceRegistry
+	PublicAPIRPS      float64
+	PublicAPIBurst    int
+	ManagedWorkspaces bool
+	AdminToken        string
+	WorkerToken       string
+	JobTokenSecret    string
+	SecretKey         string
+	SecretKeyPrevious string
+	SampleRoot        string
+	Wait              time.Duration
+	MetricsHandler    http.Handler
+	ArtifactStore     ArtifactStore
 }
 
 type Handler struct {
-	store              state.Store
-	catalog            Catalog
-	syncer             *syncer.Syncer
-	executionBundles   ExecutionBundleManager
-	gitSources         GitSourceRegistry
-	enableControlAPI   bool
-	enableExecutionAPI bool
-	enablePublicAPI    bool
-	enableWebUI        bool
-	publicAPILimiter   *requestRateLimiter
-	managedWorkspaces  bool
-	adminToken         string
-	workerToken        string
-	artifactStore      ArtifactStore
-	jobTokenSecret     string
-	secretKey          string
-	secretKeyPrevious  string
-	sampleRoot         string
-	wait               time.Duration
-	metricsHandler     http.Handler
-	execution          *executionpkg.Service
-	syncLocks          sync.Map
+	store             state.Store
+	catalog           Catalog
+	syncer            *syncer.Syncer
+	executionBundles  ExecutionBundleManager
+	gitSources        GitSourceRegistry
+	publicAPILimiter  *requestRateLimiter
+	managedWorkspaces bool
+	adminToken        string
+	workerToken       string
+	artifactStore     ArtifactStore
+	jobTokenSecret    string
+	secretKey         string
+	secretKeyPrevious string
+	sampleRoot        string
+	wait              time.Duration
+	metricsHandler    http.Handler
+	execution         *executionpkg.Service
+	syncLocks         sync.Map
 }
 
 type jobPrincipal struct {
@@ -151,32 +142,24 @@ func New(config Config) http.Handler {
 	if config.Syncer != nil {
 		bundleStore = config.Syncer.Store
 	}
-	enableControlAPI := config.EnableAPI || config.EnableControlAPI
-	enableExecutionAPI := config.EnableAPI || config.EnableExecutionAPI
-	enablePublicAPI := config.EnableAPI || config.EnablePublicAPI
-	enableWebUI := config.EnableAPI || config.EnableWebUI
 	return &Handler{
-		store:              config.Store,
-		catalog:            config.Catalog,
-		syncer:             config.Syncer,
-		executionBundles:   config.ExecutionBundles,
-		gitSources:         config.GitSources,
-		enableControlAPI:   enableControlAPI,
-		enableExecutionAPI: enableExecutionAPI,
-		enablePublicAPI:    enablePublicAPI,
-		enableWebUI:        enableWebUI,
-		publicAPILimiter:   newRequestRateLimiter(config.PublicAPIRPS, config.PublicAPIBurst),
-		managedWorkspaces:  config.ManagedWorkspaces,
-		adminToken:         config.AdminToken,
-		workerToken:        config.WorkerToken,
-		artifactStore:      config.ArtifactStore,
-		jobTokenSecret:     config.JobTokenSecret,
-		secretKey:          secretKey,
-		secretKeyPrevious:  config.SecretKeyPrevious,
-		sampleRoot:         config.SampleRoot,
-		wait:               config.Wait,
-		execution:          executionpkg.NewService(config.Store, config.Catalog, bundleStore),
-		metricsHandler:     config.MetricsHandler,
+		store:             config.Store,
+		catalog:           config.Catalog,
+		syncer:            config.Syncer,
+		executionBundles:  config.ExecutionBundles,
+		gitSources:        config.GitSources,
+		publicAPILimiter:  newRequestRateLimiter(config.PublicAPIRPS, config.PublicAPIBurst),
+		managedWorkspaces: config.ManagedWorkspaces,
+		adminToken:        config.AdminToken,
+		workerToken:       config.WorkerToken,
+		artifactStore:     config.ArtifactStore,
+		jobTokenSecret:    config.JobTokenSecret,
+		secretKey:         secretKey,
+		secretKeyPrevious: config.SecretKeyPrevious,
+		sampleRoot:        config.SampleRoot,
+		wait:              config.Wait,
+		execution:         executionpkg.NewService(config.Store, config.Catalog, bundleStore),
+		metricsHandler:    config.MetricsHandler,
 	}
 }
 
@@ -197,7 +180,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.metricsHandler.ServeHTTP(w, r)
 		return
 	}
-	if h.enablePublicAPI && strings.HasPrefix(r.URL.Path, "/api/v1/") {
+	if strings.HasPrefix(r.URL.Path, "/api/v1/") {
 		if !h.publicAPILimiter.Allow(time.Now()) {
 			writeError(w, http.StatusTooManyRequests, "rate limit exceeded")
 			return
@@ -206,21 +189,19 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if h.enableWebUI && h.handleWebUI(w, r) {
+	if h.handleWebUI(w, r) {
 		return
 	}
-	if h.enableControlAPI || h.enableExecutionAPI {
-		authorizedRequest, status, message := h.authorizeAPIRequest(r)
-		if status != 0 {
-			writeError(w, status, message)
-			return
-		}
-		if h.enableExecutionAPI && (h.handleExecutionAPI(w, authorizedRequest) || h.handleRuntimeAPI(w, authorizedRequest)) {
-			return
-		}
-		if h.enableControlAPI && h.handleAPI(w, authorizedRequest) {
-			return
-		}
+	authorizedRequest, status, message := h.authorizeAPIRequest(r)
+	if status != 0 {
+		writeError(w, status, message)
+		return
+	}
+	if h.handleExecutionAPI(w, authorizedRequest) || h.handleRuntimeAPI(w, authorizedRequest) {
+		return
+	}
+	if h.handleAPI(w, authorizedRequest) {
+		return
 	}
 	writeError(w, http.StatusNotFound, "not found")
 }

@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted (2026-07-22) — issue #125.
+Accepted (2026-07-22) — issue #125. Public API 프로세스 배치는 [ADR 0012](0012-server-worker-standalone-roles.md)가 갱신한다.
 
 ## Context
 

@@ -14,7 +14,7 @@ import (
 	"github.com/imprun/windforce-core/internal/webhook"
 )
 
-func TestRunWebhookDispatcherOnceDeliversPersistedEvent(t *testing.T) {
+func TestEmbeddedWebhookDispatcherDeliversPersistedEvent(t *testing.T) {
 	received := make(chan struct{}, 1)
 	receiver := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		if request.Header.Get(webhook.HeaderSignature) == "" {
@@ -25,9 +25,7 @@ func TestRunWebhookDispatcherOnceDeliversPersistedEvent(t *testing.T) {
 	}))
 	defer receiver.Close()
 
-	secretKey := "webhook-dispatcher-cli-test-secret"
-	t.Setenv("SECRET_KEY", secretKey)
-	t.Setenv("WINDFORCE_LITE_WEBHOOK_ALLOW_INSECURE_LOOPBACK", "true")
+	secretKey := "embedded-webhook-dispatcher-test-secret"
 	statePath := filepath.Join(t.TempDir(), "state.json")
 	store := state.NewLocalStore(statePath)
 	store.ConfigureInputCrypto(secretKey, "")
@@ -55,9 +53,18 @@ func TestRunWebhookDispatcherOnceDeliversPersistedEvent(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	exitCode := runWebhookDispatcher([]string{"--state", statePath, "--once"})
-	if exitCode != 0 {
-		t.Fatalf("exit code = %d", exitCode)
+	flags := flagSetForWebhookTest(t, time.Second, 5*time.Second)
+	*flags.allowInsecureLoopback = true
+	dispatcher, err := newWebhookDispatcher(store, flags, webhook.NewMetrics())
+	if err != nil {
+		t.Fatal(err)
+	}
+	processed, err := dispatcher.ProcessOne(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !processed {
+		t.Fatal("embedded dispatcher did not claim a delivery")
 	}
 	select {
 	case <-received:

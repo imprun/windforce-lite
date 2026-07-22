@@ -6,6 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -48,26 +49,32 @@ func run(args []string) int {
 		return 2
 	}
 
-	switch args[0] {
+	command := canonicalCommand(args[0])
+	switch command {
 	case "version":
 		fmt.Println(version)
 		return 0
 	case "run-json":
 		return runJSON(args[1:])
-	case "api", "control-plane":
-		return runServer(args[1:], "control-plane")
-	case "execution-api":
-		return runServer(args[1:], "execution-api")
+	case "server":
+		return runServer(args[1:], "server")
 	case "worker":
 		return runWorker(args[1:])
-	case "webhook-dispatcher":
-		return runWebhookDispatcher(args[1:])
 	case "standalone":
 		return runServer(args[1:], "standalone")
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command: %s\n", args[0])
 		printUsage(os.Stderr)
 		return 2
+	}
+}
+
+func canonicalCommand(command string) string {
+	switch command {
+	case "api", "control-plane", "execution-api":
+		return "server"
+	default:
+		return command
 	}
 }
 
@@ -190,38 +197,39 @@ func runServer(args []string, mode string) int {
 		GoPath:         *goPath,
 		PrepareTimeout: *prepareTimeout,
 	}
-	combinedMode := mode == "standalone"
-	var webhookMetrics *webhook.Metrics
-	var webhookMetricsHandler http.Handler
-	if combinedMode {
-		webhookStore, ok := stateStore.(webhook.Store)
-		if !ok {
-			fmt.Fprintln(os.Stderr, "standalone state backend does not provide webhook delivery storage")
-			return 1
-		}
-		webhookMetrics = webhook.NewMetrics()
-		webhookMetricsHandler = webhookMetrics.Handler(webhookStore)
+	standaloneMode := mode == "standalone"
+	webhookStore, ok := stateStore.(webhook.Store)
+	if !ok {
+		fmt.Fprintf(os.Stderr, "%s state backend does not provide webhook delivery storage\n", mode)
+		return 1
+	}
+	webhookMetrics := webhook.NewMetrics()
+	dispatcher, err := newWebhookDispatcher(stateStore, webhookDispatcherFlags, webhookMetrics)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s webhook dispatcher: %v\n", mode, err)
+		return 1
+	}
+	webhookRetention, err := webhookRetentionFromFlags(webhookDispatcherFlags)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s webhook retention: %v\n", mode, err)
+		return 1
 	}
 	handler := server.New(server.Config{
-		Store:              stateStore,
-		Catalog:            releaseCatalog,
-		Syncer:             &syncer.Syncer{Store: bundleStore},
-		ExecutionBundles:   runtimeRunner,
-		GitSources:         gitSources,
-		EnableControlAPI:   mode == "control-plane" || combinedMode,
-		EnableExecutionAPI: mode == "execution-api" || combinedMode,
-		EnablePublicAPI:    mode == "execution-api" || combinedMode,
-		EnableWebUI:        mode == "control-plane" || combinedMode,
-		PublicAPIRPS:       *publicAPIRPS,
-		PublicAPIBurst:     *publicAPIBurst,
-		ManagedWorkspaces:  true,
-		AdminToken:         adminToken,
-		WorkerToken:        firstNonEmpty(tokenFromEnv(*workerTokenEnv), adminToken),
-		ArtifactStore:      executionBundleStore,
-		JobTokenSecret:     jobTokenSecret,
-		SecretKey:          secretKey,
-		SecretKeyPrevious:  secretKeyPrevious,
-		MetricsHandler:     webhookMetricsHandler,
+		Store:             stateStore,
+		Catalog:           releaseCatalog,
+		Syncer:            &syncer.Syncer{Store: bundleStore},
+		ExecutionBundles:  runtimeRunner,
+		GitSources:        gitSources,
+		PublicAPIRPS:      *publicAPIRPS,
+		PublicAPIBurst:    *publicAPIBurst,
+		ManagedWorkspaces: true,
+		AdminToken:        adminToken,
+		WorkerToken:       firstNonEmpty(tokenFromEnv(*workerTokenEnv), adminToken),
+		ArtifactStore:     executionBundleStore,
+		JobTokenSecret:    jobTokenSecret,
+		SecretKey:         secretKey,
+		SecretKeyPrevious: secretKeyPrevious,
+		MetricsHandler:    webhookMetrics.Handler(webhookStore),
 	})
 
 	retention := jobRetentionPolicy{
@@ -230,24 +238,14 @@ func runServer(args []string, mode string) int {
 		StuckAfter: *jobStuckAfter,
 		Interval:   *jobRetentionInterval,
 	}
-	if retention.Enabled() && (mode == "execution-api" || combinedMode) {
+	if retention.Enabled() {
 		go runJobRetentionLoop(context.Background(), stateStore, retention)
 	}
 
-	if mode == "standalone" {
+	if standaloneMode {
 		runtimeBindings, err := worker.NewRuntimeBindings(*authSessionURL, *authSessionTokenEnv, *authSessionTokenFile, *authSessionTimeout)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "standalone runtime bindings: %v\n", err)
-			return 1
-		}
-		dispatcher, err := newWebhookDispatcher(stateStore, webhookDispatcherFlags, webhookMetrics)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "standalone webhook dispatcher: %v\n", err)
-			return 1
-		}
-		webhookRetention, err := webhookRetentionFromFlags(webhookDispatcherFlags)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "standalone webhook retention: %v\n", err)
 			return 1
 		}
 		processor := worker.Processor{
@@ -270,14 +268,14 @@ func runServer(args []string, mode string) int {
 				fmt.Fprintf(os.Stderr, "standalone worker: %v\n", err)
 			}
 		}()
-		go func() {
-			if err := dispatcher.RunLoop(context.Background(), *webhookDispatcherFlags.dispatchInterval); err != nil {
-				fmt.Fprintf(os.Stderr, "standalone webhook dispatcher: %v\n", err)
-			}
-		}()
-		if webhookRetention.Enabled() {
-			go runWebhookRetentionLoop(context.Background(), dispatcher.Store, webhookRetention)
+	}
+	go func() {
+		if err := dispatcher.RunLoop(context.Background(), *webhookDispatcherFlags.dispatchInterval); err != nil {
+			fmt.Fprintf(os.Stderr, "%s webhook dispatcher: %v\n", mode, err)
 		}
+	}()
+	if webhookRetention.Enabled() {
+		go runWebhookRetentionLoop(context.Background(), dispatcher.Store, webhookRetention)
 	}
 
 	fmt.Fprintf(os.Stderr, "windforce-core %s listening on %s\n", mode, *addr)
@@ -761,13 +759,11 @@ func defaultStatePath() string {
 	return filepath.Join(".windforce-core", "state.json")
 }
 
-func printUsage(file *os.File) {
+func printUsage(file io.Writer) {
 	fmt.Fprintln(file, "usage:")
 	fmt.Fprintln(file, "  windforce-core version")
-	fmt.Fprintln(file, "  windforce-core control-plane [--addr :8080] [--state-backend local|postgres] [--git-sources <path>] [--provision-dir <path>]")
-	fmt.Fprintln(file, "  windforce-core execution-api [--addr :8080] [--state-backend local|postgres]")
+	fmt.Fprintln(file, "  windforce-core server [--addr :8080] [--state-backend local|postgres] [--git-sources <path>] [--provision-dir <path>]")
 	fmt.Fprintln(file, "  windforce-core worker [--state-backend local|postgres] [--worker-group default] [--egress-proxy host:port] [--auth-session-url <url>] [--bun-path <path>] [--python-path <path>] [--go-path <path>] [--prepare-timeout 5m] [--once]")
-	fmt.Fprintln(file, "  windforce-core webhook-dispatcher [--state-backend local|postgres] [--database-url <url>] [--once]")
 	fmt.Fprintln(file, "  windforce-core standalone [--addr :8080] [--state-backend local|postgres] [--worker-group default] [--egress-proxy host:port] [--auth-session-url <url>] [--git-sources <path>] [--provision-dir <path>] [--bun-path <path>] [--python-path <path>] [--go-path <path>] [--prepare-timeout 5m]")
 	fmt.Fprintln(file, "  windforce-core run-json [flags] -- <command> [args...]")
 }

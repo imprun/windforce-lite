@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted (2026-07-16)
+Accepted (2026-07-16). Dispatcher 프로세스 배치는 [ADR 0012](0012-server-worker-standalone-roles.md)가 갱신한다.
 
 구현 순서는 [Control Plane Webhook 구현 계획](../release-webhook-implementation-plan.md)에서 관리한다.
 

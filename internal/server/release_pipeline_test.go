@@ -70,7 +70,6 @@ func TestGitSourceSyncStoresSourceWithoutRuntimePreparation(t *testing.T) {
 		Syncer:           &syncer.Syncer{Store: bundleStore, CloneRoot: tempDir},
 		ExecutionBundles: preparer,
 		GitSources:       registry,
-		EnableAPI:        true,
 	}))
 	defer server.Close()
 
@@ -157,7 +156,6 @@ func TestGitSourceDeployRejectsCandidateWhenExecutionBundleIsInvalid(t *testing.
 		Catalog:          releaseCatalog,
 		ExecutionBundles: preparer,
 		GitSources:       registry,
-		EnableAPI:        true,
 	}))
 	defer httpServer.Close()
 
@@ -242,7 +240,6 @@ func TestGitSourceDeployBuildFailureKeepsActiveReleaseAndUsesLatestSync(t *testi
 			return contract.Deployment{}, errors.New("dependency version is unavailable")
 		}},
 		GitSources: registry,
-		EnableAPI:  true,
 	}))
 	defer httpServer.Close()
 

@@ -17,9 +17,8 @@ func TestCanonicalProvisioningImportExport(t *testing.T) {
 	store := state.NewLocalStore(filepath.Join(t.TempDir(), "state.json"))
 	registry := gitsource.NewFileRegistry(filepath.Join(t.TempDir(), "git-sources.json"))
 	server := httptest.NewServer(New(Config{
-		Store:            store,
-		GitSources:       registry,
-		EnableControlAPI: true,
+		Store:      store,
+		GitSources: registry,
 	}))
 	defer server.Close()
 

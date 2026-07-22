@@ -44,7 +44,6 @@ func decodeCatalogSchema(t *testing.T, raw json.RawMessage) []byte {
 func TestMetricsEndpointBypassesAPIAuthentication(t *testing.T) {
 	handler := New(Config{
 		Store:      state.NewLocalStore(filepath.Join(t.TempDir(), "state.json")),
-		EnableAPI:  true,
 		AdminToken: "admin-secret",
 		MetricsHandler: http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
 			_, _ = io.WriteString(response, "windforce_webhook_pending_deliveries 0\n")
@@ -78,7 +77,7 @@ func TestJobLogsAPI(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	server := httptest.NewServer(New(Config{Store: store, EnableAPI: true}))
+	server := httptest.NewServer(New(Config{Store: store}))
 	defer server.Close()
 
 	resp, err := http.Get(server.URL + "/api/w/ws-a/jobs/" + job.ID + "/logs?tail_bytes=5")
@@ -146,8 +145,7 @@ func TestJobLogsAPI(t *testing.T) {
 func TestCanonicalJobListQueryValidation(t *testing.T) {
 	tempDir := t.TempDir()
 	server := httptest.NewServer(New(Config{
-		Store:     state.NewLocalStore(filepath.Join(tempDir, "state.json")),
-		EnableAPI: true,
+		Store: state.NewLocalStore(filepath.Join(tempDir, "state.json")),
 	}))
 	defer server.Close()
 
@@ -198,7 +196,7 @@ func TestCanonicalJobListDoesNotLeakResultOrLogs(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	server := httptest.NewServer(New(Config{Store: store, Catalog: fileCatalog, EnableAPI: true}))
+	server := httptest.NewServer(New(Config{Store: store, Catalog: fileCatalog}))
 	defer server.Close()
 
 	resp, err := http.Post(server.URL+"/api/w/ws-a/jobs/run/echo/echo", "application/json", bytes.NewBufferString(`{"message":"hello"}`))
@@ -256,8 +254,7 @@ func TestCanonicalJobListDoesNotLeakResultOrLogs(t *testing.T) {
 func TestCanonicalStateAPI(t *testing.T) {
 	tempDir := t.TempDir()
 	server := httptest.NewServer(New(Config{
-		Store:     state.NewLocalStore(filepath.Join(tempDir, "state.json")),
-		EnableAPI: true,
+		Store: state.NewLocalStore(filepath.Join(tempDir, "state.json")),
 	}))
 	defer server.Close()
 
@@ -350,7 +347,6 @@ func TestCanonicalVariablesAndResourcesAPI(t *testing.T) {
 	secretKey := "test-secret"
 	server := httptest.NewServer(New(Config{
 		Store:          store,
-		EnableAPI:      true,
 		JobTokenSecret: "job-secret",
 		SecretKey:      secretKey,
 	}))
@@ -622,7 +618,6 @@ func TestCanonicalVariableAppScopeShadowing(t *testing.T) {
 	store := state.NewLocalStore(filepath.Join(tempDir, "state.json"))
 	server := httptest.NewServer(New(Config{
 		Store:          store,
-		EnableAPI:      true,
 		JobTokenSecret: "job-secret",
 	}))
 	defer server.Close()
@@ -773,7 +768,6 @@ func TestJobTokenAuthorizesOnlySDKCallbacks(t *testing.T) {
 	}
 	server := httptest.NewServer(New(Config{
 		Store:             store,
-		EnableAPI:         true,
 		ManagedWorkspaces: true,
 		AdminToken:        "admin-token",
 		JobTokenSecret:    "job-secret",
@@ -855,7 +849,7 @@ func TestJobTokenAuthorizesOnlySDKCallbacks(t *testing.T) {
 
 func TestAdminTokenRequiresAuthorizationBearer(t *testing.T) {
 	server := httptest.NewServer(New(Config{
-		EnableAPI:  true,
+
 		AdminToken: "admin-token",
 	}))
 	defer server.Close()
@@ -954,7 +948,7 @@ func TestCanonicalJobRunStatusAndResultAPI(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	server := httptest.NewServer(New(Config{Store: store, Catalog: fileCatalog, EnableAPI: true}))
+	server := httptest.NewServer(New(Config{Store: store, Catalog: fileCatalog}))
 	defer server.Close()
 
 	resp, err := http.Post(server.URL+"/api/w/ws-a/jobs/run/echo/echo", "application/json", bytes.NewBufferString(`{"message":"hello"}`))
@@ -1233,7 +1227,7 @@ func TestCanonicalJobWebhookAPI(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	server := httptest.NewServer(New(Config{Store: store, Catalog: fileCatalog, EnableAPI: true}))
+	server := httptest.NewServer(New(Config{Store: store, Catalog: fileCatalog}))
 	defer server.Close()
 
 	req, err := http.NewRequest(http.MethodPost, server.URL+"/api/w/ws-a/jobs/webhook/echo/echo", bytes.NewBufferString(`{"event":"push"}`))
@@ -1341,7 +1335,7 @@ func TestCanonicalJobRunBodyValidationMatchesCanonicalAPI(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	server := httptest.NewServer(New(Config{Store: store, Catalog: fileCatalog, EnableAPI: true}))
+	server := httptest.NewServer(New(Config{Store: store, Catalog: fileCatalog}))
 	defer server.Close()
 
 	for _, body := range []string{`[1,2,3]`, `"a string"`, `42`, `null`, `{not json`} {
@@ -1424,7 +1418,7 @@ func TestCanonicalJobCancelAPI(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	server := httptest.NewServer(New(Config{Store: store, Catalog: fileCatalog, EnableAPI: true}))
+	server := httptest.NewServer(New(Config{Store: store, Catalog: fileCatalog}))
 	defer server.Close()
 
 	runResp, err := http.Post(server.URL+"/api/w/ws-a/jobs/run/echo/echo", "application/json", bytes.NewBufferString(`{}`))
@@ -1525,7 +1519,7 @@ func TestCanonicalJobCancelAPI(t *testing.T) {
 }
 
 func TestCanonicalControlPlaneRejectsInvalidAppAndActionKeys(t *testing.T) {
-	server := httptest.NewServer(New(Config{EnableAPI: true}))
+	server := httptest.NewServer(New(Config{}))
 	defer server.Close()
 
 	for _, tc := range []struct {
@@ -1568,7 +1562,7 @@ func TestCanonicalControlPlaneRejectsInvalidAppAndActionKeys(t *testing.T) {
 }
 
 func TestCanonicalControlPlaneOpenAPIExposesSchemaDiscovery(t *testing.T) {
-	server := httptest.NewServer(New(Config{EnableAPI: true}))
+	server := httptest.NewServer(New(Config{}))
 	defer server.Close()
 
 	req, err := http.NewRequest(http.MethodGet, server.URL+"/api/w/ws-a/openapi.json", nil)
@@ -1885,9 +1879,8 @@ func TestCanonicalControlPlaneNotFoundMessagesMatchCanonicalAPI(t *testing.T) {
 		t.Fatal(err)
 	}
 	server := httptest.NewServer(New(Config{
-		Store:     state.NewLocalStore(filepath.Join(tempDir, "state.json")),
-		Catalog:   fileCatalog,
-		EnableAPI: true,
+		Store:   state.NewLocalStore(filepath.Join(tempDir, "state.json")),
+		Catalog: fileCatalog,
 	}))
 	defer server.Close()
 
@@ -1939,7 +1932,6 @@ func TestLegacyV1ControlPlaneRoutesAreNotExposed(t *testing.T) {
 		Catalog:    fileCatalog,
 		Syncer:     &syncer.Syncer{Store: bundle.NewLocalStore(filepath.Join(tempDir, "store"))},
 		GitSources: gitsource.NewFileRegistry(filepath.Join(tempDir, "git-sources.json")),
-		EnableAPI:  true,
 	}))
 	defer server.Close()
 
@@ -2007,7 +1999,7 @@ func TestCanonicalActionExposesEmptySchemas(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	server := httptest.NewServer(New(Config{Catalog: fileCatalog, EnableAPI: true}))
+	server := httptest.NewServer(New(Config{Catalog: fileCatalog}))
 	defer server.Close()
 
 	resp, err := http.Get(server.URL + "/api/w/ws-a/apps/echo/actions/echo")
@@ -2054,7 +2046,7 @@ func TestCanonicalActionExposesPinnedSchemaBodiesWithoutSourceStore(t *testing.T
 		t.Fatal(err)
 	}
 
-	server := httptest.NewServer(New(Config{Catalog: fileCatalog, EnableAPI: true}))
+	server := httptest.NewServer(New(Config{Catalog: fileCatalog}))
 	defer server.Close()
 
 	resp, err := http.Get(server.URL + "/api/w/ws-a/apps/echo/actions/echo")
@@ -2110,9 +2102,8 @@ func TestCanonicalActionSourceFallbackUsesManifestSchemaPathVerbatim(t *testing.
 	}
 
 	server := httptest.NewServer(New(Config{
-		Catalog:   fileCatalog,
-		Syncer:    &syncer.Syncer{Store: sourceStore},
-		EnableAPI: true,
+		Catalog: fileCatalog,
+		Syncer:  &syncer.Syncer{Store: sourceStore},
 	}))
 	defer server.Close()
 
@@ -2164,9 +2155,8 @@ func TestCanonicalControlPlaneUsesMaterializedActionSchemas(t *testing.T) {
 	}
 
 	server := httptest.NewServer(New(Config{
-		Store:     state.NewLocalStore(filepath.Join(tempDir, "state.json")),
-		Catalog:   fileCatalog,
-		EnableAPI: true,
+		Store:   state.NewLocalStore(filepath.Join(tempDir, "state.json")),
+		Catalog: fileCatalog,
 	}))
 	defer server.Close()
 
@@ -2295,8 +2285,8 @@ func TestCanonicalSampleGitSourceRegistersAndSyncs(t *testing.T) {
 		Syncer:           &syncer.Syncer{Store: store, CloneRoot: tempDir},
 		ExecutionBundles: readyExecutionBundleManager(),
 		GitSources:       gitsource.NewFileRegistry(filepath.Join(tempDir, "git-sources.json")),
-		EnableAPI:        true,
-		SampleRoot:       filepath.Join(tempDir, "samples"),
+
+		SampleRoot: filepath.Join(tempDir, "samples"),
 	})
 	server := httptest.NewServer(handler)
 	defer server.Close()
@@ -2371,7 +2361,6 @@ func TestCanonicalRegisterGitSourceRejectsInvalidSubpathBeforePersisting(t *test
 	handler := New(Config{
 		Syncer:     &syncer.Syncer{CloneRoot: tempDir},
 		GitSources: registry,
-		EnableAPI:  true,
 	})
 	server := httptest.NewServer(handler)
 	defer server.Close()
@@ -2405,7 +2394,6 @@ func TestCanonicalRegisterGitSourcePreservesValidSubpath(t *testing.T) {
 	handler := New(Config{
 		Syncer:     &syncer.Syncer{CloneRoot: tempDir},
 		GitSources: gitsource.NewFileRegistry(filepath.Join(tempDir, "git-sources.json")),
-		EnableAPI:  true,
 	})
 	server := httptest.NewServer(handler)
 	defer server.Close()
@@ -2446,7 +2434,6 @@ func TestCanonicalRegisterGitSourceRequiresExistingBranch(t *testing.T) {
 	handler := New(Config{
 		Syncer:     &syncer.Syncer{CloneRoot: tempDir},
 		GitSources: registry,
-		EnableAPI:  true,
 	})
 	server := httptest.NewServer(handler)
 	defer server.Close()
@@ -2490,7 +2477,6 @@ func TestCanonicalRegisterGitSourceValidatesManifestBeforePersisting(t *testing.
 	handler := New(Config{
 		Syncer:     &syncer.Syncer{CloneRoot: tempDir},
 		GitSources: registry,
-		EnableAPI:  true,
 	})
 	server := httptest.NewServer(handler)
 	defer server.Close()
@@ -2530,8 +2516,8 @@ func TestCanonicalRegisterGitSourceRejectsCredentialFromRequest(t *testing.T) {
 		Store:      store,
 		Syncer:     &syncer.Syncer{CloneRoot: tempDir},
 		GitSources: registry,
-		EnableAPI:  true,
-		SecretKey:  "git-source-register-secret",
+
+		SecretKey: "git-source-register-secret",
 	})
 	server := httptest.NewServer(handler)
 	defer server.Close()
@@ -2575,7 +2561,6 @@ func TestCanonicalGitSourcesListOrdersByID(t *testing.T) {
 	handler := New(Config{
 		Syncer:     &syncer.Syncer{CloneRoot: tempDir},
 		GitSources: gitsource.NewFileRegistry(filepath.Join(tempDir, "git-sources.json")),
-		EnableAPI:  true,
 	})
 	server := httptest.NewServer(handler)
 	defer server.Close()
@@ -2646,7 +2631,7 @@ func TestCanonicalAppLookupIsWorkspaceScoped(t *testing.T) {
 		}
 	}
 
-	server := httptest.NewServer(New(Config{Catalog: fileCatalog, EnableAPI: true}))
+	server := httptest.NewServer(New(Config{Catalog: fileCatalog}))
 	defer server.Close()
 
 	for _, tc := range []struct {
@@ -2728,7 +2713,6 @@ func TestCanonicalControlPlaneRegistersSyncsAndExposesSchemas(t *testing.T) {
 		Syncer:           &syncer.Syncer{Store: bundle.NewLocalStore(filepath.Join(tempDir, "store")), CloneRoot: tempDir},
 		ExecutionBundles: readyExecutionBundleManager(),
 		GitSources:       gitsource.NewFileRegistry(filepath.Join(tempDir, "git-sources.json")),
-		EnableAPI:        true,
 	})
 	server := httptest.NewServer(handler)
 	defer server.Close()
@@ -3505,7 +3489,7 @@ func TestCanonicalAppHistoryPreservesDeploymentMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	server := httptest.NewServer(New(Config{Catalog: fileCatalog, EnableAPI: true}))
+	server := httptest.NewServer(New(Config{Catalog: fileCatalog}))
 	defer server.Close()
 
 	resp, err := http.Get(server.URL + "/api/w/ws-a/apps/echo/history")
@@ -3554,7 +3538,6 @@ func TestCanonicalGitSourceSyncReturnsConflictWhenOperationInProgress(t *testing
 	handler := New(Config{
 		Syncer:     &syncer.Syncer{},
 		GitSources: registry,
-		EnableAPI:  true,
 	}).(*Handler)
 	_, release, err := handler.acquireGitSourceOperation(context.Background(), "ws-a", source)
 	if err != nil {
@@ -3584,7 +3567,6 @@ func TestCanonicalGitSourceSyncReturnsRegistryErrors(t *testing.T) {
 	server := httptest.NewServer(New(Config{
 		Syncer:     &syncer.Syncer{},
 		GitSources: failingGitSourceRegistry{getErr: errors.New("registry unavailable")},
-		EnableAPI:  true,
 	}))
 	defer server.Close()
 
@@ -3606,7 +3588,6 @@ func TestCanonicalGitSourceSyncReturnsRegistryErrors(t *testing.T) {
 	server = httptest.NewServer(New(Config{
 		Syncer:     &syncer.Syncer{},
 		GitSources: failingGitSourceRegistry{getErr: gitsource.ErrGitSourceNotFound},
-		EnableAPI:  true,
 	}))
 	defer server.Close()
 
@@ -3666,9 +3647,8 @@ func TestCanonicalAppMaterializationErrors(t *testing.T) {
 			}
 
 			server := httptest.NewServer(New(Config{
-				Catalog:   fileCatalog,
-				Syncer:    &syncer.Syncer{Store: tc.store},
-				EnableAPI: true,
+				Catalog: fileCatalog,
+				Syncer:  &syncer.Syncer{Store: tc.store},
 			}))
 			defer server.Close()
 
@@ -3714,7 +3694,6 @@ func TestCanonicalGitSourceProbePatchAndDelete(t *testing.T) {
 	server := httptest.NewServer(New(Config{
 		Syncer:     &syncer.Syncer{CloneRoot: tempDir},
 		GitSources: registry,
-		EnableAPI:  true,
 	}))
 	defer server.Close()
 
@@ -3926,7 +3905,7 @@ func TestCanonicalWorkerTagsAPI(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	server := httptest.NewServer(New(Config{Store: store, Catalog: fileCatalog, EnableAPI: true}))
+	server := httptest.NewServer(New(Config{Store: store, Catalog: fileCatalog}))
 	defer server.Close()
 
 	resp, err := http.Get(server.URL + "/api/w/ws-a/worker-tags")
@@ -3964,7 +3943,7 @@ func TestCanonicalWorkerTagsAPI(t *testing.T) {
 func TestCanonicalWorkerTagsDoesNotInventDefaultRoute(t *testing.T) {
 	tempDir := t.TempDir()
 	fileCatalog := catalog.NewFileCatalog(filepath.Join(tempDir, "catalog.json"))
-	server := httptest.NewServer(New(Config{Catalog: fileCatalog, EnableAPI: true}))
+	server := httptest.NewServer(New(Config{Catalog: fileCatalog}))
 	defer server.Close()
 
 	resp, err := http.Get(server.URL + "/api/w/ws-a/worker-tags")
@@ -4003,7 +3982,7 @@ func TestCanonicalAppAndActionTagOverrideAPI(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	server := httptest.NewServer(New(Config{Catalog: fileCatalog, EnableAPI: true}))
+	server := httptest.NewServer(New(Config{Catalog: fileCatalog}))
 	defer server.Close()
 
 	for _, body := range []string{
@@ -4180,9 +4159,8 @@ func TestCanonicalJobRunAllowsTagOverrideWithLabels(t *testing.T) {
 		t.Fatal(err)
 	}
 	server := httptest.NewServer(New(Config{
-		Store:     state.NewLocalStore(filepath.Join(tempDir, "state.json")),
-		Catalog:   fileCatalog,
-		EnableAPI: true,
+		Store:   state.NewLocalStore(filepath.Join(tempDir, "state.json")),
+		Catalog: fileCatalog,
 	}))
 	defer server.Close()
 
@@ -4250,9 +4228,8 @@ func TestCanonicalJobRunPinsTagAndRequeueUsesCurrentEffectiveTag(t *testing.T) {
 	}
 	store := state.NewLocalStore(filepath.Join(tempDir, "state.json"))
 	server := httptest.NewServer(New(Config{
-		Store:     store,
-		Catalog:   fileCatalog,
-		EnableAPI: true,
+		Store:   store,
+		Catalog: fileCatalog,
 	}))
 	defer server.Close()
 
@@ -4392,9 +4369,8 @@ func TestCanonicalRequeueInvalidJSONMatchesCanonicalAPI(t *testing.T) {
 		t.Fatal(err)
 	}
 	server := httptest.NewServer(New(Config{
-		Store:     state.NewLocalStore(filepath.Join(tempDir, "state.json")),
-		Catalog:   fileCatalog,
-		EnableAPI: true,
+		Store:   state.NewLocalStore(filepath.Join(tempDir, "state.json")),
+		Catalog: fileCatalog,
 	}))
 	defer server.Close()
 
@@ -4430,9 +4406,8 @@ func TestCanonicalRequeueRejectsUntrimmedActionKey(t *testing.T) {
 		t.Fatal(err)
 	}
 	server := httptest.NewServer(New(Config{
-		Store:     state.NewLocalStore(filepath.Join(tempDir, "state.json")),
-		Catalog:   fileCatalog,
-		EnableAPI: true,
+		Store:   state.NewLocalStore(filepath.Join(tempDir, "state.json")),
+		Catalog: fileCatalog,
 	}))
 	defer server.Close()
 
@@ -4492,7 +4467,6 @@ func TestControlPlaneRegistersGitSourcePathAndSyncsIt(t *testing.T) {
 		Syncer:           &syncer.Syncer{Store: store, CloneRoot: tempDir},
 		ExecutionBundles: readyExecutionBundleManager(),
 		GitSources:       gitsource.NewFileRegistry(filepath.Join(tempDir, "git-sources.json")),
-		EnableAPI:        true,
 	})
 	server := httptest.NewServer(handler)
 	defer server.Close()
@@ -4653,9 +4627,8 @@ func TestCanonicalWorkersEndpointServesRegistry(t *testing.T) {
 		t.Fatal(err)
 	}
 	server := httptest.NewServer(New(Config{
-		Store:     store,
-		Catalog:   catalog.NewFileCatalog(filepath.Join(tempDir, "catalog.json")),
-		EnableAPI: true,
+		Store:   store,
+		Catalog: catalog.NewFileCatalog(filepath.Join(tempDir, "catalog.json")),
 	}))
 	defer server.Close()
 

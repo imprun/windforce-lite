@@ -22,7 +22,6 @@ func TestCanonicalWebhookLifecycle(t *testing.T) {
 	server := httptest.NewServer(New(Config{
 		Store:      store,
 		Catalog:    store,
-		EnableAPI:  true,
 		AdminToken: "admin-token",
 	}))
 	defer server.Close()
@@ -175,7 +174,7 @@ func TestCanonicalWebhookLifecycle(t *testing.T) {
 }
 
 func TestControlPlaneOpenAPIIncludesWebhookManagement(t *testing.T) {
-	server := httptest.NewServer(New(Config{EnableAPI: true}))
+	server := httptest.NewServer(New(Config{}))
 	defer server.Close()
 	response, err := http.Get(server.URL + "/api/w/default/openapi.json")
 	if err != nil {

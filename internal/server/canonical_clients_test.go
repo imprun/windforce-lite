@@ -15,8 +15,7 @@ import (
 
 func TestCanonicalClientLifecycle(t *testing.T) {
 	server := httptest.NewServer(New(Config{
-		Store:     state.NewLocalStore(filepath.Join(t.TempDir(), "state.json")),
-		EnableAPI: true,
+		Store: state.NewLocalStore(filepath.Join(t.TempDir(), "state.json")),
 	}))
 	defer server.Close()
 

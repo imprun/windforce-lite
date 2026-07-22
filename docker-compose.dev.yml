@@ -1,5 +1,5 @@
 services:
-  control-plane:
+  server:
     image: ${WINDFORCE_LITE_DEV_IMAGE:-imprun/windforce-core-dev:local}
     build:
       context: .
@@ -8,7 +8,7 @@ services:
     command:
       - air
       - -c
-      - .air.control-plane.toml
+      - .air.server.toml
     environment:
       GOCACHE: /home/windforce/.cache/go-build
       GOMODCACHE: /go/pkg/mod
@@ -17,26 +17,8 @@ services:
       WINDFORCE_AUTH_SESSION_TOKEN: ${WINDFORCE_AUTH_SESSION_TOKEN:-}
       WINDFORCE_AUTH_SESSION_TOKEN_FILE: ${WINDFORCE_AUTH_SESSION_TOKEN_FILE:-}
       WINDFORCE_AUTH_SESSION_TIMEOUT_MS: ${WINDFORCE_AUTH_SESSION_TIMEOUT_MS:-15000}
-    volumes:
-      - .:/src
-      - windforce-data:/data
-      - go-mod-cache:/go/pkg/mod
-      - go-build-cache:/home/windforce/.cache/go-build
-
-  execution-api:
-    image: ${WINDFORCE_LITE_DEV_IMAGE:-imprun/windforce-core-dev:local}
-    build:
-      context: .
-      dockerfile: Dockerfile.dev
-    working_dir: /src
-    command:
-      - air
-      - -c
-      - .air.execution-api.toml
-    environment:
-      GOCACHE: /home/windforce/.cache/go-build
-      GOMODCACHE: /go/pkg/mod
-      WINDFORCE_LITE_DATABASE_URL: ${WINDFORCE_LITE_DATABASE_URL:-postgres://postgres@postgres:5432/windforce_core?sslmode=disable}
+      WINDFORCE_LITE_WEBHOOK_ALLOWED_INSECURE_HTTP_HOSTS: ${WINDFORCE_LITE_WEBHOOK_ALLOWED_INSECURE_HTTP_HOSTS:-host.docker.internal}
+      WINDFORCE_LITE_WEBHOOK_ALLOW_INSECURE_LOOPBACK: ${WINDFORCE_LITE_WEBHOOK_ALLOW_INSECURE_LOOPBACK:-true}
     volumes:
       - .:/src
       - windforce-data:/data
@@ -67,7 +49,7 @@ services:
       - go-mod-cache:/go/pkg/mod
       - go-build-cache:/home/windforce/.cache/go-build
 
-  webhook-dispatcher:
+  standalone:
     image: ${WINDFORCE_LITE_DEV_IMAGE:-imprun/windforce-core-dev:local}
     build:
       context: .
@@ -76,15 +58,24 @@ services:
     command:
       - air
       - -c
-      - .air.webhook-dispatcher.toml
+      - .air.standalone.toml
     environment:
       GOCACHE: /home/windforce/.cache/go-build
       GOMODCACHE: /go/pkg/mod
       WINDFORCE_LITE_DATABASE_URL: ${WINDFORCE_LITE_DATABASE_URL:-postgres://postgres@postgres:5432/windforce_core?sslmode=disable}
+      WINDFORCE_AUTH_SESSION_URL: ${WINDFORCE_AUTH_SESSION_URL:-}
+      WINDFORCE_AUTH_SESSION_TOKEN: ${WINDFORCE_AUTH_SESSION_TOKEN:-}
+      WINDFORCE_AUTH_SESSION_TOKEN_FILE: ${WINDFORCE_AUTH_SESSION_TOKEN_FILE:-}
+      WINDFORCE_AUTH_SESSION_TIMEOUT_MS: ${WINDFORCE_AUTH_SESSION_TIMEOUT_MS:-15000}
       WINDFORCE_LITE_WEBHOOK_ALLOWED_INSECURE_HTTP_HOSTS: ${WINDFORCE_LITE_WEBHOOK_ALLOWED_INSECURE_HTTP_HOSTS:-host.docker.internal}
       WINDFORCE_LITE_WEBHOOK_ALLOW_INSECURE_LOOPBACK: ${WINDFORCE_LITE_WEBHOOK_ALLOW_INSECURE_LOOPBACK:-true}
+      LOG_LEVEL: ${WINDFORCE_LITE_DEV_SCRIPT_LOG_LEVEL:-DEBUG}
+      PYTHON_LOG_LEVEL: ${WINDFORCE_LITE_DEV_SCRIPT_LOG_LEVEL:-DEBUG}
+      PYTHONUNBUFFERED: "1"
+      PYTHONIOENCODING: utf-8
     volumes:
       - .:/src
+      - windforce-data:/data
       - go-mod-cache:/go/pkg/mod
       - go-build-cache:/home/windforce/.cache/go-build
 

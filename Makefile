@@ -1,6 +1,6 @@
 .PHONY: help fmt test test-postgres build cli-build web-deps web-install web-dev web-build web-embed web-test web-typecheck clean dev \
-	compose-up compose-db compose-execution-api compose-worker compose-webhook-dispatcher compose-dev compose-dev-worker compose-dev-build compose-dev-logs compose-build compose-down compose-reset compose-logs compose-ps postgres-dsn \
-	dev-standalone dev-standalone-postgres dev-api dev-worker worker-once dev-webhook-dispatcher webhook-once \
+	compose-up compose-db compose-server compose-worker compose-dev compose-dev-worker compose-dev-build compose-dev-logs compose-build compose-down compose-reset compose-logs compose-ps postgres-dsn \
+	dev-standalone dev-standalone-postgres dev-server dev-worker worker-once \
 	webhook-receiver \
 	windforce-variable-set windforce-git-token windforce-register windforce-sync windforce-deploy windforce-sample \
 	windforce-schema windforce-openapi windforce-control-openapi \
@@ -98,7 +98,7 @@ help:
 	@echo "  fmt                    run gofmt"
 	@echo "  web-deps               install Web UI dependencies for this worktree"
 	@echo "  web-install            install Web UI dependencies"
-	@echo "  dev                    start PostgreSQL and Docker air control-plane/worker, then run local Web UI dev server"
+	@echo "  dev                    start PostgreSQL and Docker air server/worker, then run local Web UI dev server"
 	@echo "  web-dev                run the local Vite Web UI dev server with live reload on WINDFORCE_LITE_WEB_PORT"
 	@echo "  web-build              build the Web UI to web/dist without touching Go embed assets"
 	@echo "  web-embed              build the Web UI and refresh the Go embed assets"
@@ -110,11 +110,9 @@ help:
 	@echo "  cli-build              build supported Control Plane CLI at $(CLI_BIN)"
 	@echo "  dev-standalone         run local JSON-state standalone server"
 	@echo "  dev-standalone-postgres run PostgreSQL-backed standalone server"
-	@echo "  dev-api                run API process with PostgreSQL state"
+	@echo "  dev-server             run server process with PostgreSQL state"
 	@echo "  dev-worker             run worker process with PostgreSQL state"
 	@echo "  worker-once            claim at most one PostgreSQL-backed queued job"
-	@echo "  dev-webhook-dispatcher run release webhook dispatcher with PostgreSQL state"
-	@echo "  webhook-once           process at most one pending webhook delivery"
 	@echo "  webhook-receiver       run the signed local contract receiver on WINDFORCE_WEBHOOK_RECEIVER_ADDR"
 	@echo "  windforce-variable-set set secret WF_VARIABLE_PATH from WF_VARIABLE_VALUE_ENV through the control API"
 	@echo "  windforce-git-token    store WF_GIT_TOKEN_ENV at WF_VARIABLE_PATH for git source auth"
@@ -129,15 +127,14 @@ help:
 	@echo "  windforce-run-wait     run WF_APP/WF_ACTION and wait WF_TIMEOUT_MS"
 	@echo "  windforce-jobs         list jobs, optionally filtered by WF_JOB_STATUS"
 	@echo "  windforce-job/result/logs/cancel operate on WF_JOB_ID"
-	@echo "  compose-up             start control plane, execution API, and Bun Web UI against PostgreSQL"
+	@echo "  compose-up             start server and Bun Web UI against PostgreSQL"
 	@echo "  compose-db             start repo-local PostgreSQL for standalone testing"
-	@echo "  compose-execution-api  start the execution API against configured PostgreSQL"
+	@echo "  compose-server         start the server against configured PostgreSQL"
 	@echo "  compose-worker         start runtime worker against configured PostgreSQL"
-	@echo "  compose-webhook-dispatcher start release webhook dispatcher against configured PostgreSQL"
-	@echo "  compose-dev            start PostgreSQL and hot-reload control-plane/execution-api with air"
+	@echo "  compose-dev            start PostgreSQL and hot-reload server with air"
 	@echo "  compose-dev-worker     start PostgreSQL and hot-reload Go runtime worker with docker compose + air"
 	@echo "  compose-dev-build      build the dev image that contains Go, Python, git, and air"
-	@echo "  compose-dev-logs       follow hot-reload control-plane/execution-api/worker logs"
+	@echo "  compose-dev-logs       follow hot-reload server/worker logs"
 	@echo "  compose-build          build the Go Docker image; Dockerfile builds and embeds Web UI assets"
 	@echo "  compose-down/reset/logs/ps"
 	@echo "  ui-guide               regenerate Web UI guide screenshots and markdown (needs bun, go, and a Chromium browser)"
@@ -182,34 +179,31 @@ cli-build:
 	$(GO) build -ldflags "-X github.com/imprun/windforce-core/internal/controlcli.Version=$(VERSION)" -o "$(CLI_BIN)" $(CLI_CMD)
 
 compose-up:
-	$(COMPOSE) --profile backend up -d control-plane execution-api webhook-dispatcher web
+	$(COMPOSE) --profile backend up -d server web
 
 compose-db:
 	$(COMPOSE) --profile pg up -d postgres
 
-compose-execution-api:
-	$(COMPOSE) --profile backend up -d execution-api
+compose-server:
+	$(COMPOSE) --profile backend up -d server
 
 compose-worker:
 	$(COMPOSE) --profile worker up -d worker
 
-compose-webhook-dispatcher:
-	$(COMPOSE) --profile backend up -d webhook-dispatcher
-
 compose-dev:
-	$(COMPOSE_DEV) --profile backend up -d control-plane execution-api webhook-dispatcher
+	$(COMPOSE_DEV) --profile backend up -d server
 
 compose-dev-worker:
 	$(COMPOSE_DEV) --profile worker up -d worker
 
 compose-dev-build:
-	$(COMPOSE_DEV) build control-plane execution-api worker webhook-dispatcher
+	$(COMPOSE_DEV) build server worker standalone
 
 compose-dev-logs:
-	$(COMPOSE_DEV) logs -f control-plane execution-api worker webhook-dispatcher
+	$(COMPOSE_DEV) logs -f server worker standalone
 
 compose-build:
-	$(COMPOSE) build control-plane execution-api worker webhook-dispatcher
+	$(COMPOSE) build server worker standalone
 
 compose-down:
 	$(COMPOSE) down
@@ -218,7 +212,7 @@ compose-reset:
 	$(COMPOSE) down -v
 
 compose-logs:
-	$(COMPOSE) logs -f postgres control-plane execution-api webhook-dispatcher web worker
+	$(COMPOSE) logs -f postgres server standalone web worker
 
 compose-ps:
 	$(COMPOSE) ps
@@ -240,20 +234,14 @@ dev-standalone:
 dev-standalone-postgres: compose-db
 	$(GO) run $(CMD) standalone --addr "$(ADDR)" --store "$(STORE)" --catalog "$(CATALOG)" --cache "$(CACHE)" --state-backend postgres --database-url "$(POSTGRES_DSN)" --migrate
 
-dev-api: compose-up
-	$(GO) run $(CMD) api --addr "$(ADDR)" --store "$(STORE)" --catalog "$(CATALOG)" --state-backend postgres --database-url "$(POSTGRES_DSN)" --migrate
+dev-server: compose-db
+	$(GO) run $(CMD) server --addr "$(ADDR)" --store "$(STORE)" --catalog "$(CATALOG)" --state-backend postgres --database-url "$(POSTGRES_DSN)" --migrate
 
 dev-worker: compose-up
 	$(GO) run $(CMD) worker --store "$(STORE)" --cache "$(CACHE)" --state-backend postgres --database-url "$(POSTGRES_DSN)" --migrate
 
 worker-once: compose-up
 	$(GO) run $(CMD) worker --store "$(STORE)" --cache "$(CACHE)" --state-backend postgres --database-url "$(POSTGRES_DSN)" --migrate --once
-
-dev-webhook-dispatcher: compose-db
-	$(GO) run $(CMD) webhook-dispatcher --state-backend postgres --database-url "$(POSTGRES_DSN)" --migrate
-
-webhook-once: compose-db
-	$(GO) run $(CMD) webhook-dispatcher --state-backend postgres --database-url "$(POSTGRES_DSN)" --migrate --once
 
 webhook-receiver:
 	$(GO) run ./examples/webhook-receiver --addr "$(WINDFORCE_WEBHOOK_RECEIVER_ADDR)"

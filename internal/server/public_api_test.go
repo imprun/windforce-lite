@@ -59,8 +59,8 @@ func TestPublicAPIClientAuthenticationRotationInputAndArchive(t *testing.T) {
 		}},
 	}
 	httpServer := httptest.NewServer(New(Config{
-		Store: store, Catalog: inputConfigTestCatalog{deployment: deployment}, EnablePublicAPI: true,
-		EnableControlAPI: true, ManagedWorkspaces: true, AdminToken: "admin", PublicAPIRPS: 1000, PublicAPIBurst: 1000,
+		Store: store, Catalog: inputConfigTestCatalog{deployment: deployment},
+		ManagedWorkspaces: true, AdminToken: "admin", PublicAPIRPS: 1000, PublicAPIBurst: 1000,
 	}))
 	defer httpServer.Close()
 
@@ -237,7 +237,7 @@ func TestPublicAPIWaitRunsWorkerWithPinnedInputAndReplaysJob(t *testing.T) {
 		}},
 	}
 	httpServer := httptest.NewServer(New(Config{
-		Store: store, Catalog: inputConfigTestCatalog{deployment: deployment}, EnablePublicAPI: true,
+		Store: store, Catalog: inputConfigTestCatalog{deployment: deployment},
 		PublicAPIRPS: 1000, PublicAPIBurst: 1000,
 	}))
 	defer httpServer.Close()
@@ -351,7 +351,7 @@ func jsonStringField(data []byte, key string) string {
 
 func TestPublicAPIRateLimitRunsBeforeAuthentication(t *testing.T) {
 	store := state.NewLocalStore(filepath.Join(t.TempDir(), "state.json"))
-	httpServer := httptest.NewServer(New(Config{Store: store, EnablePublicAPI: true, PublicAPIRPS: 0.01, PublicAPIBurst: 1}))
+	httpServer := httptest.NewServer(New(Config{Store: store, PublicAPIRPS: 0.01, PublicAPIBurst: 1}))
 	defer httpServer.Close()
 
 	request := func() int {

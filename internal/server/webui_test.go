@@ -9,7 +9,7 @@ import (
 )
 
 func TestWebUIServedWithoutAPIAuth(t *testing.T) {
-	handler := New(Config{EnableAPI: true, AdminToken: "secret"})
+	handler := New(Config{AdminToken: "secret"})
 
 	root := httptest.NewRecorder()
 	handler.ServeHTTP(root, httptest.NewRequest(http.MethodGet, "/", nil))
