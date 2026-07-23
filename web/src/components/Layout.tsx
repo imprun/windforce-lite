@@ -6,6 +6,7 @@ import {
   CircleUserRound,
   ContactRound,
   Eraser,
+  Menu,
   MonitorSmartphone,
   Moon,
   PanelLeftClose,
@@ -16,7 +17,7 @@ import {
   Wind,
   X,
 } from "lucide-react";
-import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui";
+import { Dialog as DialogPrimitive, DropdownMenu as DropdownMenuPrimitive } from "radix-ui";
 import { type ReactNode, useEffect, useState } from "react";
 import { useApp } from "../lib/app-context";
 import { Link, useRouter } from "../lib/router";
@@ -143,6 +144,59 @@ export function UserMenu() {
   );
 }
 
+function MobileNavigation({ path }: { path: string }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <DialogPrimitive.Root open={open} onOpenChange={setOpen}>
+      <DialogPrimitive.Trigger asChild>
+        <button className="icon-control md:hidden" type="button" aria-label="Open navigation menu">
+          <Menu size={18} aria-hidden="true" />
+        </button>
+      </DialogPrimitive.Trigger>
+      <DialogPrimitive.Portal>
+        <DialogPrimitive.Overlay className="fixed inset-0 z-[80] bg-[var(--overlay)] md:hidden" />
+        <DialogPrimitive.Content
+          className="fixed inset-y-0 left-0 z-[81] flex w-[min(20rem,calc(100vw-3rem))] flex-col border-r border-border bg-surface text-foreground shadow-md outline-none md:hidden"
+          aria-describedby={undefined}
+        >
+          <header className="flex h-14 shrink-0 items-center justify-between border-b border-border px-3">
+            <DialogPrimitive.Title className="flex items-center gap-2 text-sm font-semibold">
+              <span className="flex size-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
+                <Wind size={16} strokeWidth={2.2} aria-hidden="true" />
+              </span>
+              windforce-core
+            </DialogPrimitive.Title>
+            <DialogPrimitive.Close className="icon-control" aria-label="Close navigation menu">
+              <X size={17} aria-hidden="true" />
+            </DialogPrimitive.Close>
+          </header>
+          <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 py-4" aria-label="Mobile">
+            {primaryNavItems.map((item) => {
+              const Icon = item.icon;
+              const active = item.match(path);
+              return (
+                <Link
+                  key={item.to}
+                  to={item.to}
+                  className={cn("navItem", active && "active")}
+                  onClick={() => setOpen(false)}
+                >
+                  <Icon size={17} strokeWidth={1.9} aria-hidden="true" />
+                  <span>{item.label}</span>
+                </Link>
+              );
+            })}
+          </nav>
+          <div className="border-t border-border p-3">
+            <WorkspaceSwitcher />
+          </div>
+        </DialogPrimitive.Content>
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
+  );
+}
+
 export function Layout({
   title,
   subtitle,
@@ -193,7 +247,7 @@ export function Layout({
             </Link>
           </div>
         </header>
-        <main className="mx-auto w-full max-w-[1400px] px-4 py-6 sm:px-6">
+        <main className="mx-auto w-full max-w-[var(--content-max-width)] px-4 py-6 sm:px-6">
           <PageHeading
             title={title}
             subtitle={subtitle}
@@ -278,8 +332,11 @@ export function Layout({
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border bg-surface px-4 sm:px-6">
-          <div className="mobileWorkspaceContext md:hidden">
-            <WorkspaceSwitcher />
+          <div className="flex min-w-0 items-center gap-2 md:hidden">
+            <MobileNavigation path={path} />
+            <div className="mobileWorkspaceContext min-w-0">
+              <WorkspaceSwitcher />
+            </div>
           </div>
           <div className="ml-auto flex items-center gap-2">
             <ThemeToggle />
@@ -288,7 +345,7 @@ export function Layout({
           </div>
         </header>
         <main className="min-w-0 flex-1 overflow-y-auto">
-          <div className="mx-auto w-full max-w-[1400px] px-4 py-6 sm:px-6">
+          <div className="mx-auto w-full max-w-[var(--content-max-width)] px-4 py-6 sm:px-6">
             <PageHeading
               title={title}
               subtitle={subtitle}

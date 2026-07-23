@@ -180,7 +180,7 @@ async function waitForWebhookDelivery(api, subscriptionID) {
 }
 
 async function waitForClientConfigRun(clientID, apiToken) {
-  const runsURL = `http://127.0.0.1:${port}/execution/v1/workspaces/default/runs`;
+  const jobsURL = `http://127.0.0.1:${port}/api/w/default/jobs`;
   const publicURL = `http://127.0.0.1:${port}/api/v1/w/default/run/echo/echo`;
   const headers = { "authorization": `Bearer ${apiToken}`, "content-type": "application/json" };
   const rejected = await fetch(publicURL, {
@@ -203,7 +203,7 @@ async function waitForClientConfigRun(clientID, apiToken) {
   const run = await admitted.json();
 
   for (let attempt = 0; attempt < 60; attempt += 1) {
-    const response = await fetch(`${runsURL}/${encodeURIComponent(run.job_id)}/result`);
+    const response = await fetch(`${jobsURL}/${encodeURIComponent(run.job_id)}/result`);
     const result = await response.json();
     if (response.status === 202) {
       await sleep(250);
@@ -212,7 +212,8 @@ async function waitForClientConfigRun(clientID, apiToken) {
     if (!response.ok) {
       throw new Error(`client-config run failed: HTTP ${response.status} ${JSON.stringify(result)}`);
     }
-    if (result.output?.input?.message !== "configured for Example Retailer") {
+    const output = result.output ?? result.result;
+    if (output?.input?.message !== "configured for Example Retailer") {
       throw new Error(`worker did not apply client input settings: ${JSON.stringify(result)}`);
     }
     if (result.client_id && result.client_id !== clientID) {

@@ -142,6 +142,16 @@ The workspace switcher identifies the current scope, lists available workspaces,
 2. Select a workspace to change the active application and monitoring scope.
 3. Choose Manage workspaces to create workspaces or manage identity, access, audit, and lifecycle settings.
 
+## Navigate on a narrow screen
+
+The Imprun application shell keeps every primary engine destination available from an accessible mobile drawer.
+
+![Navigate on a narrow screen](../assets/ui/mobile-navigation.png)
+
+1. Open the navigation menu in the top bar.
+2. Choose Apps, Client Registry, Monitoring, Audit, or Settings.
+3. Close the drawer with its close control, the backdrop, or the Escape key.
+
 ## Switch workspace on a narrow screen
 
 The current workspace remains visible below the page title and opens the same context and administration menu on narrow screens.
