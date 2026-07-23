@@ -2,6 +2,24 @@ import { readFile } from "node:fs/promises";
 import { describe, expect, test } from "vitest";
 
 const styles = await readFile(new URL("./styles.css", import.meta.url), "utf8");
+const designTokens = await readFile(new URL("./design-tokens.css", import.meta.url), "utf8");
+
+describe("Imprun design contract", () => {
+  test("loads the synchronized semantic token source before application styles", () => {
+    expect(styles).toMatch(/^@import "tailwindcss";\r?\n@import "\.\/design-tokens\.css";/);
+    expect(designTokens).toContain("Synchronized from imprun/design-system/tokens.css");
+    expect(designTokens).toContain("--shell-sidebar-width: 15rem");
+    expect(designTokens).toContain("--shell-header-height: 3.5rem");
+    expect(designTokens).toContain("--content-max-width: 64rem");
+  });
+
+  test("keeps literal palette values out of application styling", () => {
+    expect(styles).not.toMatch(/#[0-9a-f]{3,8}\b/i);
+    expect(styles).not.toMatch(/\brgba?\(/i);
+    expect(styles).not.toMatch(/\bhsla?\(/i);
+    expect(styles).not.toContain('"Inter"');
+  });
+});
 
 describe("table column alignment", () => {
   test("does not override every non-first table header", () => {

@@ -1,61 +1,8 @@
 @import "tailwindcss";
+@import "./design-tokens.css";
 
 :root {
-  --surface-0: #f4f4f2;
-  --surface-1: #fcfcfb;
-  --surface-2: #f0efec;
-  --border: #dedddb;
-  --border-strong: #c8c7c3;
-  --text-primary: #0b0b0b;
-  --text-secondary: #52514e;
-  --text-muted: #77766f;
-  --accent: #2a78d6;
-  --accent-strong: #1c5cab;
-  --accent-contrast: #ffffff;
-  --status-good: #0ca30c;
-  --status-warning: #fab219;
-  --status-serious: #ec835a;
-  --status-critical: #d03b3b;
-  --status-running: #2a78d6;
-  --status-good-bg: rgba(12, 163, 12, 0.12);
-  --status-warning-bg: rgba(250, 178, 25, 0.18);
-  --status-serious-bg: rgba(236, 131, 90, 0.16);
-  --status-critical-bg: rgba(208, 59, 59, 0.12);
-  --status-running-bg: rgba(42, 120, 214, 0.12);
-  --status-neutral-bg: rgba(82, 81, 78, 0.1);
-  --danger: #d03b3b;
-  --shadow: 0 8px 24px rgba(11, 11, 11, 0.08);
-  --radius: 10px;
-  --radius-small: 6px;
-  color-scheme: light dark;
-}
-
-/* Shared operator-console theme. Existing workflow classes below consume these
-   aliases while new shell and primitives use the Tailwind token names. */
-:root {
-  --background: hsl(210 20% 98%);
-  --surface: hsl(0 0% 100%);
-  --surface-muted: hsl(210 20% 96%);
-  --foreground: hsl(215 28% 14%);
-  --muted: hsl(210 16% 93%);
-  --muted-foreground: hsl(215 14% 42%);
-  --border: hsl(214 20% 88%);
-  --input: hsl(214 20% 84%);
-  --primary: hsl(245 56% 55%);
-  --primary-foreground: hsl(0 0% 100%);
-  --accent: hsl(245 62% 93%);
-  --accent-foreground: hsl(245 58% 44%);
-  --ring: hsl(245 56% 55%);
-  --info: hsl(209 80% 40%);
-  --info-subtle: hsl(209 84% 95%);
-  --warning: hsl(38 95% 28%);
-  --warning-subtle: hsl(41 90% 92%);
-  --critical: hsl(0 72% 45%);
-  --critical-subtle: hsl(0 84% 96%);
-  --success: hsl(152 55% 30%);
-  --success-subtle: hsl(152 46% 93%);
-  --radius: 0.5rem;
-
+  /* Compatibility aliases for the existing engine workflow classes. */
   --surface-0: var(--background);
   --surface-1: var(--surface);
   --surface-2: var(--surface-muted);
@@ -63,78 +10,23 @@
   --text-primary: var(--foreground);
   --text-secondary: var(--muted-foreground);
   --text-muted: var(--muted-foreground);
-  --accent-strong: hsl(245 58% 44%);
+  --accent-strong: color-mix(in srgb, var(--primary) 88%, var(--foreground));
   --accent-contrast: var(--primary-foreground);
   --status-good: var(--success);
   --status-warning: var(--warning);
-  --status-serious: hsl(24 92% 38%);
+  --status-serious: var(--warning);
   --status-critical: var(--critical);
   --status-running: var(--info);
   --status-good-bg: var(--success-subtle);
   --status-warning-bg: var(--warning-subtle);
-  --status-serious-bg: hsl(26 92% 94%);
+  --status-serious-bg: var(--warning-subtle);
   --status-critical-bg: var(--critical-subtle);
   --status-running-bg: var(--info-subtle);
   --status-neutral-bg: var(--muted);
   --danger: var(--critical);
-  --shadow: 0 12px 32px hsl(215 28% 14% / 0.12);
-  --radius-small: 0.375rem;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: hsl(222 28% 8%);
-    --surface: hsl(220 22% 12%);
-    --surface-muted: hsl(220 20% 15%);
-    --foreground: hsl(214 30% 92%);
-    --muted: hsl(220 18% 18%);
-    --muted-foreground: hsl(216 14% 64%);
-    --border: hsl(218 18% 22%);
-    --input: hsl(218 16% 28%);
-    --primary: hsl(245 72% 70%);
-    --primary-foreground: hsl(245 40% 12%);
-    --accent: hsl(245 32% 20%);
-    --accent-foreground: hsl(245 64% 84%);
-    --ring: hsl(245 72% 70%);
-    --info: hsl(208 84% 62%);
-    --info-subtle: hsl(209 62% 15%);
-    --warning: hsl(40 88% 58%);
-    --warning-subtle: hsl(38 54% 14%);
-    --critical: hsl(0 78% 64%);
-    --critical-subtle: hsl(0 55% 15%);
-    --success: hsl(152 48% 52%);
-    --success-subtle: hsl(152 44% 14%);
-    --accent-strong: hsl(245 72% 76%);
-  }
-}
-
-:root[data-theme="light"] {
-  color-scheme: light;
-}
-
-:root[data-theme="dark"] {
-  color-scheme: dark;
-  --background: hsl(222 28% 8%);
-  --surface: hsl(220 22% 12%);
-  --surface-muted: hsl(220 20% 15%);
-  --foreground: hsl(214 30% 92%);
-  --muted: hsl(220 18% 18%);
-  --muted-foreground: hsl(216 14% 64%);
-  --border: hsl(218 18% 22%);
-  --input: hsl(218 16% 28%);
-  --primary: hsl(245 72% 70%);
-  --primary-foreground: hsl(245 40% 12%);
-  --accent: hsl(245 32% 20%);
-  --accent-foreground: hsl(245 64% 84%);
-  --ring: hsl(245 72% 70%);
-  --info: hsl(208 84% 62%);
-  --info-subtle: hsl(209 62% 15%);
-  --warning: hsl(40 88% 58%);
-  --warning-subtle: hsl(38 54% 14%);
-  --critical: hsl(0 78% 64%);
-  --critical-subtle: hsl(0 55% 15%);
-  --success: hsl(152 48% 52%);
-  --success-subtle: hsl(152 44% 14%);
+  --shadow: var(--shadow-md);
+  --radius-small: var(--shape-radius-sm);
+  --overlay: color-mix(in srgb, var(--foreground) 52%, transparent);
 }
 
 @theme inline {
@@ -152,15 +44,19 @@
   --color-accent-foreground: var(--accent-foreground);
   --color-ring: var(--ring);
   --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
   --color-info-subtle: var(--info-subtle);
   --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
   --color-warning-subtle: var(--warning-subtle);
   --color-critical: var(--critical);
+  --color-critical-foreground: var(--critical-foreground);
   --color-critical-subtle: var(--critical-subtle);
   --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
   --color-success-subtle: var(--success-subtle);
-  --font-sans: "IBM Plex Sans Variable", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --font-sans: var(--font-family-sans);
+  --font-mono: var(--font-family-mono);
   --radius-sm: calc(var(--radius) - 2px);
   --radius-md: var(--radius);
   --radius-lg: calc(var(--radius) + 2px);
@@ -169,7 +65,7 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: "IBM Plex Sans Variable", ui-sans-serif, system-ui, sans-serif;
+  font-family: var(--font-family-sans);
   font-feature-settings: "cv05", "ss01";
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
@@ -178,7 +74,7 @@ body {
 .mono,
 code,
 pre {
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-family: var(--font-family-mono);
   font-variant-numeric: tabular-nums;
 }
 
@@ -333,7 +229,7 @@ textarea:focus-visible,
 .sheetBackdrop {
   position: fixed;
   inset: 0;
-  background: hsl(215 28% 10% / 0.52);
+  background: var(--overlay);
 }
 
 .modalBackdrop {
@@ -384,30 +280,6 @@ a {
   }
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --surface-0: #121211;
-    --surface-1: #1a1a19;
-    --surface-2: #232322;
-    --border: #33332f;
-    --border-strong: #4a4a45;
-    --text-primary: #ffffff;
-    --text-secondary: #c3c2b7;
-    --text-muted: #8f8e85;
-    --accent: #3987e5;
-    --accent-strong: #5598e7;
-    --accent-contrast: #0b0b0b;
-    --status-running: #3987e5;
-    --status-good-bg: rgba(12, 163, 12, 0.2);
-    --status-warning-bg: rgba(250, 178, 25, 0.16);
-    --status-serious-bg: rgba(236, 131, 90, 0.18);
-    --status-critical-bg: rgba(208, 59, 59, 0.22);
-    --status-running-bg: rgba(57, 135, 229, 0.2);
-    --status-neutral-bg: rgba(195, 194, 183, 0.14);
-    --shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-  }
-}
-
 * {
   box-sizing: border-box;
 }
@@ -419,14 +291,7 @@ body {
 }
 
 body {
-  font-family:
-    "Inter",
-    -apple-system,
-    "Segoe UI",
-    Roboto,
-    "Helvetica Neue",
-    Arial,
-    sans-serif;
+  font-family: var(--font-family-sans);
   font-size: 14px;
   line-height: 1.5;
   color: var(--text-primary);
@@ -436,7 +301,7 @@ body {
 .mono,
 code,
 pre {
-  font-family: "SFMono-Regular", "JetBrains Mono", Consolas, "Liberation Mono", Menlo, monospace;
+  font-family: var(--font-family-mono);
   font-size: 0.92em;
 }
 
@@ -2374,7 +2239,7 @@ textarea {
 
 .provisioningEditor,
 .provisioningCode {
-  font-family: "SFMono-Regular", "JetBrains Mono", Consolas, "Liberation Mono", Menlo, monospace;
+  font-family: var(--font-family-mono);
   font-size: 12.5px;
   line-height: 1.55;
 }
@@ -2628,7 +2493,7 @@ textarea {
 .modalBackdrop {
   position: fixed;
   inset: 0;
-  background: rgba(11, 11, 11, 0.45);
+  background: var(--overlay);
   display: grid;
   place-items: center;
   padding: 24px;
@@ -3628,7 +3493,7 @@ textarea {
   inset: 0;
   display: flex;
   justify-content: flex-end;
-  background: rgba(11, 11, 11, 0.48);
+  background: var(--overlay);
 }
 
 .sheet {
@@ -3660,7 +3525,7 @@ textarea {
 
 .sheetHeader p {
   color: var(--text-muted);
-  font-family: "SFMono-Regular", Consolas, monospace;
+  font-family: var(--font-family-mono);
   font-size: 11px;
   overflow-wrap: anywhere;
 }
@@ -3748,166 +3613,4 @@ textarea {
   .sheetFooter .fieldHint {
     display: none;
   }
-}
-
-/* Final compatibility layer: legacy workflow class names resolve to the same
-   tokens and density as the shared operator-console primitives. */
-:root {
-  --surface-0: var(--background);
-  --surface-1: var(--surface);
-  --surface-2: var(--surface-muted);
-  --border-strong: var(--input);
-  --text-primary: var(--foreground);
-  --text-secondary: var(--muted-foreground);
-  --text-muted: var(--muted-foreground);
-  --accent-strong: hsl(245 58% 44%);
-  --accent-contrast: var(--primary-foreground);
-  --status-good: var(--success);
-  --status-warning: var(--warning);
-  --status-critical: var(--critical);
-  --status-running: var(--info);
-  --status-good-bg: var(--success-subtle);
-  --status-warning-bg: var(--warning-subtle);
-  --status-critical-bg: var(--critical-subtle);
-  --status-running-bg: var(--info-subtle);
-  --status-neutral-bg: var(--muted);
-  --danger: var(--critical);
-  --radius: 0.5rem;
-  --radius-small: 0.375rem;
-}
-
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: "IBM Plex Sans Variable", ui-sans-serif, system-ui, sans-serif;
-}
-
-.navItem {
-  gap: 0.625rem;
-  padding: 0.375rem 0.5rem;
-  border-radius: 0.375rem;
-  color: var(--muted-foreground);
-  font-size: 0.875rem;
-  font-weight: 400;
-}
-
-.navItem:hover {
-  background: var(--muted);
-  color: var(--foreground);
-}
-
-.navItem.active {
-  background: var(--accent);
-  color: var(--accent-foreground);
-  font-weight: 600;
-}
-
-.panel,
-.tableWrap,
-.inputSettingValues,
-.appScopePicker {
-  border-color: var(--border);
-  border-radius: var(--radius);
-  background: var(--surface);
-  box-shadow: none;
-}
-
-.panelHeader {
-  padding: 1rem 1.125rem;
-}
-
-.panelBody {
-  padding: 1.125rem;
-}
-
-.table th {
-  height: 2.5rem;
-  padding: 0.625rem 0.75rem;
-  color: var(--muted-foreground);
-  font-size: 0.75rem;
-  font-weight: 500;
-  letter-spacing: 0.025em;
-}
-
-.table td {
-  padding: 0.625rem 0.75rem;
-}
-
-.button {
-  min-height: 2.25rem;
-  padding: 0.5rem 0.875rem;
-  border-color: var(--input);
-  border-radius: 0.375rem;
-  background: var(--surface);
-  font-size: 0.875rem;
-  font-weight: 500;
-}
-
-.button.primary {
-  border-color: var(--primary);
-  background: var(--primary);
-  color: var(--primary-foreground);
-}
-
-.button.primary:hover:not(:disabled) {
-  border-color: var(--accent-strong);
-  background: var(--accent-strong);
-}
-
-input,
-select,
-textarea {
-  border-color: var(--input);
-  border-radius: 0.375rem;
-  background: var(--surface);
-}
-
-.dialog,
-.sheet,
-.workspacePopover {
-  border-color: var(--border);
-  background: var(--surface);
-  box-shadow: var(--shadow);
-}
-
-.brand,
-.brand:visited {
-  color: var(--foreground);
-}
-
-.modalBackdrop,
-.sheetBackdrop {
-  position: fixed;
-  inset: 0;
-  background: hsl(215 28% 10% / 0.52);
-}
-
-.modalBackdrop {
-  z-index: 80;
-}
-
-.dialog {
-  position: fixed;
-  z-index: 81;
-  top: 50%;
-  left: 50%;
-  width: min(560px, calc(100vw - 2rem));
-  max-height: calc(100vh - 2rem);
-  transform: translate(-50%, -50%);
-}
-
-.dialog.wide {
-  width: min(760px, calc(100vw - 2rem));
-}
-
-.sheetBackdrop {
-  z-index: 80;
-}
-
-.sheet {
-  position: fixed;
-  z-index: 81;
-  inset: 0 0 0 auto;
-  width: min(680px, calc(100vw - 3rem));
-  height: 100vh;
 }
